@@ -2,26 +2,6 @@
 
 This project demonstrates a simple FastAPI application designed for containerization and deployment to AWS App Runner. It provides two basic endpoints, `/hello` and `/health`, showcasing a minimal API setup.
 
-## Features
-
-* **FastAPI:** Utilizes FastAPI for building the API, offering high performance and ease of development.
-* **Poetry:** Manages dependencies and packaging with Poetry, ensuring consistent environments.
-* **Docker:** Containerized for easy deployment and scalability.
-* **AWS App Runner:** Deployed to AWS App Runner for a fully managed container service.
-* **GitHub Actions:** Automated CI/CD pipeline for building and deploying the application.
-
-## Project Structure
-
-fastapi-example/
-├── fastapi_example/
-│   └── main.py       # FastAPI application code
-├── pyproject.toml    # Poetry configuration file
-├── poetry.lock       # Poetry lock file for dependencies
-├── Dockerfile        # Docker configuration file
-└── .github/workflows/
-└── deploy.yml    # GitHub Actions workflow for deployment
-
-## Getting Started
 
 ### Prerequisites
 
@@ -30,13 +10,59 @@ fastapi-example/
 * Docker
 * AWS account with ECR and App Runner permissions
 * GitHub account
+* An AWS account with appropriate permissions
+* An IAM role with permissions for ECR and App Runner
+* ECR repositories created for your applications
+* App Runner services created (or permissions to create them)
+
+## Setting Up GitHub Secrets
+
+### For Node.js Express API
+
+Navigate to your repository settings → Secrets and variables → Actions, and add the following secrets:
+
+| Secret Name | Description |
+|-------------|-------------|
+| `AWS_ROLE_TO_ASSUME` | ARN of an IAM role with permissions to push to ECR and deploy to App Runner (format: `arn:aws:iam::{account-id}:role/{role-name}`) |
+| `AWS_REGION` | The AWS region where your resources are deployed (e.g., `us-east-1`) |
+| `ECR_REPOSITORY` | Name of your ECR repository for the Express API |
+| `APP_RUNNER_SERVICE` | Name of your App Runner service for the Express API |
+
+### For FastAPI Application
+
+Navigate to your repository settings → Secrets and variables → Actions, and add the following secrets:
+
+| Secret Name | Description |
+|-------------|-------------|
+| `AWS_ROLE_ARN` | ARN of an IAM role with permissions to push to ECR and deploy to App Runner (format: `arn:aws:iam::{account-id}:role/{role-name}`) |
+| `AWS_REGION` | The AWS region where your resources are deployed (e.g., `us-east-1`) |
+| `ECR_REPOSITORY` | Name of your ECR repository for the FastAPI application |
+| `APPRUNNER_SERVICE_NAME` | Name of your App Runner service for the FastAPI application |
+
+
+## How to Add GitHub Secrets
+
+1. Go to your GitHub repository
+2. Click on "Settings" tab
+3. In the left sidebar, click on "Secrets and variables" then "Actions"
+4. Click on "New repository secret"
+5. Enter the secret name and value
+6. Click "Add secret"
+7. Repeat for each required secret
+
+## Verifying Secret Configuration
+
+Once all secrets are added, you can verify them by:
+1. Going to your repository's "Settings" → "Secrets and variables" → "Actions"
+2. Checking that all required secrets are listed (the values will be hidden)
+3. Making a small commit to trigger the workflow and checking the workflow logs for any secret-related errors
 
 ### Setup
 
 1.  **Clone the repository:**
 
     ```bash
-    git clone [https://github.com/abaidgulshan/fastapi.git](https://github.com/abaidgulshan/fastapi.git)
+    git clone [https://github.com/Tulio-Health/care-capture-fastapi.git](https://github.com/Tulio-Health/care-capture-fastapi.git)
     cd fastapi
     ```
 
