@@ -17,19 +17,6 @@ This project demonstrates a simple FastAPI application designed for containeriza
 
 ## Setting Up GitHub Secrets
 
-### For Node.js Express API
-
-Navigate to your repository settings → Secrets and variables → Actions, and add the following secrets:
-
-| Secret Name | Description |
-|-------------|-------------|
-| `AWS_ROLE_TO_ASSUME` | ARN of an IAM role with permissions to push to ECR and deploy to App Runner (format: `arn:aws:iam::{account-id}:role/{role-name}`) |
-| `AWS_REGION` | The AWS region where your resources are deployed (e.g., `us-east-1`) |
-| `ECR_REPOSITORY` | Name of your ECR repository for the Express API |
-| `APP_RUNNER_SERVICE` | Name of your App Runner service for the Express API |
-
-### For FastAPI Application
-
 Navigate to your repository settings → Secrets and variables → Actions, and add the following secrets:
 
 | Secret Name | Description |
