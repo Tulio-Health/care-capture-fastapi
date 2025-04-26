@@ -1,6 +1,10 @@
 from pydantic_settings import BaseSettings
-from pydantic import PostgresDsn
+from pydantic import PostgresDsn, ValidationError
 from functools import lru_cache
+import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
     
@@ -22,18 +26,46 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
     REDIS_PASSWORD: str = ''
     
-    
     @property
     def DATABASE_URL(self) -> PostgresDsn:
-        return PostgresDsn.build(
-            scheme="postgresql+asyncpg",
-            username=self.DB_USER,
-            password=self.DB_PASSWORD,
-            host=self.DB_HOST,
-            port=self.DB_PORT,
-            path=self.DB_NAME,
+        try:
+            # First try to get from environment variable
+            if db_url := os.getenv("DATABASE_URL"):
+                logger.info("Using DATABASE_URL from environment variable")
+                return PostgresDsn(db_url)
             
-        )
+            # If not in env, construct from components
+            logger.info("Constructing DATABASE_URL from components")
+            logger.info(f"DB_HOST: {self.DB_HOST}")
+            logger.info(f"DB_PORT: {self.DB_PORT}")
+            logger.info(f"DB_USER: {self.DB_USER}")
+            logger.info(f"DB_NAME: {self.DB_NAME}")
+            
+            # Ensure port is a valid integer
+            try:
+                port = int(self.DB_PORT)
+            except (ValueError, TypeError):
+                raise ValueError(f"Invalid port number: {self.DB_PORT}")
+            
+            # Construct the URL
+            url = PostgresDsn.build(
+                scheme="postgresql+asyncpg",
+                username=self.DB_USER,
+                password=self.DB_PASSWORD,
+                host=self.DB_HOST,
+                port=port,
+                path=f"/{self.DB_NAME}",
+            )
+            
+            logger.info(f"Constructed DATABASE_URL: {url}")
+            return url
+            
+        except ValidationError as e:
+            logger.error(f"Database URL validation error: {str(e)}")
+            raise ValueError(f"Invalid database URL configuration: {str(e)}")
+        except Exception as e:
+            logger.error(f"Unexpected error constructing database URL: {str(e)}")
+            raise
     
     # API Keys
     OPENAI_API_KEY: str
@@ -42,7 +74,6 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
-
 
 @lru_cache()
 def get_settings() -> Settings:
