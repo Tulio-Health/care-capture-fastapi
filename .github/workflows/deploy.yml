@@ -38,9 +38,30 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ github.sha }}
+          APP_ENV: ${{ secrets.APP_ENV }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_SSL: ${{ secrets.DB_SSL }}
+          DB_USER: ${{ secrets.DB_USER }}
+          PORT: ${{ secrets.PORT }}
+          REDIS_HOST: ${{ secrets.REDIS_HOST }}
+          REDIS_PORT: ${{ secrets.REDIS_PORT }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+            --build-arg APP_ENV=$APP_ENV \
+            --build-arg DB_HOST=$DB_HOST \
+            --build-arg DB_NAME=$DB_NAME \
+            --build-arg DB_PASSWORD=$DB_PASSWORD \
+            --build-arg DB_PORT=$DB_PORT \
+            --build-arg DB_SSL=$DB_SSL \
+            --build-arg DB_USER=$DB_USER \
+            --build-arg PORT=$PORT \
+            --build-arg REDIS_HOST=$REDIS_HOST \
+            --build-arg REDIS_PORT=$REDIS_PORT .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
           echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
   deploy:
@@ -67,9 +88,30 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ github.sha }}
+          APP_ENV: ${{ secrets.APP_ENV }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_SSL: ${{ secrets.DB_SSL }}
+          DB_USER: ${{ secrets.DB_USER }}
+          PORT: ${{ secrets.PORT }}
+          REDIS_HOST: ${{ secrets.REDIS_HOST }}
+          REDIS_PORT: ${{ secrets.REDIS_PORT }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+            --build-arg APP_ENV=$APP_ENV \
+            --build-arg DB_HOST=$DB_HOST \
+            --build-arg DB_NAME=$DB_NAME \
+            --build-arg DB_PASSWORD=$DB_PASSWORD \
+            --build-arg DB_PORT=$DB_PORT \
+            --build-arg DB_SSL=$DB_SSL \
+            --build-arg DB_USER=$DB_USER \
+            --build-arg PORT=$PORT \
+            --build-arg REDIS_HOST=$REDIS_HOST \
+            --build-arg REDIS_PORT=$REDIS_PORT .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
           echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
       - name: Deploy to App Runner
