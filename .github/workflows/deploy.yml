@@ -32,6 +32,7 @@ jobs:
           DB_PORT=${{ secrets.DB_PORT }}
           DB_SSL=${{ secrets.DB_SSL }}
           DB_USER=${{ secrets.DB_USER }}
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
           PORT=${{ secrets.PORT }}
           REDIS_HOST=${{ secrets.REDIS_HOST }}
           REDIS_PORT=${{ secrets.REDIS_PORT }}
@@ -78,6 +79,7 @@ jobs:
           DB_PORT=${{ secrets.DB_PORT }}
           DB_SSL=${{ secrets.DB_SSL }}
           DB_USER=${{ secrets.DB_USER }}
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
           PORT=${{ secrets.PORT }}
           REDIS_HOST=${{ secrets.REDIS_HOST }}
           REDIS_PORT=${{ secrets.REDIS_PORT }}
