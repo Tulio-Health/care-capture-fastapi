@@ -35,19 +35,20 @@ class Settings(BaseSettings):
                 return PostgresDsn(db_url)
             
             # If not in env, construct from components
-            logger.info("Constructing DATABASE_URL from components")
-            logger.info(f"DB_HOST: {self.DB_HOST}")
-            logger.info(f"DB_PORT: {self.DB_PORT}")
-            logger.info(f"DB_USER: {self.DB_USER}")
-            logger.info(f"DB_NAME: {self.DB_NAME}")
+            logger.error("Constructing DATABASE_URL from components")
+            logger.error(f"DB_HOST: {self.DB_HOST}")
+            logger.error(f"DB_PORT: {self.DB_PORT}")
+            logger.error(f"DB_USER: {self.DB_USER}")
+            logger.error(f"DB_NAME: {self.DB_NAME}")
             
             # Construct the URL string directly
-            url_str = f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:5432/{self.DB_NAME}"
+            url_str = f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
             
+            logger.error(f"Constructed DATABASE_URL: {url_str}")
             # Validate the URL
             url = PostgresDsn(url_str)
             
-            logger.info(f"Constructed DATABASE_URL: {url}")
+            logger.error(f"Constructed DATABASE_URL: {url}")
             return url
             
         except ValidationError as e:
