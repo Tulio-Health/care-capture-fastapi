@@ -6,8 +6,9 @@ COPY poetry.lock pyproject.toml ./
 
 RUN pip install poetry && poetry install --no-root
 
-COPY fastapi_example ./fastapi_example
+# COPY fastapi_example ./fastapi_example
+COPY src ./src
 
 EXPOSE 8000
 
-CMD ["poetry", "run", "uvicorn", "fastapi_example.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["poetry", "run", "uvicorn", "src.app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,118 +1,142 @@
-# FastAPI Example API
+# Care Capture AI
 
-This project demonstrates a simple FastAPI application designed for containerization and deployment to AWS App Runner. It provides two basic endpoints, `/hello` and `/health`, showcasing a minimal API setup.
+API for Care Capture AI - Making healthcare patient data more meaningful for patients and caregivers!!!
 
-### Prerequisites
+## Setup
 
-- Python 3.8+
-- Poetry (install with `pip install poetry`)
-- Docker
-- AWS account with ECR and App Runner permissions
-- GitHub account
-- An AWS account with appropriate permissions
-- An IAM role with permissions for ECR and App Runner
-- ECR repositories created for your applications
-- App Runner services created (or permissions to create them)
+1. Install Poetry if you haven't already:
+```bash
+curl -sSL https://install.python-poetry.org | python3 -
+```
 
-## Setting Up GitHub Secrets
+2. Clone the repository and install dependencies:
+```bash
+git clone <repository-url>
+cd care-capture-fastapi
+poetry install
+```
 
-Navigate to your repository settings → Secrets and variables → Actions, and add the following secrets:
+3. Activate the virtual environment:
+```bash
+poetry shell
+```
 
-| Secret Name              | Description                                                                                                                        |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `FASTAPI_AWS_ROLE_ARN`   | ARN of an IAM role with permissions to push to ECR and deploy to App Runner (format: `arn:aws:iam::{account-id}:role/{role-name}`) |
-| `AWS_REGION`             | The AWS region where your resources are deployed (e.g., `us-east-1`)                                                               |
-| `ECR_REPOSITORY`         | Name of your ECR repository for the FastAPI application                                                                            |
-| `APPRUNNER_SERVICE_NAME` | Name of your App Runner service for the FastAPI application                                                                        |
+## Development
 
-## How to Add GitHub Secrets
+- Run the application:
 
-1. Go to your GitHub repository
-2. Click on "Settings" tab
-3. In the left sidebar, click on "Secrets and variables" then "Actions"
-4. Click on "New repository secret"
-5. Enter the secret name and value
-6. Click "Add secret"
-7. Repeat for each required secret
+```bash
+poetry run uvicorn src.app.main:app --reload
+#poetry run python main.py
+```
 
-## Verifying Secret Configuration
+- Run tests:
+```bash
+poetry run pytest
+```
 
-Once all secrets are added, you can verify them by:
+- Format code:
+```bash
+poetry run black .
+poetry run isort .
+```
 
-1. Going to your repository's "Settings" → "Secrets and variables" → "Actions"
-2. Checking that all required secrets are listed (the values will be hidden)
-3. Making a small commit to trigger the workflow and checking the workflow logs for any secret-related errors
+## Project Structure
 
-### Setup
+```
+care-capture-ai/
+├── src/
+│   └── app/
+│       ├── main.py
+│       ├── routes/
+│       └── models/
+├── pyproject.toml
+├── README.md
+└── .gitignore
+```
 
-1.  **Clone the repository:**
+## Dependencies
 
-    ```bash
-    git clone [https://github.com/Tulio-Health/care-capture-fastapi.git](https://github.com/Tulio-Health/care-capture-fastapi.git)
-    cd fastapi
-    ```
-
-2.  **Install dependencies using Poetry:**
-
-    ```bash
-    poetry install
-    ```
-
-3.  **Configure AWS:**
-
-    - Replace placeholders in `.github/workflows/deploy.yml` with your AWS region and App Runner service name.
-    - Set up AWS credentials as GitHub secrets: `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`.
-    - Create an ECR repository to store the Docker image.
-    - Create an App Runner service to deploy the application.
-
-### Local Development
-
-1.  **Run the FastAPI application:**
-
-    ```bash
-    poetry run uvicorn fastapi_example.main:app --reload
-    ```
-
-    This will start the server, and you can access the endpoints at `http://127.0.0.1:8000`.
-
-2.  **Test the endpoints:**
-
-    - `http://127.0.0.1:8000/hello` (returns `{"message": "Hello, World!"}`)
-    - `http://127.0.0.1:8000/health` (returns a 200 OK status)
-
-### Local Docker Development
-
-1.  **Build the Docker image:**
-
-    ```bash
-    docker build -t fastapi-example .
-    ```
-
-2.  **Run the Docker container:**
-
-    ```bash
-    docker run -p 8000:8000 fastapi-example
-    ```
-
-    The application will be accessible at `http://localhost:8000`.
-
-### Deployment to AWS App Runner
-
-1.  **Push your code to the `main` branch of your GitHub repository.**
-
-2.  **GitHub Actions will automatically build the Docker image, push it to ECR, and deploy it to AWS App Runner.**
-
-## Endpoints
-
-- `/hello`: Returns a JSON response with a "Hello, World!" message.
-- `/health`: Returns a 200 OK status, indicating the application is running.
-
-## AWS Services Used
-
-- **Amazon ECR (Elastic Container Registry):** Stores the Docker image.
-- **AWS App Runner:** Provides a fully managed container service for deploying the application.
-- **GitHub Actions:** Automates the CI/CD pipeline for building and deploying the application.
+All dependencies are managed by Poetry. See `pyproject.toml` for details.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit pull requests or open issues for any improvements or bug fixes.
+1. Create a new branch
+2. Make your changes
+3. Run tests and formatting
+4. Submit a pull request
+
+## License
+
+[Add your license information here]
+
+## API Documentation
+
+The API documentation is automatically generated using OpenAPI (Swagger) and is available through multiple interfaces:
+
+### Swagger UI
+
+Access the interactive API documentation at `http://your-server/docs`. This interface allows you to:
+
+- To access in local - - Local - `http://localhost:8000/docs`
+- Read detailed API documentation
+- Test endpoints directly from the browser
+- View request/response schemas
+- See example responses
+
+### ReDoc
+
+A more readable version of the API documentation is available at `http://your-server/redoc`
+
+- Local - `http://localhost:8000/redoc`
+
+### OpenAPI Schema
+
+The raw OpenAPI schema can be accessed at `http://your-server/openapi.json`
+
+- Local - `http://localhost:8000/openapi.json`
+
+### Available Endpoints
+
+Currently documented endpoints:
+
+- `GET /`: Root endpoint
+  - Returns a welcome message for the Care Capture AI API
+- `GET /health`: Health check endpoint
+  - Returns the current health status of the service
+- `POST /care-capture/users/{user_id}/health_insights`: Create user health insights
+  - Creates/Updates health insights for a specific user
+  - Sample request:
+    ```bash
+    curl --location --request POST 'http://localhost:8000/care-capture/users/ae163cd0-89c9-4ed6-9073-8e155cff6eb1/health_insights' \
+    --header 'Content-Type: application/json' \
+    --data '{
+        "user_id":"ae163cd0-89c9-4ed6-9073-8e155cff6eb1"
+    }'
+    ```
+- `POST /care-capture/provider_visit_summarization`: Summarize provider visit
+  - Creates a summary of the provider visit from transcript
+  - Sample request:
+    ```bash
+    curl --location --request POST 'http://localhost:8000/care-capture/provider_visit_summarization' \
+    --header 'Content-Type: application/json' \
+    --data '{
+        "transcript_id": "ae163cd0-89c9-4ed6-9073-8e155cff6eb2",
+        "user_id": "ae163cd0-89c9-4ed6-9073-8e155cff6eb1",
+        "text": "You are completely healthy"
+    }'
+    ```
+- `POST /care-capture/users/{user_id}/health_insights`: Create user health insights
+  - Creates/Updates health insights for a specific user
+  - Sample request:
+    ```bash
+    curl --location --request POST 'http://localhost:8000/care-capture/users/ae163cd0-89c9-4ed6-9073-8e155cff6eb1/health_insights' \
+    --header 'Content-Type: application/json' \
+    --data '{
+        "user_id":"ae163cd0-89c9-4ed6-9073-8e155cff6eb1"
+    }'
+    ```
+
+  - 
+
+  
