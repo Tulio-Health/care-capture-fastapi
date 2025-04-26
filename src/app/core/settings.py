@@ -48,7 +48,7 @@ class Settings(BaseSettings):
                 password=self.DB_PASSWORD,
                 host=self.DB_HOST,
                 port=5432,  # Hardcoded port
-                path=f"/{self.DB_NAME}",
+                path=self.DB_NAME,  # Remove the leading slash
             )
             
             logger.info(f"Constructed DATABASE_URL: {url}")
