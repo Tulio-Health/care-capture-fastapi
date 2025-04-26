@@ -41,15 +41,11 @@ class Settings(BaseSettings):
             logger.info(f"DB_USER: {self.DB_USER}")
             logger.info(f"DB_NAME: {self.DB_NAME}")
             
-            # Construct the URL with hardcoded port
-            url = PostgresDsn.build(
-                scheme="postgresql+asyncpg",
-                username=self.DB_USER,
-                password=self.DB_PASSWORD,
-                host=self.DB_HOST,
-                port=5432,  # Hardcoded port
-                path=self.DB_NAME,  # Remove the leading slash
-            )
+            # Construct the URL string directly
+            url_str = f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:5432/{self.DB_NAME}"
+            
+            # Validate the URL
+            url = PostgresDsn(url_str)
             
             logger.info(f"Constructed DATABASE_URL: {url}")
             return url
