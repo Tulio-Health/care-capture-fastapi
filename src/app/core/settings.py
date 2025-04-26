@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     
     # Database Configuration
     DB_HOST: str = "localhost"
-    DB_PORT: int = 5432
+    DB_PORT: int = 5432  # Hardcoded port number
     DB_USER: str
     DB_PASSWORD: str
     DB_NAME: str = "care-capture-app"
@@ -41,19 +41,13 @@ class Settings(BaseSettings):
             logger.info(f"DB_USER: {self.DB_USER}")
             logger.info(f"DB_NAME: {self.DB_NAME}")
             
-            # Ensure port is a valid integer
-            try:
-                port = int(self.DB_PORT)
-            except (ValueError, TypeError):
-                raise ValueError(f"Invalid port number: {self.DB_PORT}")
-            
-            # Construct the URL
+            # Construct the URL with hardcoded port
             url = PostgresDsn.build(
                 scheme="postgresql+asyncpg",
                 username=self.DB_USER,
                 password=self.DB_PASSWORD,
                 host=self.DB_HOST,
-                port=port,
+                port=5432,  # Hardcoded port
                 path=f"/{self.DB_NAME}",
             )
             
