@@ -27,9 +27,28 @@ graph TD
   - `next`: String indicating the next action or state
 - **RouterOptions**: Enum defining possible intent categories
   - `PAST_VISITS`: For past visits inquiries
+    - Sample questions 
+      - What did Dr Sarah said in my last visit? 
+      - What Dr William talked about my cardio related issues? 
+      - What was the recommendations for my High Blood pressure by Dr Will?
+      - Can you summarize me about my last Dentist visit? 
+      - When should I take my Blood sugar medicine recommended by Dr John?  
   - `HEALTH_INSIGHTS`: For health insights inquiries
+    - Sample questions 
+      - When should I take my Blood sugar medicine?  
+      - Howz my blood pressure reading? 
+      - What are my current medications? 
   - `UPCOMING_VISITS`: For upcoming visits inquiries
+    - Sample questions 
+      - Can you remind me my next visit with Dr Will?
+      - When is my next Cardio visit? 
+      - When is my next Dentist visit with Dr Sarah?
   - `MANAGE_VISITS`: For managing visits (create, cancel, reschedule, etc.)
+    - Sample questions 
+      - Add a new visit with Dr Will for next Monday? 
+        # System will find Dr Will either from their Bookmark or their Recent visits 
+      - I want to cancel my next week appointment with Dr Satish. 
+      - I want to update or reschedule my May 2nd appointment with Dr John to May 10th. 
   - `NOT_A_VALID_OPTION`: For invalid queries
   - `END`: For conversation termination
 

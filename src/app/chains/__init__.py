@@ -1,5 +1,7 @@
-from .provider_visit_summarization import ProvidervisitSummarizationChain
+from .pastvisit_summarization import PastVisitSummarizationChain
+from .intent_router import IntentRouter
 
 __all__ = [
-    "ProvidervisitSummarizationChain"
+    "PastVisitSummarizationChain",
+    "IntentRouter"
 ]

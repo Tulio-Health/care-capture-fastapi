@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException , Depends
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..chains.provider_visit_summarization import ProvidervisitSummarizationChain
+from ..chains.pastvisit_summarization import PastVisitSummarizationChain
 from ..models.provider_visit_summarization import ProviderVisitSummarizationRequest, ProviderVisitSummarizationResponse
 from ..models.health_insights_extraction import HealthInsightsRequest, HealthInsightsResponse , HealthInsights
 from ..chains.health_insights_extraction import HeathInsightsExtractionChain
@@ -73,7 +73,7 @@ async def provider_visit_summarize_text(
         # Initialize the repository for conversation summaries
         conversation_summaries_repository = ConversationSummariesRepository(db)
         # Create an instance of the summarization chain
-        summarization_chain = ProvidervisitSummarizationChain()
+        summarization_chain = PastVisitSummarizationChain()
         
         # Summarize the provided text
         summary = summarization_chain.summarize(request.text)
