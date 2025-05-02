@@ -13,7 +13,7 @@ model = init_chat_model(
 )
 
 
-class ProvidervisitSummarizationChain:
+class UpcomingVisitChain:
     def __init__(self):
         #self.llm = model.invoke(temperature=0.2, input="summarize")
         self.prompt = ChatPromptTemplate.from_messages([
