@@ -108,7 +108,7 @@ jobs:
 
       - name: Deploy to App Runner
         id: deploy-apprunner
-        uses: awslabs/amazon-app-runner-deploy@develop
+        uses: awslabs/amazon-app-runner-deploy@main
         with:
           service: ${{ secrets.APPRUNNER_SERVICE_NAME }}
           image: ${{ steps.build-image.outputs.image }}
