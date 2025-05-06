@@ -64,10 +64,10 @@ class Settings(BaseSettings):
     
     # API Keys
     OPENAI_API_KEY: str
-    LANGSMITH_TRACING: str
-    LANGSMITH_ENDPOINT:str
-    LANGSMITH_PROJECT: str
-    LANGCHAIN_API_KEY: str
+    # LANGSMITH_TRACING: str
+    # LANGSMITH_ENDPOINT:str
+    # LANGSMITH_PROJECT: str
+    # LANGCHAIN_API_KEY: str
     
     class Config:
         env_file = ".env"
