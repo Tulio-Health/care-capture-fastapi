@@ -39,16 +39,16 @@ class ConversationSummariesRepository:
             logger.error(f"Error fetching summary with ID: {summary_id}", exc_info=e)
             raise e
 
-    async def get_by_transcript_id(self, transcript_id: UUID) -> Optional[ConversationSummaries]:
+    async def get_by_appointment_id(self, appointment_id: UUID) -> Optional[ConversationSummaries]:
         try:
             result = await self.session.execute(
                 select(ConversationSummaries).where(
-                    ConversationSummaries.transcript_id == transcript_id
+                    ConversationSummaries.appointment_id == appointment_id
                 )
             )
             return result.scalar_one_or_none()
         except Exception as e:
-            logger.error(f"Error fetching summary for transcript ID: {transcript_id}", exc_info=e)
+            logger.error(f"Error fetching summary for transcript ID: {appointment_id}", exc_info=e)
             raise e
     
     async def get_by_user_id(self, user_id: UUID) -> Optional[ConversationSummaries]:
@@ -87,4 +87,21 @@ class ConversationSummariesRepository:
             return False
         except Exception as e:
             logger.error(f"Error deleting summary with ID: {summary_id}", exc_info=e)
+            raise e
+        
+    async def upsert(self, appointment_id: UUID, summary_data: dict) -> Optional[ConversationSummaries]:
+        try:
+            db_summary = await self.get_by_appointment_id(appointment_id)
+            if db_summary:
+                for key, value in summary_data.items():
+                    if hasattr(db_summary, key):
+                        setattr(db_summary, key, value)
+            else:
+                db_summary = ConversationSummaries(appointment_id=appointment_id, **summary_data)
+                self.session.add(db_summary)
+            await self.session.commit()
+            await self.session.refresh(db_summary)
+            return db_summary
+        except Exception as e:
+            logger.error(f"Error upserting summary with ID: {appointment_id}", exc_info=e)
             raise e

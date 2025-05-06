@@ -19,7 +19,7 @@ router = APIRouter(
     tags=["care-capture"]
 )
 
-@router.post("/provider_visit_summarization",
+@router.post("/provider-visit-summarization",
     response_model=ProviderVisitSummarizationResponse,
     
     summary="Provider Visit Summarization",
@@ -66,31 +66,33 @@ async def provider_visit_summarize_text(
         HTTPException: If summarization fails
     """
     try:
-        # Check if the input text is empty
-        if not request.text.strip():
-            raise ValueError("Text cannot be empty")
             
         # Initialize the repository for conversation summaries
         conversation_summaries_repository = ConversationSummariesRepository(db)
         # Create an instance of the summarization chain
-        summarization_chain = PastVisitSummarizationChain()
-        
+        summarization_chain = PastVisitSummarizationChain()    
         # Summarize the provided text
-        summary = summarization_chain.summarize(request.text)
+        summary = summarization_chain.summarize(request)        
         # Validate the summary model
-        summary_model = ProviderVisitSummarizationResponse.model_validate_json(summary)
+        summary_model = ProviderVisitSummarizationResponse.model_validate_json(summary.model_dump_json())
         
         # Prepare the summary dictionary for database insertion
-        summary_dict = summary_model.model_dump()
-        summary_dict["transcript_id"] = request.transcript_id
+        summary_dict = dict()
+        summary_dict["summary_text"] = summary_model.provider_patient_discussion_summary_text
         summary_dict["user_id"] = request.user_id
         summary_dict["created_by"] = request.user_id
         summary_dict["updated_by"] = request.user_id
+        summary_dict['key_points'] = summary_model.provider_patient_discussion_key_points
+        summary_dict['medications'] = summary_model.medications_prescribed_by_provider
+        summary_dict['diagnoses'] = summary_model.medical_diagnoses_discussed
+        summary_dict['instructions'] = summary_model.instructions_provided_by_provider
+        summary_dict['recommendations'] = summary_model.recommendations_provided_by_provider
 
 
                 
         # Create a new summary entry in the database
-        return await conversation_summaries_repository.create(conversation_summary=summary_dict)
+        await conversation_summaries_repository.upsert(appointment_id=request.appointment_id ,summary_data=summary_dict)
+        return summary
     
     except ValueError as e:
         # Raise a 400 error if input is invalid
