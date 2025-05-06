@@ -1,15 +1,21 @@
 from uuid import UUID
 from pydantic import BaseModel
 
-class ProviderVisitSummarizationRequest(BaseModel):
-    transcript_id: UUID
-    user_id: UUID
+class Transcript(BaseModel):
     text: str
+    created_at: str
+    language_code: str
+
+class ProviderVisitSummarizationRequest(BaseModel):
+    appointment_id: UUID
+    transcripts:list[Transcript]
+    user_id: UUID
+
 
 class ProviderVisitSummarizationResponse(BaseModel):
-    summary_text: str
-    key_points: dict[str, list[str]]
-    medications: list[dict[str, str]]
-    diagnoses: list[dict[str, str]]
-    instructions: list[dict[str, str]]
-    recommendations: list[dict[str, str]]
+    provider_patient_discussion_summary_text: str
+    provider_patient_discussion_key_points: dict[str, list[str]]
+    medications_prescribed_by_provider: list[dict[str, str]]
+    medical_diagnoses_discussed: list[dict[str, str]]
+    instructions_provided_by_provider: list[dict[str, str]]
+    recommendations_provided_by_provider: list[dict[str, str]]
