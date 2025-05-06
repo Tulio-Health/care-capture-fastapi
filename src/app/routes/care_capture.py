@@ -20,7 +20,7 @@ router = APIRouter(
 )
 
 @router.post("/provider-visit-summarization",
-    response_model=ProviderVisitSummarizationResponse,
+    response_model=dict,
     
     summary="Provider Visit Summarization",
     description="Summarize the given text with specified length constraints",
@@ -87,12 +87,10 @@ async def provider_visit_summarize_text(
         summary_dict['diagnoses'] = summary_model.medical_diagnoses_discussed
         summary_dict['instructions'] = summary_model.instructions_provided_by_provider
         summary_dict['recommendations'] = summary_model.recommendations_provided_by_provider
-
-
-                
+           
         # Create a new summary entry in the database
         await conversation_summaries_repository.upsert(appointment_id=request.appointment_id ,summary_data=summary_dict)
-        return summary
+        return summary_dict
     
     except ValueError as e:
         # Raise a 400 error if input is invalid

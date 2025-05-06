@@ -14,8 +14,8 @@ class ProviderVisitSummarizationRequest(BaseModel):
 
 class ProviderVisitSummarizationResponse(BaseModel):
     provider_patient_discussion_summary_text: str
-    provider_patient_discussion_key_points: dict[str, list[str]]
+    provider_patient_discussion_key_points:list[str]
     medications_prescribed_by_provider: list[dict[str, str]]
-    medical_diagnoses_discussed: list[dict[str, str]]
-    instructions_provided_by_provider: list[dict[str, str]]
+    medical_diagnoses_discussed: list[str]
+    instructions_provided_by_provider: list[str]
     recommendations_provided_by_provider: list[dict[str, str]]
