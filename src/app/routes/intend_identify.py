@@ -14,7 +14,15 @@ class IntentRequest(BaseModel):
     messages: List[str]
 
 class IntentResponse(BaseModel):
-    intent: str
+    """
+    Represents the response from the intent identifier.
+    
+    Attributes:
+        intent: The identified intent
+        message: The response from the appropriate handler
+    """
+    intent: RouterOptions
+    message: str | dict | None
 
 @router.post("",
     response_model=IntentResponse,

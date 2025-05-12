@@ -1,4 +1,6 @@
 from typing import Dict, Callable
+
+from src.app.chains.medical_inquiry import MedicalInquiryChain
 from .intend_identifier.models import RouterOptions
 from .pastvisit_summarization import PastVisitSummarizationChain
 from .health_insights_extraction import HeathInsightsExtractionChain
@@ -23,6 +25,7 @@ class IntentRouter:
         self.health_insights_chain = HeathInsightsExtractionChain()
         self.upcoming_visit_chain = UpcomingVisitChain()
         self.manage_visit_chain = ManageVisitChain()
+        self.medical_inquiry_chain = MedicalInquiryChain()
 
         self.chat_chain = MedicalChatChain()
         
@@ -33,7 +36,8 @@ class IntentRouter:
             RouterOptions.UPCOMING_VISITS.value: self.handle_upcoming_visits,
             RouterOptions.MANAGE_VISITS.value: self.handle_manage_visits,
             RouterOptions.NOT_A_VALID_OPTION.value: self.handle_invalid_option,
-            RouterOptions.END_CONVERSATION.value: self.handle_end_conversation
+            RouterOptions.END_CONVERSATION.value: self.handle_end_conversation,
+            RouterOptions.MEDICAL_INQUIRY.value: self.handle_medical_inquiry
         }
     
     def route(self, intent: str, **kwargs) -> str:
@@ -76,3 +80,7 @@ class IntentRouter:
     def handle_end_conversation(self, **kwargs) -> str:
         """Handle conversation end requests."""
         return "Thank you for using our service. Have a great day!" 
+    
+    def handle_medical_inquiry(self, text: str, **kwargs) -> str:
+        """Handle medical inquiry related queries."""
+        return self.medical_inquiry_chain.answer(text)

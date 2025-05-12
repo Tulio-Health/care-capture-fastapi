@@ -39,6 +39,14 @@ INTENT_IDENTIFIER_SYSTEM_PROMPT = """You are an expert medical coordinator route
             - "How do I book a follow-up with Dr. Wilson?"
             - "Please change my appointment to a virtual visit if possible."
             
+            MEDICAL_INQUIRY queries (for general medical inquiries):
+            - "What are the common symptoms of the flu?"
+            - "How can I manage my diabetes effectively?"
+            - "What is the recommended treatment for a broken bone?"
+            - "Can you provide some tips for maintaining a healthy heart?"
+            - "I'm concerned about a rash I've developed, what should I do?"
+            
+            
             NOT_A_VALID_OPTION queries (for queries that don't fit any category):
             - "Wait, that didn't work — what can I say instead?"
             - "Oops, I think I pressed the wrong thing."
@@ -54,7 +62,7 @@ INTENT_IDENTIFIER_SYSTEM_PROMPT = """You are an expert medical coordinator route
             - "I'd like to end the session, please."
             - Bye for now
             
-            Respond with ONLY one of these exact values: "past_visits", "health_insights", "upcoming_visits", "manage_visits", "not_a_valid_option", or "end".
+            Respond with ONLY one of these exact values: "past_visits", "health_insights", "upcoming_visits", "manage_visits", "medical_inquiry", "not_a_valid_option", or "end".
             Do not include any additional text or formatting.
             
             REMEMBER: When in doubt, return "not_a_valid_option".""" 

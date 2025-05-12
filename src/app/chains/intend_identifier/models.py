@@ -42,6 +42,7 @@ class RouterOptions(str, Enum):
     UPCOMING_VISITS = "upcoming_visits"
     MANAGE_VISITS = "manage_visits" # create, cancel, reschedule, etc.
     NOT_A_VALID_OPTION = "not_a_valid_option"
-    END_CONVERSATION = "end_conversation" 
+    END_CONVERSATION = "end_conversation"
+    MEDICAL_INQUIRY = "medical_inquiry"
 
       
