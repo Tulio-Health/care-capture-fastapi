@@ -14,7 +14,7 @@ from src.app.models.chat import ChatRequest
 from src.app.cache.redis import redis_client
 
 router = APIRouter(
-    prefix="/care-capture/chat",
+    prefix="/care-capture/ai-chat",
     tags=["care-capture-chat"]
 )
 
@@ -27,7 +27,7 @@ async def chat(chat_request: ChatRequest, db: AsyncSession = Depends(get_db)):
     print(f"Chat request: {chat_request}")
     try:
         conversation_id = chat_request.conversation_id
-        chat_ctx = redis.lrange(f"care-capture-cache-key-conversation:{conversation_id}", 0, -1)
+        chat_ctx = redis.lrange(f"care-capture-cache-key:conversation:{conversation_id}", 0, -1)
         
         if not chat_ctx:
             raise HTTPException(status_code=404, detail="Conversation not found")
