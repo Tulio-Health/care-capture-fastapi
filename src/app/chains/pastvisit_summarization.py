@@ -3,7 +3,7 @@ from langchain.chat_models import init_chat_model
 from langsmith import traceable
 from langchain_core.output_parsers import StrOutputParser, PydanticOutputParser
 
-from src.app.models.provider_visit_summarization import ProviderVisitSummarizationResponse
+from src.app.models.intent_identify import IntentResponse
 from ..core import get_settings
 
 settings = get_settings()
@@ -18,7 +18,7 @@ model = init_chat_model(
 class PastVisitSummarizationChain:
     def __init__(self):
         #self.llm = model.invoke(temperature=0.2, input="summarize")
-        self.parser = PydanticOutputParser(pydantic_object=ProviderVisitSummarizationResponse)
+        self.parser = PydanticOutputParser(pydantic_object=IntentResponse[None])
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", """You are a medical information extraction assistant. Your task is to analyze medical conversations and extract key information in a structured format.
             Rules:
@@ -38,6 +38,6 @@ class PastVisitSummarizationChain:
         self.chain = self.prompt | model | self.parser
 
     @traceable(name="summarize")
-    def summarize(self, text) -> ProviderVisitSummarizationResponse:
+    def summarize(self, text) -> IntentResponse[None]:
         result = self.chain.invoke({"text": text, "output_format": self.parser.get_format_instructions()})
         return result

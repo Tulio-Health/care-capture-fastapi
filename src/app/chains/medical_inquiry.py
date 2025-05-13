@@ -20,10 +20,11 @@ class MedicalInquiryChain:
     def __init__(self):
         self.parser = PydanticOutputParser(pydantic_object=MedicalInquiryResponse)
         self.prompt = ChatPromptTemplate.from_messages([
-            ("system","""Answer thie medical inquiry
+            ("system","""Answer the medical inquiry
                 
                 Rules:
                 -No duplicates unless new details
+                -Always add a disclaimer that its advisable to consult your PCP or a specialist.
                 -Output format {output_format}"""),
             ("user", "Answer this question in the format specified above: {text}")
             ])

@@ -10,7 +10,7 @@ class IntentRequest(BaseModel):
 T = TypeVar("T")
     
 class IntentAiResponse(GenericModel , Generic[T]):
-    type:str
+    type:str = "text"
     content:str
     data:T
 

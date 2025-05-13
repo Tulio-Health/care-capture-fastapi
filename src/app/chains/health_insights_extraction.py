@@ -17,8 +17,8 @@ model = init_chat_model(
 )
 
 
-HealthInsightsExtractionResponse = IntentResponse[HealthInsights]
-
+#HealthInsightsExtractionResponse = IntentResponse[HealthInsights]
+HealthInsightsExtractionResponse = IntentResponse[None]
 class HeathInsightsExtractionChain:
     def __init__(self):
         self.parser = PydanticOutputParser(pydantic_object=HealthInsightsExtractionResponse)

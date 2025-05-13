@@ -22,20 +22,23 @@ class IntentRouter:
     
     def __init__(self):
         # Initialize different chains
-        self.summarization_chain = PastVisitSummarizationChain()
-        self.health_insights_chain = HeathInsightsExtractionChain()
-        self.upcoming_visit_chain = UpcomingVisitChain()
-        self.manage_visit_chain = ManageVisitChain()
-        self.medical_inquiry_chain = MedicalInquiryChain()
+        # TODO: PastVisitSummarizationChain is still in development
+        self.past_visit_chain = PastVisitSummarizationChain() # MVP - Pulls the details from the visit summarization table
 
-        self.chat_chain = MedicalChatChain()
+        # TODO: PastVisitSummarizationChain is still in development, working... need some refinement to the response object...
+        self.health_insights_chain = HeathInsightsExtractionChain() # MVP - Pulls the details from the health insights table
+        # self.upcoming_visit_chain = UpcomingVisitChain() # PostMVP - Pulls the details from the appointment visit table
+        # self.manage_visit_chain = ManageVisitChain() # PostMVP - Pulls the details from the manage visit table
+        self.medical_inquiry_chain = MedicalInquiryChain() # MVP - Any generic medical inquiry
+
+        # self.chat_chain = MedicalChatChain() # This might not be needed , will review later 
         
         # Map intents to their handler methods
         self.intent_handlers: Dict[str, Callable] = {
             RouterOptions.PAST_VISITS.value: self.handle_past_visits,
             RouterOptions.HEALTH_INSIGHTS.value: self.handle_health_insights,
-            RouterOptions.UPCOMING_VISITS.value: self.handle_upcoming_visits,
-            RouterOptions.MANAGE_VISITS.value: self.handle_manage_visits,
+            # RouterOptions.UPCOMING_VISITS.value: self.handle_upcoming_visits,
+            # RouterOptions.MANAGE_VISITS.value: self.handle_manage_visits,
             RouterOptions.NOT_A_VALID_OPTION.value: self.handle_invalid_option,
             RouterOptions.END_CONVERSATION.value: self.handle_end_conversation,
             RouterOptions.MEDICAL_INQUIRY.value: self.handle_medical_inquiry
@@ -64,15 +67,15 @@ class IntentRouter:
         """Handle health insights related queries."""
         return self.health_insights_chain.extract(text)
     
-    # Priority - 3
-    def handle_upcoming_visits(self, text: str, context: dict, **kwargs) -> IntentResponse:
-        """Handle upcoming visits related queries."""
-        return self.handle_upcoming_visits.chat(text, context)
+    # # Priority - 3
+    # def handle_upcoming_visits(self, text: str, context: dict, **kwargs) -> IntentResponse:
+    #     """Handle upcoming visits related queries."""
+    #     return self.handle_upcoming_visits.chat(text, context)
     
-    # Priority - 4
-    def handle_manage_visits(self, text: str, context: dict, **kwargs) -> IntentResponse:
-        """Handle visit management related queries."""
-        return self.handle_manage_visits.chat(text, context)
+    # # Priority - 4
+    # def handle_manage_visits(self, text: str, context: dict, **kwargs) -> IntentResponse:
+    #     """Handle visit management related queries."""
+    #     return self.handle_manage_visits.chat(text, context)
     
     def handle_invalid_option(self, **kwargs) -> IntentResponse:
         """Handle invalid or unrecognized queries."""
