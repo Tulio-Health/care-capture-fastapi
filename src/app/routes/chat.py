@@ -51,14 +51,8 @@ async def chat(chat_request: ChatRequest, db: AsyncSession = Depends(get_db)):
             text=chat_request.message,
             context=context
         )
-                
-        # # Store the conversation in Redis
-        # redis.rpush(f"conversation:{conversation_id}", chat_request.message)
-        # redis.rpush(f"conversation:{conversation_id}", ai_response)
-        response = dict()
-        response["intent"] = intent
-        response["message"] = ai_response
-        return response
+
+        return ai_response
     except Exception as e:
         print(f"Error in chat route: {str(e)}")
         raise e

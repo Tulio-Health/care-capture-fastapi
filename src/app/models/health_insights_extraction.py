@@ -1,5 +1,5 @@
 from uuid import UUID
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional
 from datetime import datetime
 
@@ -24,13 +24,13 @@ class Recommendation(BaseModel):
     type: str
 
 class HealthInsights(BaseModel):
-    summary_text: str
-    key_points: KeyPoints
+    summary_text: str = Field(..., alias="summaryText")
+    key_points: KeyPoints = Field(..., alias="keyPoints")
     medications: List[Medication]
     diagnoses: List[Diagnosis]
     instructions: List[Instruction]
     recommendations: List[Recommendation]
-    created_at: datetime
+    created_at: datetime = Field(..., alias="createdAt")
     
     model_config = ConfigDict(from_attributes=True)
 

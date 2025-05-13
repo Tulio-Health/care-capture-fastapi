@@ -1,7 +1,10 @@
 
 from langchain.prompts import ChatPromptTemplate
 from langchain.chat_models import init_chat_model
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.output_parsers import PydanticOutputParser
+
+from src.app.models.health_insights_extraction import HealthInsights
+from src.app.models.intent_identify import IntentResponse
 
 from ..core import get_settings
 
@@ -13,28 +16,18 @@ model = init_chat_model(
     temperature=0.2,
 )
 
+
+HealthInsightsExtractionResponse = IntentResponse[HealthInsights]
+
 class HeathInsightsExtractionChain:
     def __init__(self):
+        self.parser = PydanticOutputParser(pydantic_object=HealthInsightsExtractionResponse)
         self.prompt = ChatPromptTemplate.from_messages([
-            ("system","""Extract structured health information from medical summaries into JSON. Follow this exact format:
-                {{
-                "conditions": [{{"name": string, "details": string|null, "date": "YYYY-MM-DD"}}],
-                "surgeriesAndProcedures": [{{"name": string, "details": string|null, "date": "YYYY-MM-DD"}}],
-                "medications": [{{"name": string, "dosage": string|null, "frequency": string|null, "date": "YYYY-MM-DD"}}],
-                "priorTesting": [{{"name": string, "result": string|null, "date": "YYYY-MM-DD"}}]
-                }}
-                Rules:
-                -Output raw JSON only - no markdown, no ```json tags
-                -Use YYYY-MM-DD dates from createdAt
-                -Use null for missing optional fields
-                -Include all arrays even if empty
-                -Prefer recent info
-                -No duplicates unless new details
-                -Output valid JSON only"""),
+            ("system","""Extract structured health information from medical summaries into JSON. Follow this exact format:{output_format}"""),
             ("user", "Extract clinical information as JSON:\n{text}")
             ]
         )
-        self.chain = self.prompt | model | StrOutputParser()
+        self.chain = self.prompt | model | self.parser
 
     def extract(self, text) -> str:
-        return self.chain.invoke({"text": text})
+        return self.chain.invoke({"text": text , "output_format": self.parser.get_format_instructions()})

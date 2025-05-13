@@ -62,7 +62,7 @@ INTENT_IDENTIFIER_SYSTEM_PROMPT = """You are an expert medical coordinator route
             - "I'd like to end the session, please."
             - Bye for now
             
-            Respond with ONLY one of these exact values: "past_visits", "health_insights", "upcoming_visits", "manage_visits", "medical_inquiry", "not_a_valid_option", or "end".
+            Respond with ONLY one of these exact values: "past_visits", "health_insights", "upcoming_visits", "manage_visits", "medical_inquiry", "not_a_valid_option", or "end_conversation".
             Do not include any additional text or formatting.
             
             REMEMBER: When in doubt, return "not_a_valid_option".""" 
