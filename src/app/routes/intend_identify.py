@@ -3,26 +3,14 @@ from typing import Dict, List
 from pydantic import BaseModel
 from langchain_core.messages import HumanMessage
 
+from src.app.models.intent_identify import IntentRequest, IntentResponse
+
 from ..chains.intend_identifier import IntendIdentifierChain, RouterOptions
 
 router = APIRouter(
     prefix="/intend-identify",
     tags=["intend-identify"]
 )
-
-class IntentRequest(BaseModel):
-    messages: List[str]
-
-class IntentResponse(BaseModel):
-    """
-    Represents the response from the intent identifier.
-    
-    Attributes:
-        intent: The identified intent
-        message: The response from the appropriate handler
-    """
-    intent: RouterOptions
-    message: str | dict | None
 
 @router.post("",
     response_model=IntentResponse,
