@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException , Depends
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..chains.pastvisit_summarization import PastVisitSummarizationChain
+from ..chains.past_visit.chain import PastVisitSummarizationChain
 from ..models.provider_visit_summarization import ProviderVisitSummarizationRequest, ProviderVisitSummarizationResponse
 from ..models.health_insights_extraction import HealthInsightsRequest, HealthInsightsResponse , HealthInsights
 from ..chains.health_insights_extraction import HeathInsightsExtractionChain

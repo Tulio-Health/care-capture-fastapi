@@ -30,5 +30,6 @@ class MedicalInquiryChain:
             ])
         self.chain = self.prompt | model | self.parser
 
-    def answer(self, text) -> MedicalInquiryResponse:
+    def answer(self, kwargs) -> MedicalInquiryResponse:
+        text = kwargs['text']
         return self.chain.invoke({"text": text , "output_format": MedicalInquiryResponse.model_json_schema()})
