@@ -24,12 +24,12 @@ class MedicalInquiryChain:
                 
                 Rules:
                 -No duplicates unless new details
-                -Always add a disclaimer that its advisable to consult your PCP or a specialist.
+                -Always add a disclaimer "It is advisable to consult your PCP or a specialist".
                 -Output format {output_format}"""),
             ("user", "Answer this question in the format specified above: {text}")
             ])
         self.chain = self.prompt | model | self.parser
 
-    def answer(self, kwargs) -> MedicalInquiryResponse:
+    def answer(self, **kwargs) -> MedicalInquiryResponse:
         text = kwargs['text']
         return self.chain.invoke({"text": text , "output_format": MedicalInquiryResponse.model_json_schema()})
