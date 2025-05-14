@@ -58,14 +58,14 @@ class IntentRouter:
         handler = self.intent_handlers.get(intent, self.handle_invalid_option)
         return handler(**kwargs)
     # Priority - 2
-    def handle_past_visits(self, text: str, **kwargs) -> IntentResponse:
+    def handle_past_visits(self, **kwargs) -> IntentResponse:
         """Handle past visits related queries."""
-        return self.past_visit_chain.summarize(text)
+        return self.past_visit_chain.summarize(**kwargs)
     
     # Priority - 1 
-    def handle_health_insights(self, text: str, **kwargs) -> IntentResponse:
+    def handle_health_insights(self ,**kwargs) -> IntentResponse:
         """Handle health insights related queries."""
-        return self.health_insights_chain.extract(text)
+        return self.health_insights_chain.extract(**kwargs)
     
     # # Priority - 3
     # def handle_upcoming_visits(self, text: str, context: dict, **kwargs) -> IntentResponse:
@@ -89,6 +89,6 @@ class IntentRouter:
         EndConversationResponse = IntentResponse[None]
         return EndConversationResponse(intent=RouterOptions.END_CONVERSATION.value, responses=[IntentAiResponse(type="text", content=message , data=None)])
     
-    def handle_medical_inquiry(self, text: str, **kwargs) -> IntentResponse:
+    def handle_medical_inquiry(self, **kwargs) -> IntentResponse:
         """Handle medical inquiry related queries."""
-        return self.medical_inquiry_chain.answer(text)
+        return self.medical_inquiry_chain.answer(**kwargs)

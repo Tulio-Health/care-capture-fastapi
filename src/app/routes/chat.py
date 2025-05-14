@@ -29,14 +29,14 @@ async def chat(chat_request: ChatRequest, db: AsyncSession = Depends(get_db)):
     try:
         conversation_id = chat_request.conversation_id
         chat_ctx = redis.lrange(f"care-capture-cache-key:conversation:{conversation_id}", 0, -1)
-        
+                
         if not chat_ctx:
             raise HTTPException(status_code=404, detail="Conversation not found")
         
         context = dict()
         context["user_profile"] = "Patient Profile"
-        context["visit_summary"] = chat_ctx[0]
-        context["chat_history"] = chat_ctx[1:]
+        context["visit_summary"] = chat_ctx[-1]
+        context["chat_history"] = chat_ctx[0:-1]
         
         # Initialize intent identifier and router
         intent_identifier = IntendIdentifierChain()

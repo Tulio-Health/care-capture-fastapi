@@ -1,10 +1,8 @@
 # src/app/main.py
 from fastapi import FastAPI
-import os
-from .routes import health_router, root_router, care_capture_router, users_router, intend_identify_router
 from contextlib import asynccontextmanager
 
-from .routes import health_router, root_router, care_capture_router, users_router , chat_router
+from .routes import health_router, root_router, care_capture_router, chat_router ,users_router, intend_identify_router
 from .common.exception import (
     HealthCheckError,
     CareCaptureError,
