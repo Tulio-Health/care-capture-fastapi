@@ -1,16 +1,11 @@
-from typing import Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from langchain_core.messages import HumanMessage
-
-from src.app.chains.chat import MedicalChatChain
-from src.app.chains.intent_router import IntentRouter
 from src.app.chains.intend_identifier import IntendIdentifierChain
-from src.app.models.provider_visit_summarization import ProviderVisitSummarizationResponse
-from src.app.routes.intend_identify import IntentResponse
+from src.app.chains.intend_identifier.router import IntentRouter
+from src.app.models.intent_identify import IntentResponse
 
 from ..db.config.database import get_db
-from src.app.db.objects.repositories.conversation_summaries import ConversationSummariesRepository
 from src.app.models.chat import ChatRequest
 from src.app.cache.redis import redis_client
 

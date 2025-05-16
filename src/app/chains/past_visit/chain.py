@@ -16,7 +16,7 @@ model = init_chat_model(
 )
 
 
-class PastVisitSummarizationChain:
+class PastVisitChain:
     def __init__(self):
         #self.llm = model.invoke(temperature=0.2, input="summarize")
         self.parser = PydanticOutputParser(pydantic_object=ProviderVisitSummarizationResponse)

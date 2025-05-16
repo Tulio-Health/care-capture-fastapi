@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
-from .routes import health_router, root_router, care_capture_router, chat_router ,users_router, intend_identify_router
+from .routes import health_router, root_router, care_capture_router, chat_router ,users_router
 from .common.exception import (
     HealthCheckError,
     CareCaptureError,
@@ -67,7 +67,6 @@ def get_application() -> FastAPI:
     app.include_router(health_router)
     app.include_router(care_capture_router)
     app.include_router(users_router)
-    app.include_router(intend_identify_router)
     app.include_router(chat_router)
     logger.debug("Routers included")
 
