@@ -4,12 +4,13 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain.memory import RedisChatMessageHistory
 from pydantic import BaseModel
 
+from src.app.common.constants.llm import LLM_MODELS, LLM_PROVIDERS
 from src.app.core.settings import get_settings
 
 settings = get_settings()
 model = init_chat_model(
-    model="gpt-4o-mini",
-    model_provider="openai",
+    model=LLM_MODELS.GPT_4O_MINI,
+    model_provider=LLM_PROVIDERS.OPENAI,
     openai_api_key=settings.OPENAI_API_KEY,
     temperature=0.2,
 )
