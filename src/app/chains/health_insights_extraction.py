@@ -17,17 +17,18 @@ model = init_chat_model(
 )
 
 
-#HealthInsightsExtractionResponse = IntentResponse[HealthInsights]
 HealthInsightsExtractionResponse = IntentResponse[None]
 class HeathInsightsExtractionChain:
     def __init__(self):
         self.parser = PydanticOutputParser(pydantic_object=HealthInsightsExtractionResponse)
         self.prompt = ChatPromptTemplate.from_messages([
-            ("system","""Extract structured health information from medical summaries into JSON. Follow this exact format:{output_format}"""),
-            ("user", "Extract clinical information as JSON:\n{text}")
-            ]
-        )
+            ("system", "Provide a short and crisp summary of relevant health insights from the medical context to answer the user's query. Output format: {output_format}"),
+            ("user", "Extract health insights from the context '{context}' to answer the query '{text}' in the format specified above.")
+        ])
         self.chain = self.prompt | model | self.parser
 
-    def extract(self, text) -> str:
-        return self.chain.invoke({"text": text , "output_format": self.parser.get_format_instructions()})
+    def extract(self, **kwargs) -> HealthInsightsExtractionResponse:
+        text = kwargs['text']
+        context = kwargs['context']
+        visit_summary = context['visit_summary']
+        return self.chain.invoke({"text": text ,"context":visit_summary , "output_format": self.parser.get_format_instructions()})
