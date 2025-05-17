@@ -3,33 +3,31 @@ from langchain.chat_models import init_chat_model
 from langsmith import traceable
 from langchain_core.output_parsers import PydanticOutputParser
 
+from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
 from src.app.models.intent_identify import IntentResponse
-from ..core import get_settings
+from src.app.core import get_settings
 
 settings = get_settings()
 model = init_chat_model(
-    model="gpt-4o-mini",
-    model_provider="openai",
+    model=LLM_MODEL.GPT_4O_MINI,
+    model_provider=LLM_PROVIDER.OPENAI,
     openai_api_key=settings.OPENAI_API_KEY,
     temperature=0.2,
 )
 
-
-class PastVisitSummarizationChain:
+class PastVisitIntentChain:
     def __init__(self):
-        #self.llm = model.invoke(temperature=0.2, input="summarize")
         self.parser = PydanticOutputParser(pydantic_object=IntentResponse[None])
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", """You are a medical information extraction assistant.
-
             Output Format Requirements:{output_format}"""),
             ("user", 
              'Conversation: Answer the query from the context {text} , Context: {context}')
         ])
         self.chain = self.prompt | model | self.parser
 
-    @traceable(name="summarize")
-    def summarize(self, **kwargs) -> IntentResponse[None]:
+    @traceable(name="handle_intent")
+    def handle_intent(self, **kwargs) -> IntentResponse[None]:
         text = kwargs['text']
         context = kwargs['context']
         visit_summary = context['visit_summary']

@@ -1,16 +1,17 @@
 from langchain.prompts import ChatPromptTemplate
 from langchain.chat_models import init_chat_model
 from langsmith import traceable
-from langchain_core.output_parsers import StrOutputParser, PydanticOutputParser
+from langchain_core.output_parsers import PydanticOutputParser
 
+from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
 from src.app.core.settings import get_settings
 from src.app.models.intent_identify import IntentResponse
-from src.app.models.provider_visit_summarization import ProviderVisitSummarizationResponse
+from src.app.models.provider_visit_summarization import PastVisitSummarizationResponse
 
 settings = get_settings()
 model = init_chat_model(
-    model="gpt-4o-mini",
-    model_provider="openai",
+    model=LLM_MODEL.GPT_4O_MINI,
+    model_provider=LLM_PROVIDER.OPENAI,
     openai_api_key=settings.OPENAI_API_KEY,
     temperature=0.2,
 )
@@ -19,7 +20,7 @@ model = init_chat_model(
 class PastVisitSummarizationChain:
     def __init__(self):
         #self.llm = model.invoke(temperature=0.2, input="summarize")
-        self.parser = PydanticOutputParser(pydantic_object=ProviderVisitSummarizationResponse)
+        self.parser = PydanticOutputParser(pydantic_object=PastVisitSummarizationResponse)
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", """You are a medical information extraction assistant. Your task is to analyze medical conversations and extract key information in a structured format.
             Rules:
@@ -39,6 +40,6 @@ class PastVisitSummarizationChain:
         self.chain = self.prompt | model | self.parser
 
     @traceable(name="summarize")
-    def summarize(self, text) -> IntentResponse[None]:
+    def summarize(self, text) -> PastVisitSummarizationResponse:
         result = self.chain.invoke({"text": text, "output_format": self.parser.get_format_instructions()})
         return result

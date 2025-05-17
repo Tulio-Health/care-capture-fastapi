@@ -2,23 +2,22 @@
 from langchain.prompts import ChatPromptTemplate
 from langchain.chat_models import init_chat_model
 from langchain_core.output_parsers import PydanticOutputParser
-
-from src.app.models.health_insights_extraction import HealthInsights
+from src.app.common.constants.llm import LLM_MODEL , LLM_PROVIDER
 from src.app.models.intent_identify import IntentResponse
 
-from ..core import get_settings
+from src.app.core import get_settings
 
 settings = get_settings()
 model = init_chat_model(
-    model="gpt-4o-mini",
-    model_provider="openai",
+    model=LLM_MODEL.GPT_4O_MINI,
+    model_provider=LLM_PROVIDER.OPENAI,
     openai_api_key=settings.OPENAI_API_KEY,
     temperature=0.2,
 )
 
 
 HealthInsightsExtractionResponse = IntentResponse[None]
-class HeathInsightsExtractionChain:
+class HealthInsightsIntentChain:
     def __init__(self):
         self.parser = PydanticOutputParser(pydantic_object=HealthInsightsExtractionResponse)
         self.prompt = ChatPromptTemplate.from_messages([
@@ -27,7 +26,7 @@ class HeathInsightsExtractionChain:
         ])
         self.chain = self.prompt | model | self.parser
 
-    def extract(self, **kwargs) -> HealthInsightsExtractionResponse:
+    def handle_intent(self, **kwargs) -> HealthInsightsExtractionResponse:
         text = kwargs['text']
         context = kwargs['context']
         visit_summary = context['visit_summary']

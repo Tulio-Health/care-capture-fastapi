@@ -1,14 +1,10 @@
 from typing import Dict, Callable
 
-from src.app.chains.medical_inquiry import MedicalInquiryChain
+from src.app.chains.intend_identifier.models import RouterOptions
+from src.app.chains.medical_inquiry_intent.chain import MedicalInquiryIntentChain
+from src.app.chains.health_insights_intent.chain import HealthInsightsIntentChain
+from src.app.chains.past_visit_intent.chain import PastVisitIntentChain
 from src.app.models.intent_identify import IntentAiResponse, IntentResponse
-from .intend_identifier.models import RouterOptions
-from .pastvisit_summarization import PastVisitSummarizationChain
-from .health_insights_extraction import HeathInsightsExtractionChain
-from .upcoming_visit import UpcomingVisitChain
-from .manage_visit import ManageVisitChain
-
-from .chat import MedicalChatChain
 
 class IntentRouter:
     """
@@ -23,13 +19,13 @@ class IntentRouter:
     def __init__(self):
         # Initialize different chains
         # TODO: PastVisitSummarizationChain is still in development
-        self.past_visit_chain = PastVisitSummarizationChain() # MVP - Pulls the details from the visit summarization table
+        self.past_visit_chain = PastVisitIntentChain() # MVP - Pulls the details from the visit summarization table
 
         # TODO: PastVisitSummarizationChain is still in development, working... need some refinement to the response object...
-        self.health_insights_chain = HeathInsightsExtractionChain() # MVP - Pulls the details from the health insights table
+        self.health_insights_chain = HealthInsightsIntentChain() # MVP - Pulls the details from the health insights table
         # self.upcoming_visit_chain = UpcomingVisitChain() # PostMVP - Pulls the details from the appointment visit table
         # self.manage_visit_chain = ManageVisitChain() # PostMVP - Pulls the details from the manage visit table
-        self.medical_inquiry_chain = MedicalInquiryChain() # MVP - Any generic medical inquiry
+        self.medical_inquiry_chain = MedicalInquiryIntentChain() # MVP - Any generic medical inquiry
 
         # self.chat_chain = MedicalChatChain() # This might not be needed , will review later 
         
@@ -60,12 +56,12 @@ class IntentRouter:
     # Priority - 2
     def handle_past_visits(self, **kwargs) -> IntentResponse:
         """Handle past visits related queries."""
-        return self.past_visit_chain.summarize(**kwargs)
+        return self.past_visit_chain.handle_intent(**kwargs)
     
     # Priority - 1 
     def handle_health_insights(self ,**kwargs) -> IntentResponse:
         """Handle health insights related queries."""
-        return self.health_insights_chain.extract(**kwargs)
+        return self.health_insights_chain.handle_intent(**kwargs)
     
     # # Priority - 3
     # def handle_upcoming_visits(self, text: str, context: dict, **kwargs) -> IntentResponse:
@@ -91,4 +87,4 @@ class IntentRouter:
     
     def handle_medical_inquiry(self, **kwargs) -> IntentResponse:
         """Handle medical inquiry related queries."""
-        return self.medical_inquiry_chain.answer(**kwargs)
+        return self.medical_inquiry_chain.handle_intent(**kwargs)

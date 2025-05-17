@@ -1,16 +1,12 @@
-from typing import Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from langchain_core.messages import HumanMessage
-
-from src.app.chains.chat import MedicalChatChain
-from src.app.chains.intent_router import IntentRouter
 from src.app.chains.intend_identifier import IntendIdentifierChain
-from src.app.models.provider_visit_summarization import ProviderVisitSummarizationResponse
-from src.app.routes.intend_identify import IntentResponse
+from src.app.chains.intend_identifier.router import IntentRouter
+from src.app.common.constants.cache_keys import CACHE_KEY
+from src.app.models.intent_identify import IntentResponse
 
 from ..db.config.database import get_db
-from src.app.db.objects.repositories.conversation_summaries import ConversationSummariesRepository
 from src.app.models.chat import ChatRequest
 from src.app.cache.redis import redis_client
 
@@ -28,8 +24,8 @@ async def chat(chat_request: ChatRequest, db: AsyncSession = Depends(get_db)):
     print(f"Chat request: {chat_request}")
     try:
         conversation_id = chat_request.conversation_id
-        chat_ctx = redis.lrange(f"care-capture-cache-key:conversation:{conversation_id}", 0, -1)
-                
+        cache_key = CACHE_KEY.CONVERSATION.format(conversation_id)
+        chat_ctx = redis.lrange(cache_key, 0, -1)
         if not chat_ctx:
             raise HTTPException(status_code=404, detail="Conversation not found")
         
