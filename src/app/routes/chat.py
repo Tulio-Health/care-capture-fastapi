@@ -24,7 +24,9 @@ async def chat(chat_request: ChatRequest, db: AsyncSession = Depends(get_db)):
     print(f"Chat request: {chat_request}")
     try:
         conversation_id = chat_request.conversation_id
-        cache_key = CACHE_KEY.CONVERSATION.format(conversation_id)
+        cache_key = CACHE_KEY.CONVERSATION_CHAT_HISTORY.format(conversation_id)
+        
+        print(f"Cache key: {cache_key}")
         chat_ctx = redis.lrange(cache_key, 0, -1)
         if not chat_ctx:
             raise HTTPException(status_code=404, detail="Conversation not found")
@@ -45,7 +47,8 @@ async def chat(chat_request: ChatRequest, db: AsyncSession = Depends(get_db)):
         ai_response = intent_router.route(
             intent=intent,
             text=chat_request.message,
-            context=context
+            context=context,
+            conversation_id=conversation_id
         )
 
         return ai_response
