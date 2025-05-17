@@ -15,22 +15,19 @@ model = init_chat_model(
     temperature=0.2,
 )
 
-
 class PastVisitIntentChain:
     def __init__(self):
-        #self.llm = model.invoke(temperature=0.2, input="summarize")
         self.parser = PydanticOutputParser(pydantic_object=IntentResponse[None])
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", """You are a medical information extraction assistant.
-
             Output Format Requirements:{output_format}"""),
             ("user", 
              'Conversation: Answer the query from the context {text} , Context: {context}')
         ])
         self.chain = self.prompt | model | self.parser
 
-    @traceable(name="summarize")
-    def summarize(self, **kwargs) -> IntentResponse[None]:
+    @traceable(name="handle_intent")
+    def handle_intent(self, **kwargs) -> IntentResponse[None]:
         text = kwargs['text']
         context = kwargs['context']
         visit_summary = context['visit_summary']

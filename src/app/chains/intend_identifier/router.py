@@ -3,7 +3,7 @@ from typing import Dict, Callable
 from src.app.chains.intend_identifier.models import RouterOptions
 from src.app.chains.medical_inquiry_intent.chain import MedicalInquiryIntentChain
 from src.app.chains.health_insights_intent.chain import HealthInsightsIntentChain
-from src.app.chains.past_visit.chain import PastVisitChain
+from src.app.chains.past_visit_intent.chain import PastVisitIntentChain
 from src.app.models.intent_identify import IntentAiResponse, IntentResponse
 
 class IntentRouter:
@@ -19,7 +19,7 @@ class IntentRouter:
     def __init__(self):
         # Initialize different chains
         # TODO: PastVisitSummarizationChain is still in development
-        self.past_visit_chain = PastVisitChain() # MVP - Pulls the details from the visit summarization table
+        self.past_visit_chain = PastVisitIntentChain() # MVP - Pulls the details from the visit summarization table
 
         # TODO: PastVisitSummarizationChain is still in development, working... need some refinement to the response object...
         self.health_insights_chain = HealthInsightsIntentChain() # MVP - Pulls the details from the health insights table
@@ -56,12 +56,12 @@ class IntentRouter:
     # Priority - 2
     def handle_past_visits(self, **kwargs) -> IntentResponse:
         """Handle past visits related queries."""
-        return self.past_visit_chain.summarize(**kwargs)
+        return self.past_visit_chain.handle_intent(**kwargs)
     
     # Priority - 1 
     def handle_health_insights(self ,**kwargs) -> IntentResponse:
         """Handle health insights related queries."""
-        return self.health_insights_chain.extract(**kwargs)
+        return self.health_insights_chain.handle_intent(**kwargs)
     
     # # Priority - 3
     # def handle_upcoming_visits(self, text: str, context: dict, **kwargs) -> IntentResponse:
@@ -87,4 +87,4 @@ class IntentRouter:
     
     def handle_medical_inquiry(self, **kwargs) -> IntentResponse:
         """Handle medical inquiry related queries."""
-        return self.medical_inquiry_chain.answer(**kwargs)
+        return self.medical_inquiry_chain.handle_intent(**kwargs)

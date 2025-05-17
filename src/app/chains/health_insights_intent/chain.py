@@ -26,7 +26,7 @@ class HealthInsightsIntentChain:
         ])
         self.chain = self.prompt | model | self.parser
 
-    def extract(self, **kwargs) -> HealthInsightsExtractionResponse:
+    def handle_intent(self, **kwargs) -> HealthInsightsExtractionResponse:
         text = kwargs['text']
         context = kwargs['context']
         visit_summary = context['visit_summary']

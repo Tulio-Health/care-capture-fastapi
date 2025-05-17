@@ -12,7 +12,7 @@ class ProviderVisitSummarizationRequest(BaseModel):
     user_id: UUID
 
 
-class ProviderVisitSummarizationResponse(BaseModel):
+class PastVisitSummarizationResponse(BaseModel):
     provider_patient_discussion_summary_text: str
     provider_patient_discussion_key_points:list[str]
     medications_prescribed_by_provider: list[dict[str, str]]

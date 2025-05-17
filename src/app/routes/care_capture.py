@@ -3,9 +3,9 @@ from fastapi import APIRouter, HTTPException , Depends
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.app.chains.past_visit.chain import PastVisitChain
+from src.app.chains.past_visit_summarization.chain import PastVisitSummarizationChain
 
-from ..models.provider_visit_summarization import ProviderVisitSummarizationRequest, ProviderVisitSummarizationResponse
+from ..models.provider_visit_summarization import ProviderVisitSummarizationRequest, PastVisitSummarizationResponse
 from ..models.health_insights_extraction import HealthInsightsResponse , HealthInsights
 from ..db.config.database import get_db
 from ..db.objects.repositories.conversation_summaries import ConversationSummariesRepository
@@ -70,11 +70,11 @@ async def provider_visit_summarize_text(
         # Initialize the repository for conversation summaries
         conversation_summaries_repository = ConversationSummariesRepository(db)
         # Create an instance of the summarization chain
-        summarization_chain = PastVisitChain()    
+        summarization_chain = PastVisitSummarizationChain()    
         # Summarize the provided text
         summary = summarization_chain.summarize(request)        
         # Validate the summary model
-        summary_model = ProviderVisitSummarizationResponse.model_validate_json(summary.model_dump_json())
+        summary_model = PastVisitSummarizationResponse.model_validate_json(summary.model_dump_json())
         
         # Prepare the summary dictionary for database insertion
         summary_dict = dict()
@@ -163,7 +163,7 @@ async def health_insights_extraction(
         
         user_summaries_obj = [HealthInsights.model_validate(summary, from_attributes=True) for summary in user_summaries]
       
-        clinical_keypoint_extraction_chain = PastVisitChain()
+        clinical_keypoint_extraction_chain = PastVisitSummarizationChain()
         health_insights = clinical_keypoint_extraction_chain.extract(user_summaries_obj)                
         health_insights_dict = HealthInsightsResponse.model_validate_json(health_insights).model_dump()
         
