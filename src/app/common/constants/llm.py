@@ -1,7 +1,7 @@
 from enum import Enum
 
-class LLM_MODELS(str, Enum):
+class LLM_MODEL(str, Enum):
     GPT_4O_MINI = "gpt-4o-mini"
     
-class LLM_PROVIDERS(str, Enum):
+class LLM_PROVIDER(str, Enum):
     OPENAI = "openai"

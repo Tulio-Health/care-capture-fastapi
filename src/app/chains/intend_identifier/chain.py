@@ -13,7 +13,7 @@ from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 
-from src.app.common.constants.llm import LLM_MODELS, LLM_PROVIDERS
+from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
 
 from ...core import get_settings
 from .models import RouterOptions
@@ -22,8 +22,8 @@ from .constants import INTENT_IDENTIFIER_SYSTEM_PROMPT
 # Initialize model with settings
 settings = get_settings()
 model = init_chat_model(
-    model=LLM_MODELS.GPT_4O_MINI,
-    model_provider=LLM_PROVIDERS.OPENAI,
+    model=LLM_MODEL.GPT_4O_MINI,
+    model_provider=LLM_PROVIDER.OPENAI,
     openai_api_key=settings.OPENAI_API_KEY,
     temperature=0.2,
 )
