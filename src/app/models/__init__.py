@@ -2,9 +2,9 @@
 Models package for Care Capture AI
 """ 
 
-from .provider_visit_summarization import ProviderVisitSummarizationRequest, PastVisitSummarizationResponse
+from .transcript_summarization import TranscriptSummarizationRequest, TranscriptSummarizationResponse
 
 __all__ = [
-    "ProviderVisitSummarizationRequest",
-    "PastVisitSummarizationResponse"
+    "TranscriptSummarizationRequest",
+    "TranscriptSummarizationResponse"
 ]

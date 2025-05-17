@@ -3,9 +3,9 @@ from fastapi import APIRouter, HTTPException , Depends
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.app.chains.past_visit_summarization.chain import PastVisitSummarizationChain
+from src.app.chains.transcript_summarization.chain import TranscriptSummarizationChain
 
-from ..models.provider_visit_summarization import ProviderVisitSummarizationRequest, PastVisitSummarizationResponse
+from ..models.transcript_summarization import TranscriptSummarizationRequest, TranscriptSummarizationResponse
 from ..models.health_insights_extraction import HealthInsightsResponse , HealthInsights
 from ..db.config.database import get_db
 from ..db.objects.repositories.conversation_summaries import ConversationSummariesRepository
@@ -19,7 +19,7 @@ router = APIRouter(
     tags=["care-capture"]
 )
 
-@router.post("/provider-visit-summarization",
+@router.post("/transcript-summarization",
     response_model=dict,
     
     summary="Provider Visit Summarization",
@@ -48,8 +48,8 @@ router = APIRouter(
     }
 )
 
-async def provider_visit_summarize_text(
-    request: ProviderVisitSummarizationRequest,
+async def transcript_summarize_text(
+    request: TranscriptSummarizationRequest,
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """
@@ -70,11 +70,11 @@ async def provider_visit_summarize_text(
         # Initialize the repository for conversation summaries
         conversation_summaries_repository = ConversationSummariesRepository(db)
         # Create an instance of the summarization chain
-        summarization_chain = PastVisitSummarizationChain()    
+        summarization_chain = TranscriptSummarizationChain()    
         # Summarize the provided text
         summary = summarization_chain.summarize(request)        
         # Validate the summary model
-        summary_model = PastVisitSummarizationResponse.model_validate_json(summary.model_dump_json())
+        summary_model = TranscriptSummarizationResponse.model_validate_json(summary.model_dump_json())
         
         # Prepare the summary dictionary for database insertion
         summary_dict = dict()
@@ -163,7 +163,7 @@ async def health_insights_extraction(
         
         user_summaries_obj = [HealthInsights.model_validate(summary, from_attributes=True) for summary in user_summaries]
       
-        clinical_keypoint_extraction_chain = PastVisitSummarizationChain()
+        clinical_keypoint_extraction_chain = TranscriptsSummarizationChain()
         health_insights = clinical_keypoint_extraction_chain.extract(user_summaries_obj)                
         health_insights_dict = HealthInsightsResponse.model_validate_json(health_insights).model_dump()
         

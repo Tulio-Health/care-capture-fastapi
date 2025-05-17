@@ -6,13 +6,13 @@ class Transcript(BaseModel):
     created_at: str
     language_code: str
 
-class ProviderVisitSummarizationRequest(BaseModel):
+class TranscriptSummarizationRequest(BaseModel):
     appointment_id: UUID
     transcripts:list[Transcript]
     user_id: UUID
 
 
-class PastVisitSummarizationResponse(BaseModel):
+class TranscriptSummarizationResponse(BaseModel):
     provider_patient_discussion_summary_text: str
     provider_patient_discussion_key_points:list[str]
     medications_prescribed_by_provider: list[dict[str, str]]

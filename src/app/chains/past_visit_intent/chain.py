@@ -15,12 +15,20 @@ model = init_chat_model(
     temperature=0.2,
 )
 
+NO_PAST_VISIT_INFORMATION_AVAILABLE = "I am sorry, but I don't have any past Provider visit information available you, please try with a different query."
+
 class PastVisitIntentChain:
     def __init__(self):
         self.parser = PydanticOutputParser(pydantic_object=IntentResponse[None])
         self.prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a medical information extraction assistant.
-            Output Format Requirements:{output_format}"""),
+            ("system", """You are a medical expert in extracting patient past visit information. 
+             You have been given user's past conversions summaries with their provider.
+             The user query is the user's question or request for information.
+             The past conversions summaries are the summaries of the patient's past conversions with the provider.
+             The past conversions summaries are in the format of a list of dictionaries, each dictionary containing the following keys: {context}
+             In case conversions summaries are not available, you must respond as 
+             ""I am sorry, but I don't have any past Provider visit information available for you, please try with a different query.""
+             Make sure you follow the output format requirements: {output_format}"""),
             ("user", 
              'Conversation: Answer the query from the context {text} , Context: {context}')
         ])
