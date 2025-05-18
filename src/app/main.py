@@ -15,6 +15,7 @@ from .core import get_settings
 from .db.config.database import engine
 from .db.objects.entities.users import Base
 from .cache.redis import RedisClient
+from .core.scheduler import init_scheduler
 
 settings = get_settings()
 
@@ -29,6 +30,11 @@ async def lifespan(app: FastAPI):
     app.state.redis = redis_client.client
     logger.info("Redis client initialized and attached to app state")
     
+    # Initialize scheduler
+    scheduler = init_scheduler()
+    app.state.scheduler = scheduler
+    logger.info("Scheduler initialized and attached to app state")
+    
     yield
     
     # Shutdown
@@ -37,6 +43,12 @@ async def lifespan(app: FastAPI):
         logger.info("Redis connection closed")
     except Exception as e:
         logger.error(f"Error closing Redis connection: {e}")
+    
+    try:
+        app.state.scheduler.shutdown()
+        logger.info("Scheduler shutdown successfully")
+    except Exception as e:
+        logger.error(f"Error shutting down scheduler: {e}")
 
 
 def get_application() -> FastAPI:
