@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
-from .routes import health_router, root_router, care_capture_router, chat_router ,users_router , schedule_visit_router
+from .routes import health_router, root_router, care_capture_router, ai_chat_router ,users_router , schedule_visit_router
 from .common.exception import (
     HealthCheckError,
     CareCaptureError,
@@ -31,9 +31,9 @@ async def lifespan(app: FastAPI):
     logger.info("Redis client initialized and attached to app state")
     
     # Initialize scheduler
-    scheduler = init_scheduler()
-    app.state.scheduler = scheduler
-    logger.info("Scheduler initialized and attached to app state")
+    # scheduler = init_scheduler()
+    # app.state.scheduler = scheduler
+    # logger.info("Scheduler initialized and attached to app state")
     
     yield
     
@@ -79,7 +79,7 @@ def get_application() -> FastAPI:
     app.include_router(health_router)
     app.include_router(care_capture_router)
     app.include_router(users_router)
-    app.include_router(chat_router)
+    app.include_router(ai_chat_router)
     app.include_router(schedule_visit_router)
     logger.debug("Routers included")
 

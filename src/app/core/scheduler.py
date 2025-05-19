@@ -1,7 +1,7 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import logging
-from ..services.health_insights.generator import HealthInsightGenerator
+from ..services.health_insights.health_insight_generator import HealthInsightGenerator
 from ..db.config.database import get_db
 from ..common.scheduler.job_execution_db_log import JobExecutionLogger
 from ..constants.scheduler import HEALTH_INSIGHT_JOB_ID, HEALTH_INSIGHT_SCHEDULE_SECONDS

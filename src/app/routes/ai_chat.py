@@ -1,18 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from langchain_core.messages import HumanMessage
-from src.app.chains.intend_identifier import IntendIdentifierChain
-from src.app.chains.intend_identifier.router import IntentRouter
+from src.app.chains.ai_chat_intents.intend_identifier.chain import IntendIdentifierChain
+from src.app.chains.ai_chat_intents.intend_identifier.router import IntentRouter
 from src.app.common.constants.cache_keys import CACHE_KEY
 from src.app.models.intent_identify import IntentResponse
 
 from ..db.config.database import get_db
-from src.app.models.chat import ChatRequest
+from src.app.models.ai_chat import AiChatRequest
 from src.app.cache.redis import redis_client
 
 router = APIRouter(
     prefix="/care-capture/ai-chat",
-    tags=["care-capture-chat"]
+    tags=["care-capture-ai-chat"]
 )
 
 redis = redis_client.client
@@ -20,7 +20,7 @@ redis = redis_client.client
 @router.post('/',
              response_model=IntentResponse,
              status_code=200)
-async def chat(chat_request: ChatRequest, db: AsyncSession = Depends(get_db)):
+async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db)):
     print(f"Chat request: {chat_request}")
     try:
         conversation_id = chat_request.conversation_id

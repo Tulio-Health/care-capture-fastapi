@@ -1,9 +1,9 @@
 from typing import Dict, Callable
 
-from src.app.chains.intend_identifier.models import RouterOptions
-from src.app.chains.medical_inquiry_intent.chain import MedicalInquiryIntentChain
-from src.app.chains.health_insights_intent.chain import HealthInsightsIntentChain
-from src.app.chains.past_visit_intent.chain import PastVisitIntentChain
+from src.app.chains.ai_chat_intents.intend_identifier.models import RouterOptions
+from src.app.chains.ai_chat_intents.medical_inquiry_intent.chain import MedicalInquiryIntentChain
+from src.app.chains.ai_chat_intents.health_insights_intent.chain import HealthInsightsIntentChain
+from src.app.chains.ai_chat_intents.past_visit_intent.chain import PastVisitIntentChain
 from src.app.models.intent_identify import IntentAiResponse, IntentResponse
 
 class IntentRouter:

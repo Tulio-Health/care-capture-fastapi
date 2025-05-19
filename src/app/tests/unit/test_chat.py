@@ -5,14 +5,14 @@ from ..conftest import mock_redis
 
 @pytest.fixture
 def mock_intent_identifier():
-    with patch("src.app.routes.chat.IntendIdentifierChain") as mock:
+    with patch("src.app.routes.ai-chat.IntendIdentifierChain") as mock:
         instance = mock.return_value
         instance.identify_intent.return_value = "medical_inquiry"
         yield instance
 
 @pytest.fixture
 def mock_intent_router():
-    with patch("src.app.routes.chat.IntentRouter") as mock:
+    with patch("src.app.routes.ai-chat.IntentRouter") as mock:
         instance = mock.return_value
         instance.route.return_value = {
             "intent": "medical_inquiry",
