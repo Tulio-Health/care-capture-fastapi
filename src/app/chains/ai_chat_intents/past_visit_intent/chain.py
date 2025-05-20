@@ -2,9 +2,12 @@ from langchain.prompts import ChatPromptTemplate
 from langchain.chat_models import init_chat_model
 from langsmith import traceable
 from langchain_core.output_parsers import PydanticOutputParser
+import json
+from typing import Dict, Any, List, Optional
 
 from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
-from src.app.models.intent_identify import IntentResponse
+from src.app.models.intent_identify import IntentResponse, IntentAiResponse
+from src.app.models.past_visit_query import PastVisitQuery
 from src.app.core import get_settings
 
 settings = get_settings()
@@ -15,7 +18,7 @@ model = init_chat_model(
     temperature=0.2,
 )
 
-NO_PAST_VISIT_INFORMATION_AVAILABLE = "I am sorry, but I don't have any past Provider visit information available you, please try with a different query."
+NO_PAST_VISIT_INFORMATION_AVAILABLE = "I am sorry, but I don't have any past Provider visit information available for you, please try with a different query."
 
 class PastVisitIntentChain:
     def __init__(self):
