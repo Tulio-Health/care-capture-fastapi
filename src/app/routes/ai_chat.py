@@ -20,7 +20,7 @@ from src.app.db.models.chatbot_conversations import ChatbotConversation
 from src.app.db.models.chatbot_messages import ChatbotMessage
 from src.app.db.models.user_profiles import UserProfile
 from src.app.db.models.appointments import Appointment
-from src.app.db.models.providers import Provider
+from src.app.db.models.healthcare_providers import HealthcareProvider
 
 router = APIRouter(
     prefix="/care-capture/ai-chat",
@@ -132,12 +132,11 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
             
             # Add appointments to the context data 
             context_data["appointments"] = formatted_appointments
-            print(f"Found {len(formatted_appointments)} appointments for user")
             
-            # Fetch healthcare providers data for all providers in appointments (we're not getting all data)
+            # Fetch healthcare providers data for all providers in appointments
             providers = []
             if provider_ids:
-                providers_stmt = select(Provider).where(Provider.id.in_(provider_ids))
+                providers_stmt = select(HealthcareProvider).where(HealthcareProvider.id.in_(provider_ids))
                 providers_result = await db.execute(providers_stmt)
                 providers_db = providers_result.scalars().all()
                 
@@ -147,21 +146,23 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
                         "id": str(provider.id),
                         "name": provider.name,
                         "specialty": provider.specialty,
-                        "location": provider.location,
-                        "contact": provider.contact_information
+                        "location": f"{provider.address}, {provider.city}, {provider.state} {provider.postal_code}",
+                        "contact": provider.phone_number
                     }
                     for provider in providers_db
                 ]
                 
                 # Add providers to the context data
                 context_data["healthcare_providers"] = providers
-                print(f"Found {len(providers)} healthcare providers for user's appointments")
-        
-        print(f"Intent identified: {intent}")
-        print(f"Context data keys: {context_data.keys()}")
-        print(f"Context data: {context_data}")
         
         # Route the request based on intent
+        print(f"Intent identified: {intent}")
+        print(f"Context data keys: {context_data.keys()}")
+        print(f"Context data user_profile: {context_data.get('user_profile', {})}")
+        print(f"Context data visit_summary: {context_data.get('visit_summary', '')}")
+        print(f"Context data appointments count: {len(context_data.get('appointments', []))}")
+        print(f"Context data healthcare_providers count: {len(context_data.get('healthcare_providers', []))}")
+        
         ai_response = intent_router.route(
             intent=intent,
             text=chat_request.message,
