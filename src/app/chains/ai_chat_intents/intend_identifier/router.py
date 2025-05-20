@@ -1,4 +1,5 @@
 from typing import Dict, Callable
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.app.chains.ai_chat_intents.intend_identifier.models import RouterOptions
 from src.app.chains.ai_chat_intents.medical_inquiry_intent.chain import MedicalInquiryIntentChain
@@ -16,10 +17,13 @@ class IntentRouter:
     3. Maintains instances of different chains for processing
     """
     
-    def __init__(self):
+    def __init__(self, db: AsyncSession):
+        # Store the database session
+        self.db = db
+        
         # Initialize different chains
         # TODO: PastVisitSummarizationChain is still in development
-        self.past_visit_chain = PastVisitIntentChain() # MVP - Pulls the details from the visit summarization table
+        self.past_visit_chain = PastVisitIntentChain(db=self.db) # Pass db session
 
         # TODO: PastVisitSummarizationChain is still in development, working... need some refinement to the response object...
         self.health_insights_chain = HealthInsightsIntentChain() # MVP - Pulls the details from the health insights table
@@ -40,7 +44,7 @@ class IntentRouter:
             RouterOptions.MEDICAL_INQUIRY.value: self.handle_medical_inquiry
         }
     
-    def route(self, intent: str, **kwargs) -> str:
+    async def route(self, intent: str, **kwargs) -> str:
         """
         Route the request to the appropriate handler based on intent.
         
@@ -52,39 +56,40 @@ class IntentRouter:
             str: The response from the appropriate handler
         """
         handler = self.intent_handlers.get(intent, self.handle_invalid_option)
-        return handler(**kwargs)
+        return await handler(**kwargs)
+    
     # Priority - 2
-    def handle_past_visits(self, **kwargs) -> IntentResponse:
+    async def handle_past_visits(self, **kwargs) -> IntentResponse:
         """Handle past visits related queries."""
-        return self.past_visit_chain.handle_intent(**kwargs)
+        return await self.past_visit_chain.handle_intent(**kwargs)
     
     # Priority - 1 
-    def handle_health_insights(self ,**kwargs) -> IntentResponse:
+    async def handle_health_insights(self, **kwargs) -> IntentResponse:
         """Handle health insights related queries."""
-        return self.health_insights_chain.handle_intent(**kwargs)
+        return await self.health_insights_chain.handle_intent(**kwargs)
     
     # # Priority - 3
-    # def handle_upcoming_visits(self, text: str, context: dict, **kwargs) -> IntentResponse:
+    # async def handle_upcoming_visits(self, text: str, context: dict, **kwargs) -> IntentResponse:
     #     """Handle upcoming visits related queries."""
     #     return self.handle_upcoming_visits.chat(text, context)
     
     # # Priority - 4
-    # def handle_manage_visits(self, text: str, context: dict, **kwargs) -> IntentResponse:
+    # async def handle_manage_visits(self, text: str, context: dict, **kwargs) -> IntentResponse:
     #     """Handle visit management related queries."""
     #     return self.handle_manage_visits.chat(text, context)
     
-    def handle_invalid_option(self, **kwargs) -> IntentResponse:
+    async def handle_invalid_option(self, **kwargs) -> IntentResponse:
         """Handle invalid or unrecognized queries."""
         message = "Hello! I'm Tulio Care Capture Assistant. I'm here to help you with all things health-related. You can ask me about your past visits, upcoming appointments, health insights, or any other health-related questions. How can I assist you today?"
         InvalidOptionResponse = IntentResponse[None]
         return InvalidOptionResponse(intent=RouterOptions.NOT_A_VALID_OPTION.value, responses=[IntentAiResponse(type="text", content=message , data=None)])
     
-    def handle_end_conversation(self, **kwargs) -> IntentResponse:
+    async def handle_end_conversation(self, **kwargs) -> IntentResponse:
         """Handle conversation end requests."""
         message = "Thank you for using our service. Have a great day!"
         EndConversationResponse = IntentResponse[None]
         return EndConversationResponse(intent=RouterOptions.END_CONVERSATION.value, responses=[IntentAiResponse(type="text", content=message , data=None)])
     
-    def handle_medical_inquiry(self, **kwargs) -> IntentResponse:
+    async def handle_medical_inquiry(self, **kwargs) -> IntentResponse:
         """Handle medical inquiry related queries."""
-        return self.medical_inquiry_chain.handle_intent(**kwargs)
+        return await self.medical_inquiry_chain.handle_intent(**kwargs)

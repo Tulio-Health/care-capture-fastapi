@@ -31,6 +31,6 @@ class MedicalInquiryIntentChain:
             ])
         self.chain = self.prompt | model | self.parser
 
-    def handle_intent(self, **kwargs) -> MedicalInquiryResponse:
+    async def handle_intent(self, **kwargs) -> MedicalInquiryResponse:
         text = kwargs['text']
         return self.chain.invoke({"text": text , "output_format": MedicalInquiryResponse.model_json_schema()})

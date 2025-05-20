@@ -93,7 +93,7 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
         
         # Initialize intent identifier and router
         intent_identifier = IntendIdentifierChain()
-        intent_router = IntentRouter()
+        intent_router = IntentRouter(db=db)
         
         # Identify the intent
         messages = [HumanMessage(content=chat_request.message)]
@@ -163,7 +163,7 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
         print(f"Context data appointments count: {len(context_data.get('appointments', []))}")
         print(f"Context data healthcare_providers count: {len(context_data.get('healthcare_providers', []))}")
         
-        ai_response = intent_router.route(
+        ai_response = await intent_router.route(
             intent=intent,
             text=chat_request.message,
             context=context_data, # Pass the modified context_data

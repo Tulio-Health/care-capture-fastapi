@@ -4,12 +4,17 @@ from langsmith import traceable
 from langchain_core.output_parsers import PydanticOutputParser
 import json
 from typing import Dict, Any, List, Optional
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+import uuid
 
 from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
 from src.app.models.intent_identify import IntentResponse, IntentAiResponse
 from src.app.models.past_visit_query import PastVisitQuery
+from src.app.models.conversation_summaries import ConversationSummary as PydanticConversationSummary
+from src.app.db.objects.entities.conversation_summaries import ConversationSummaries as ORMConversationSummaries
 from src.app.core import get_settings
-from .constants import QUERY_PROMPT, RESPONSE_PROMPT  # Import the prompts
+from .constants import QUERY_PROMPT, RESPONSE_PROMPT
 
 settings = get_settings()
 model = init_chat_model(
@@ -22,7 +27,8 @@ model = init_chat_model(
 NO_PAST_VISIT_INFORMATION_AVAILABLE = "I am sorry, but I don't have any past Provider visit information available for you, please try with a different query."
 
 class PastVisitIntentChain:
-    def __init__(self):
+    def __init__(self, db: AsyncSession):
+        self.db = db
         # Initialize output parser for final response
         self.response_parser = PydanticOutputParser(pydantic_object=IntentResponse[None])
         
@@ -31,14 +37,14 @@ class PastVisitIntentChain:
         
         # First prompt: Extract structured query parameters
         self.query_prompt = ChatPromptTemplate.from_messages([
-            ("system", QUERY_PROMPT),  # Use the imported QUERY_PROMPT
+            ("system", QUERY_PROMPT),
             ("user", "{text}")
         ])
         
         # Second prompt: Generate the final response based on filtered appointments
         self.response_prompt = ChatPromptTemplate.from_messages([
-            ("system", RESPONSE_PROMPT),  # Use the imported RESPONSE_PROMPT
-            ("user", "Here are the filtered appointments that match your criteria: {filtered_appointments}\n\nAnd here are the healthcare provider details: {providers_info}")
+            ("system", RESPONSE_PROMPT),
+            ("user", "Here are the filtered appointments that match your criteria: {filtered_appointments}\\n\\nAnd here are the healthcare provider details: {providers_info}\\n\\nAnd here are related conversation summaries: {conversation_summaries}")
         ])
         
         # Chain for query extraction
@@ -111,8 +117,45 @@ class PastVisitIntentChain:
         """
         return [p for p in providers if p.get('id') in provider_ids]
 
+    async def get_relevant_summaries(self, appointment_ids: List[str]) -> List[Dict[str, Any]]:
+        """
+        Get conversation summaries related to the given appointment IDs from the database.
+        """
+        if not appointment_ids:
+            return []
+        
+        # Convert string IDs to UUID objects for query
+        appointment_uuid_ids = [uuid.UUID(aid) for aid in appointment_ids if aid]
+
+        if not appointment_uuid_ids:
+            return []
+
+        stmt = select(ORMConversationSummaries).where(ORMConversationSummaries.appointment_id.in_(appointment_uuid_ids))
+        result = await self.db.execute(stmt)
+        summaries_orm = result.scalars().all()
+        
+        # Convert ORM objects to dictionaries (similar to Pydantic model structure)
+        relevant_summaries = []
+        for summary_orm in summaries_orm:
+            relevant_summaries.append({
+                "id": str(summary_orm.id),
+                "appointment_id": str(summary_orm.appointment_id),
+                "user_id": str(summary_orm.user_id),
+                "summary_text": summary_orm.summary_text,
+                "key_points": summary_orm.key_points,
+                "medications": summary_orm.medications,
+                "diagnoses": summary_orm.diagnoses,
+                "instructions": summary_orm.instructions,
+                "recommendations": summary_orm.recommendations,
+                "created_at": summary_orm.created_at.isoformat() if summary_orm.created_at else None,
+                "updated_at": summary_orm.updated_at.isoformat() if summary_orm.updated_at else None,
+                "created_by": str(summary_orm.created_by),
+                "updated_by": str(summary_orm.updated_by) if summary_orm.updated_by else None
+            })
+        return relevant_summaries
+
     @traceable(name="handle_intent")
-    def handle_intent(self, **kwargs) -> IntentResponse[None]:
+    async def handle_intent(self, **kwargs) -> IntentResponse[None]:
         text = kwargs['text']
         context = kwargs['context']
         
@@ -122,7 +165,6 @@ class PastVisitIntentChain:
         user_profile = context.get('user_profile', {})
         appointments = context.get('appointments', [])
         providers = context.get('healthcare_providers', [])
-        visit_summary = context.get('visit_summary', '')
         chat_history = context.get('chat_history', [])
         
         print(f"User profile: {user_profile}")
@@ -163,14 +205,19 @@ class PastVisitIntentChain:
             
             print(f"Found {len(filtered_appointments)} matching appointments")
             print(f"Found {len(relevant_providers)} relevant providers")
+
+            # Step 2.5: Get relevant conversation summaries from DB
+            appointment_ids_for_summaries = [str(appt.get('id')) for appt in filtered_appointments if appt.get('id')]
+            relevant_summaries = await self.get_relevant_summaries(appointment_ids_for_summaries)
+            print(f"Found {len(relevant_summaries)} relevant summaries for the filtered appointments from DB")
             
             # Step 3: Generate final response
-            if not filtered_appointments:
+            if not filtered_appointments and not relevant_summaries:
                 return IntentResponse[None](
                     intent="past_visits",
                     responses=[IntentAiResponse(
                         type="text", 
-                        content="I'm sorry, but I couldn't find any past visits matching your criteria.", 
+                        content="I'm sorry, but I couldn't find any past visits or related summaries matching your criteria.", 
                         data=None
                     )]
                 )
@@ -180,6 +227,7 @@ class PastVisitIntentChain:
                 "text": text,
                 "filtered_appointments": json.dumps(filtered_appointments, default=str),
                 "providers_info": json.dumps(relevant_providers, default=str),
+                "conversation_summaries": json.dumps(relevant_summaries, default=str), 
                 "output_format": self.response_parser.get_format_instructions()
             })
             
@@ -189,15 +237,16 @@ class PastVisitIntentChain:
             print(f"Error processing past visit query: {str(e)}")
             import traceback
             traceback.print_exc()
-            # Fallback to the original implementation if there's an error
-            visit_summary = context.get('visit_summary', '')
-            print(f"Falling back to original method. Visit summary: {visit_summary}")
+            # Fallback content should be generic
+            fallback_content = NO_PAST_VISIT_INFORMATION_AVAILABLE
+            
+            print(f"Falling back. Content: {fallback_content}")
             
             return IntentResponse[None](
                 intent="past_visits",
                 responses=[IntentAiResponse(
                     type="text", 
-                    content=f"I apologize, but I encountered an issue processing your request about past visits. {NO_PAST_VISIT_INFORMATION_AVAILABLE}", 
+                    content=f"I apologize, but I encountered an issue processing your request about past visits. {fallback_content}", 
                     data=None
                 )]
             )

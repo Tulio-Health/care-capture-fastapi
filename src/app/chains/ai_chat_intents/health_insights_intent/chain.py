@@ -1,4 +1,3 @@
-
 from langchain.prompts import ChatPromptTemplate
 from langchain.chat_models import init_chat_model
 from langchain_core.output_parsers import PydanticOutputParser
@@ -29,7 +28,7 @@ class HealthInsightsIntentChain:
         self.chain = self.prompt | model | self.parser
         self.cache = redis_client.client
 
-    def handle_intent(self, **kwargs) -> HealthInsightsExtractionResponse:
+    async def handle_intent(self, **kwargs) -> HealthInsightsExtractionResponse:
         text = kwargs['text']
         conversation_id = kwargs['conversation_id']
         context = self.fetch_visit_summary(conversation_id)

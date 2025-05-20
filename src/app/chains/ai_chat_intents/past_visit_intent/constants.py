@@ -21,8 +21,8 @@ The system invoking you will provide the following information *alongside* the u
 2.  **Identify Search Criteria:** Extract all relevant search criteria. For example:
     *   **Provider Information:** If a provider is mentioned by name (e.g., "Dr. Carlos", "Sara Jonhson"), search the `healthcare_providers` list. **Attempt a forgiving, case-insensitive match** to find the most similar provider name (e.g., handle common misspellings or partial names like "Dr. S."). If a reasonably confident match is found, use the corresponding `id` as `provider_id` in your output. If no confident match is found, or if the name is too ambiguous, omit the `provider_id` and `provider_name` fields. Do **not** use `provider_name` in the output if you can find a matching `provider_id`.
     *   **Dates/Timeframes:** Look for specific dates ("on January 5th, 2022"), years ("in 2021"), relative times ("last month", "last 3 months"), or date ranges ("between April and June 2023"). Accurately translate these into the `timeframe`, `start_date`, and `end_date` fields of the `PastVisitQuery` model, based on its schema definition (which will be in `{query_format}`).
-        *   For a specific year like "2021", usually set `timeframe` to `DATE_RANGE`, `start_date` to "YYYY-01-01", and `end_date` to "YYYY-12-31".
-        *   For "last month", "last 3 months", etc., use the appropriate `VisitTimeframe` enum value (e.g., `LAST_MONTH`, `LAST_3_MONTHS`).
+        *   For a specific year like "2021", usually set `timeframe` to `date_range`, `start_date` to "YYYY-01-01", and `end_date` to "YYYY-12-31".
+        *   For "last month", "last 3 months", etc., use the appropriate `VisitTimeframe` enum value (e.g., `last_month`, `last_3_months`).
     *   **Purpose of Visit:** (e.g., "check-up", "physical", "follow-up", "blood test").
     *   **Location:** (e.g., "Main Clinic", "Cardiology Dept", "Lab Center").
 3.  **Construct the `PastVisitQuery` JSON:**
@@ -46,7 +46,7 @@ The system invoking you will provide the following information *alongside* the u
     ```json
     {{
       "provider_id": "894085f4-48de-4e21-b41a-cc2942ea03e4",
-      "timeframe": "DATE_RANGE",
+      "timeframe": "date_range",
       "start_date": "2024-01-01",
       "end_date": "2024-12-31"
     }}
@@ -59,7 +59,7 @@ The system invoking you will provide the following information *alongside* the u
     ```json
     {{
       "provider_id": "894085f4-48de-4e21-b41a-cc2942ea03e4",
-      "timeframe": "DATE_RANGE",
+      "timeframe": "date_range",
       "start_date": "2023-01-01",
       "end_date": "2023-12-31"
     }}
@@ -72,7 +72,7 @@ The system invoking you will provide the following information *alongside* the u
     ```json
     {{
       "purpose": "check-up",
-      "timeframe": "LAST_MONTH"
+      "timeframe": "last_month"
     }}
     ```
 
@@ -86,16 +86,17 @@ You have been given:
 1. The user's query about their medical history
 2. A list of appointments filtered according to the user's criteria
 3. Information about the healthcare providers mentioned in these appointments
+4. Conversation summaries related to these appointments
 
 Your task is to:
 1. Create a clear, concise response addressing the user's specific question
 2. Include ONLY relevant appointment details that match their query
 3. Format the response in a conversational yet professional manner
-4. Follow the required output format exactly
+4. Incorporate any relevant information from conversation summaries
+5. Follow the required output format exactly
 
 If no appointments match the criteria or no visit information is available, respond with:
 "I am sorry, but I don't have any past visit information matching your criteria. Please try a different query."
 
 Output Format: {output_format}
-User Query: {text}
 """
