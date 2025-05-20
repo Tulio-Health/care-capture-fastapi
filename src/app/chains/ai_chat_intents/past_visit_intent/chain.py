@@ -141,10 +141,6 @@ class PastVisitIntentChain:
         appointment_keys = list(appointments[0].keys()) if appointments else []
         provider_keys = list(providers[0].keys()) if providers else []
         
-        print(f"Appointment keys: {appointment_keys}")
-        print(f"Provider keys: {provider_keys}")
-        print(f"Extracting query parameters from: {text}")
-        
         try:
             # Step 1: Extract query parameters
             query_params = self.query_chain.invoke({
