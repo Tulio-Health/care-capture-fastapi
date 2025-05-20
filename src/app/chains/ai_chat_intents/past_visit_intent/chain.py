@@ -1,7 +1,7 @@
 from langchain.prompts import ChatPromptTemplate
 from langchain.chat_models import init_chat_model
 from langsmith import traceable
-from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.output_parsers import PydanticOutputParser, StrOutputParser
 import json
 from typing import Dict, Any, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,9 +29,6 @@ NO_PAST_VISIT_INFORMATION_AVAILABLE = "I am sorry, but I don't have any past Pro
 class PastVisitIntentChain:
     def __init__(self, db: AsyncSession):
         self.db = db
-        # Initialize output parser for final response
-        self.response_parser = PydanticOutputParser(pydantic_object=IntentResponse[None])
-        
         # Initialize output parser for query parameters
         self.query_parser = PydanticOutputParser(pydantic_object=PastVisitQuery)
         
@@ -44,14 +41,14 @@ class PastVisitIntentChain:
         # Second prompt: Generate the final response based on filtered appointments
         self.response_prompt = ChatPromptTemplate.from_messages([
             ("system", RESPONSE_PROMPT),
-            ("user", "Here are the filtered appointments that match your criteria: {filtered_appointments}\\n\\nAnd here are the healthcare provider details: {providers_info}\\n\\nAnd here are related conversation summaries: {conversation_summaries}")
+            ("user", "User Original Question: {text}\nFiltered Appointments: {filtered_appointments}\nHealthcare Provider Details: {providers_info}\nConversation Summaries: {conversation_summaries}")
         ])
         
         # Chain for query extraction
         self.query_chain = self.query_prompt | model | self.query_parser
         
-        # Chain for final response
-        self.response_chain = self.response_prompt | model | self.response_parser
+        # Chain for final response content generation
+        self.response_content_chain = self.response_prompt | model | StrOutputParser()
 
     def filter_appointments(self, query: PastVisitQuery, appointments: List[Dict[str, Any]], providers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
@@ -222,16 +219,19 @@ class PastVisitIntentChain:
                     )]
                 )
             
-            # Generate the response using the filtered data
-            result = self.response_chain.invoke({
+            # Generate the response content using the filtered data
+            ai_content_string = await self.response_content_chain.ainvoke({
                 "text": text,
                 "filtered_appointments": json.dumps(filtered_appointments, default=str),
                 "providers_info": json.dumps(relevant_providers, default=str),
-                "conversation_summaries": json.dumps(relevant_summaries, default=str), 
-                "output_format": self.response_parser.get_format_instructions()
+                "conversation_summaries": json.dumps(relevant_summaries, default=str)
             })
             
-            return result
+            # Manually construct the IntentResponse
+            return IntentResponse[None](
+                intent="past_visits",
+                responses=[IntentAiResponse(type="text", content=ai_content_string, data=None)]
+            )
             
         except Exception as e:
             print(f"Error processing past visit query: {str(e)}")
