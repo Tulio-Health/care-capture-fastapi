@@ -2,6 +2,8 @@ import logging
 from typing import Dict, Any, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+
+from src.app.db.objects.repositories.patient_health_insights import PatientHealthInsightsRepository
 from ...db.objects.repositories.conversation_summaries import ConversationSummariesRepository
 from ...db.objects.entities.conversation_summaries import ConversationSummaries
 from ...common.scheduler.job_execution_db_log import JobExecutionLogger
@@ -39,6 +41,7 @@ class HealthInsightGenerator:
         self.conversation_repo = ConversationSummariesRepository(session)
         self.job_logger = JobExecutionLogger(session)
         self.health_insights_chain = GenerateHealthInsightsChain()
+        self.health_insights_repo = PatientHealthInsightsRepository(session)
     
     async def _fetch_patient_visit_summaries(self, job_start_time: datetime) -> Dict[UUID, GroupedConversationSummaries]:
         """
@@ -138,7 +141,7 @@ class HealthInsightGenerator:
                     
                     # Generate health insights using the chain
                     health_insights = self.health_insights_chain.generate_health_insights(combined_text)
-                    
+                                        
                     health_insights_by_user[user_id] = health_insights
                     self.logger.info(f"Successfully generated health insights for user {user_id}")
                     
@@ -173,11 +176,13 @@ class HealthInsightGenerator:
                     
                     # TODO: Add your database save logic here
                     # Example:
-                    # await self.health_insights_repo.create(
-                    #     user_id=user_id,
-                    #     insights=insights,
-                    #     generated_at=datetime.utcnow()
-                    # )
+                    await self.health_insights_repo.create(
+                        user_id=user_id,
+                        health_insights=insights.model_dump_json(),
+                        month=datetime.utcnow().month,
+                        year=datetime.utcnow().year,
+                       # generated_at=datetime.utcnow()
+                    )
                     
                     self.logger.info(f"Successfully saved health insights for user {user_id}")
                     
@@ -202,17 +207,17 @@ class HealthInsightGenerator:
             Dict[str, Any]: Dictionary containing the generated insights
         """
         self.logger.info("Generating health insights...")
-        
+    
         # Use provided job_id or generate a new one
         if not job_id:
             job_id = JobExecutionLogger.generate_job_id(HEALTH_INSIGHT_JOB_ID)
             self.logger.info(f"Generated new job ID: {job_id}")
         else:
             self.logger.info(f"Using provided job ID: {job_id}")
-        
+    
         job_start_time = datetime.utcnow()
         self.logger.info(f"Job start time: {job_start_time}")
-        
+    
         try:
             # Start a new transaction
             async with self.session.begin():
@@ -223,44 +228,39 @@ class HealthInsightGenerator:
                     status='STARTED',
                     schedule_name=HEALTH_INSIGHT_JOB_ID
                 )
-                
+    
                 # Fetch patient visit summaries created after job start
                 self.logger.info("Fetching patient visit summaries...")
                 grouped_patient_summaries = await self._fetch_patient_visit_summaries(job_start_time)
-
+    
 
                 ## Lets call LLM to generate the Health Insights by iterating the user id and summaries... 
                 self.logger.info("Generating health insights...")
                 health_insights = await self._generate_health_insights(grouped_patient_summaries)
-                
+    
                 ## Lets save the health insights to the database... 
-                self.logger.info("Saving health insights to the database...")
-                await self._save_health_insights(health_insights)
-
-
-
-
-
-
-                total_summaries = sum(len(group.summaries) for group in grouped_patient_summaries.values())
-                self.logger.info(f"Retrieved {len(grouped_patient_summaries)} users with {total_summaries} total summaries")
-                
-                result = {
-                    "status": "success",
-                    "message": "Health insights generation started",
-                    "user_count": len(grouped_patient_summaries),
-                    "total_summaries": total_summaries,
-                    "job_start_time": job_start_time.isoformat(),
-                    "job_id": job_id
-                }
-                
-                # Log job completion
-                self.logger.info("Logging job completion...")
-                await self.job_logger.log_execution(job_id, 'COMPLETED')
-                
-                self.logger.info(f"Job completed successfully. Result: {result}")
-                return result
-            
+            self.logger.info("Saving health insights to the database...")
+            await self._save_health_insights(health_insights)
+    
+            total_summaries = sum(len(group.summaries) for group in grouped_patient_summaries.values())
+            self.logger.info(f"Retrieved {len(grouped_patient_summaries)} users with {total_summaries} total summaries")
+    
+            result = {
+                "status": "success",
+                "message": "Health insights generation started",
+                "user_count": len(grouped_patient_summaries),
+                "total_summaries": total_summaries,
+                "job_start_time": job_start_time.isoformat(),
+                "job_id": job_id
+            }
+    
+            # Log job completion
+            self.logger.info("Logging job completion...")
+            await self.job_logger.log_execution(job_id, 'COMPLETED')
+    
+            self.logger.info(f"Job completed successfully. Result: {result}")
+            return result
+    
         except Exception as e:
             # Log job failure
             self.logger.error(f"Job failed with error: {str(e)}", exc_info=e)
@@ -269,4 +269,4 @@ class HealthInsightGenerator:
                     await self.job_logger.log_execution(job_id, 'FAILED')
             except Exception as log_error:
                 self.logger.error(f"Failed to log job failure: {str(log_error)}", exc_info=log_error)
-            raise e 
+            raise e

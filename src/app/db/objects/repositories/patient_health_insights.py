@@ -9,11 +9,13 @@ class PatientHealthInsightsRepository:
     def __init__(self, db_session: Session):
         self.db_session = db_session
 
-    async def create(self, user_id: UUID, health_insights: dict) -> PatientHealthInsights:
+    async def create(self, user_id: UUID, health_insights: dict , month: int, year: int) -> PatientHealthInsights:
         """Create a new patient health insights record"""
         insight = PatientHealthInsights(
             user_id=user_id,
-            health_insights=health_insights
+            insight_data=health_insights,
+            month=month,
+            year=year
         )
         self.db_session.add(insight)
         await self.db_session.commit()
