@@ -1,7 +1,7 @@
 from typing import Generic, List, TypeVar
 from pydantic import BaseModel
 from pydantic.generics import GenericModel
-from src.app.chains.intend_identifier.models import RouterOptions
+from src.app.chains.ai_chat_intents.intend_identifier.models import RouterOptions
 
 
 class IntentRequest(BaseModel):

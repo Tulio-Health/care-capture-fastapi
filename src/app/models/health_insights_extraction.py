@@ -3,6 +3,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional
 from datetime import datetime
 
+from pydantic import BaseModel
+from typing import List, Optional
 class KeyPoints(BaseModel):
     points: List[str]
 
@@ -38,29 +40,27 @@ class HealthInsights(BaseModel):
 class HealthInsightsRequest(BaseModel):
     user_id: UUID
     
-from pydantic import BaseModel
-from typing import List, Optional
 
 class Condition(BaseModel):
     name: str
     details: Optional[str] = None
-    date: str = None
+    date: Optional[str] = None
 
 class SurgeryProcedure(BaseModel):
     name: str 
     details: Optional[str] = None
-    date: str = None
+    date: Optional[str] = None
 
 class Medication(BaseModel):
     name: str
     dosage: Optional[str] = None
     frequency: Optional[str] = None
-    date: str = None
+    date: Optional[str] = None
 
 class PriorTest(BaseModel):
     name: str
     result: Optional[str] = None
-    date: str = None
+    date: Optional[str] = None
 
 class HealthInsightsResponse(BaseModel):
     conditions: List[Condition] = []

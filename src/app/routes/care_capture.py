@@ -99,103 +99,104 @@ async def transcript_summarize_text(
         # Raise a 500 error if any other exception occurs
         raise HTTPException(status_code=500, detail=f"Failed to process summary: {str(e)}")
     
-@router.post("/users/{user_id}/health_insights",
-                response_model=HealthInsightsResponse,
-                summary="Health Insights Extraction",
-                description="Extract key points from the given summaries",
-                responses={
-                    200: {
-                        "description": "Successful key point extraction",
-                        "content": {
-                            "application/json": {
-                                "example": {
-                                    "conditions": [
-                                        {
-                                            "name": "High blood pressure",
-                                            "details": "Patient has high blood pressure",
-                                            "date": "2023-01-01"
-                                        }
-                                    ],
-                                    "surgeriesAndProcedures": [
-                                        {
-                                            "name": "Surgery",
-                                            "details": "Surgery performed on patient",
-                                            "date": "2023-01-01"
-                                        }
-                                    ],
-                                    "medications": [
-                                        {
-                                            "name": "Medication",
-                                            "dosage": "10mg",
-                                            "frequency": "twice a day",
-                                            "date": "2023-01-01"
-                                        }
-                                    ],
-                                    "priorTesting": [
-                                        {
-                                            "name": "Test",
-                                            "result": "Positive",
-                                            "date": "2023-01-01"
-                                        }
-                                    ]
-                                }
-                            }
-                        }
-                    },
-                    400: {
-                        "description": "Invalid input parameters",
-                        "content": {
-                            "application/json": {
-                                "example": {"detail": "Summaries cannot be empty"}
-                            }
-                        }
-                    }
-                })
+# @router.post("/users/{user_id}/health_insights",
+#                 response_model=HealthInsightsResponse,
+#                 summary="Health Insights Extraction",
+#                 description="Extract key points from the given summaries",
+#                 responses={
+#                     200: {
+#                         "description": "Successful key point extraction",
+#                         "content": {
+#                             "application/json": {
+#                                 "example": {
+#                                     "conditions": [
+#                                         {
+#                                             "name": "High blood pressure",
+#                                             "details": "Patient has high blood pressure",
+#                                             "date": "2023-01-01"
+#                                         }
+#                                     ],
+#                                     "surgeriesAndProcedures": [
+#                                         {
+#                                             "name": "Surgery",
+#                                             "details": "Surgery performed on patient",
+#                                             "date": "2023-01-01"
+#                                         }
+#                                     ],
+#                                     "medications": [
+#                                         {
+#                                             "name": "Medication",
+#                                             "dosage": "10mg",
+#                                             "frequency": "twice a day",
+#                                             "date": "2023-01-01"
+#                                         }
+#                                     ],
+#                                     "priorTesting": [
+#                                         {
+#                                             "name": "Test",
+#                                             "result": "Positive",
+#                                             "date": "2023-01-01"
+#                                         }
+#                                     ]
+#                                 }
+#                             }
+#                         }
+#                     },
+#                     400: {
+#                         "description": "Invalid input parameters",
+#                         "content": {
+#                             "application/json": {
+#                                 "example": {"detail": "Summaries cannot be empty"}
+#                             }
+#                         }
+#                     }
+#                 })
 
-async def health_insights_extraction(
-    user_id: str,
-    db: AsyncSession = Depends(get_db),
-):
-    try:
-        user_summaries = await ConversationSummariesRepository(db).get_by_user_id(user_id)
-        if not user_summaries:
-            raise HTTPException(status_code=404, detail="User not found")
+# async def health_insights_extraction(
+#     user_id: str,
+#     db: AsyncSession = Depends(get_db),
+# ):
+#     try:
+#         user_summaries = await ConversationSummariesRepository(db).get_by_user_id(user_id)
+#         if not user_summaries:
+#             raise HTTPException(status_code=404, detail="User not found")
         
-        user_summaries_obj = [HealthInsights.model_validate(summary, from_attributes=True) for summary in user_summaries]
+#         user_summaries_obj = [HealthInsights.model_validate(summary, from_attributes=True) for summary in user_summaries]
       
-        clinical_keypoint_extraction_chain = TranscriptsSummarizationChain()
-        health_insights = clinical_keypoint_extraction_chain.extract(user_summaries_obj)                
-        health_insights_dict = HealthInsightsResponse.model_validate_json(health_insights).model_dump()
+#         clinical_keypoint_extraction_chain = TranscriptsSummarizationChain()
+#         health_insights = clinical_keypoint_extraction_chain.extract(user_summaries_obj)                
+#         health_insights_dict = HealthInsightsResponse.model_validate_json(health_insights).model_dump()
         
-        await PatientHealthInsightsRepository(db).create(user_id=user_id, health_insights=health_insights_dict)
-        return health_insights_dict
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+#         await PatientHealthInsightsRepository(db).create(user_id=user_id, health_insights=health_insights_dict)
+#         return health_insights_dict
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/users/health-insights/batch",
-             response_model=List[HealthInsightsResponse])
-async def batch_health_insights_extraction(
-        db: AsyncSession = Depends(get_db)):
-    try:
-        users = await UsersRepository(db).get_all()
-        if not users:
-            raise HTTPException(status_code=404, detail="No users found")
+# ## TODO: Remove this endpoint after testing... 
+# @router.post("/users/health-insights/batch",
+#              response_model=List[HealthInsightsResponse])
+# async def batch_health_insights_extraction(
+#         db: AsyncSession = Depends(get_db)):
+#     try:
+#         users = await UsersRepository(db).get_all()
+#         if not users:
+#             raise HTTPException(status_code=404, detail="No users found")
         
-        health_insights_list = []
-        for user in users:
-            try:
-                insights = await health_insights_extraction(user_id=user.id, db=db)
-                health_insights_list.append(insights)
-            except Exception as he:
-                logger.error(f"Error extracting health insights for user {user.id}: {str(he)}")
-                continue
-            except ValidationError as ve:
-                raise HTTPException(status_code=422, detail=str(ve))
-            except ValueError as val_e:
-                raise HTTPException(status_code=400, detail=str(val_e))  
-        return health_insights_list
+#         health_insights_list = []
+#         for user in users:
+#             try:
+#                 insights = await health_insights_extraction(user_id=user.id, db=db)
+#                 health_insights_list.append(insights)
+#             except Exception as he:
+#                 logger.error(f"Error extracting health insights for user {user.id}: {str(he)}")
+#                 continue
+#             except ValidationError as ve:
+#                 raise HTTPException(status_code=422, detail=str(ve))
+#             except ValueError as val_e:
+#                 raise HTTPException(status_code=400, detail=str(val_e))  
+#         return health_insights_list
                 
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error")
+#     except HTTPException as he:
+#         raise he
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail="Internal server error")

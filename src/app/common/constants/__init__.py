@@ -5,5 +5,4 @@ __all__ = [
     "LLM_MODEL",
     "LLM_PROVIDER",
     "CACHE_KEY",
-    "get_cache_key"
 ]

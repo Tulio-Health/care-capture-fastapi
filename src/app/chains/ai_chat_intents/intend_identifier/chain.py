@@ -14,8 +14,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 
 from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
-
-from ...core import get_settings
+from src.app.core.settings import get_settings
 from .models import RouterOptions
 from .constants import INTENT_IDENTIFIER_SYSTEM_PROMPT
 
