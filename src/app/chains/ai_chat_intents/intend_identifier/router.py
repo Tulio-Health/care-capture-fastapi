@@ -54,14 +54,14 @@ class IntentRouter:
         handler = self.intent_handlers.get(intent, self.handle_invalid_option)
         return handler(**kwargs)
     # Priority - 2
-    def handle_past_visits(self, **kwargs) -> IntentResponse:
+    async def handle_past_visits(self, **kwargs) -> IntentResponse:
         """Handle past visits related queries."""
         return self.past_visit_chain.handle_intent(**kwargs)
     
     # Priority - 1 
-    def handle_health_insights(self ,**kwargs) -> IntentResponse:
+    async def handle_health_insights(self ,**kwargs) -> IntentResponse:
         """Handle health insights related queries."""
-        return self.health_insights_chain.handle_intent(**kwargs)
+        return await self.health_insights_chain.handle_intent(**kwargs)
     
     # # Priority - 3
     # def handle_upcoming_visits(self, text: str, context: dict, **kwargs) -> IntentResponse:
@@ -73,18 +73,18 @@ class IntentRouter:
     #     """Handle visit management related queries."""
     #     return self.handle_manage_visits.chat(text, context)
     
-    def handle_invalid_option(self, **kwargs) -> IntentResponse:
+    async def handle_invalid_option(self, **kwargs) -> IntentResponse:
         """Handle invalid or unrecognized queries."""
         message = "Hello! I'm Tulio Care Capture Assistant. I'm here to help you with all things health-related. You can ask me about your past visits, upcoming appointments, health insights, or any other health-related questions. How can I assist you today?"
         InvalidOptionResponse = IntentResponse[None]
         return InvalidOptionResponse(intent=RouterOptions.NOT_A_VALID_OPTION.value, responses=[IntentAiResponse(type="text", content=message , data=None)])
     
-    def handle_end_conversation(self, **kwargs) -> IntentResponse:
+    async def handle_end_conversation(self, **kwargs) -> IntentResponse:
         """Handle conversation end requests."""
         message = "Thank you for using our service. Have a great day!"
         EndConversationResponse = IntentResponse[None]
         return EndConversationResponse(intent=RouterOptions.END_CONVERSATION.value, responses=[IntentAiResponse(type="text", content=message , data=None)])
     
-    def handle_medical_inquiry(self, **kwargs) -> IntentResponse:
+    async def handle_medical_inquiry(self, **kwargs) -> IntentResponse:
         """Handle medical inquiry related queries."""
         return self.medical_inquiry_chain.handle_intent(**kwargs)

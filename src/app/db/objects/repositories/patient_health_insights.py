@@ -2,11 +2,14 @@ from typing import Optional, List
 from uuid import UUID
 from sqlalchemy.orm import Session
 from datetime import datetime
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 
 from ..entities.patient_health_insights import PatientHealthInsights
 
 class PatientHealthInsightsRepository:
-    def __init__(self, db_session: Session):
+    def __init__(self, db_session: AsyncSession):
         self.db_session = db_session
 
     async def create(self, user_id: UUID, health_insights: dict , month: int, year: int) -> PatientHealthInsights:
@@ -28,11 +31,17 @@ class PatientHealthInsightsRepository:
             PatientHealthInsights.id == insight_id
         ).first()
 
-    def get_by_user_id(self, user_id: UUID) -> List[PatientHealthInsights]:
+    async def get_by_user_id(self, user_id: UUID) -> List[PatientHealthInsights]:
         """Get all health insights for a specific user"""
-        return self.db_session.query(PatientHealthInsights).filter(
-            PatientHealthInsights.user_id == user_id
-        ).all()
+        try:
+            result = await self.db_session.execute(
+                select(PatientHealthInsights).where(
+                    PatientHealthInsights.user_id == user_id
+                )
+            )
+            return result.scalars().all()
+        except Exception as e:
+            raise e
 
     def update(self, insight_id: UUID, health_insights: dict) -> Optional[PatientHealthInsights]:
         """Update existing health insights"""

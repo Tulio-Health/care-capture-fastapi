@@ -44,11 +44,12 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
         messages = [HumanMessage(content=chat_request.message)]
         intent = intent_identifier.identify_intent(messages)
         # Route the request based on intent
-        ai_response = intent_router.route(
+        ai_response = await intent_router.route(
             intent=intent,
             text=chat_request.message,
             context=context,
-            conversation_id=conversation_id
+            conversation_id=conversation_id,
+            user_id=chat_request.user_id
         )
 
         return ai_response
