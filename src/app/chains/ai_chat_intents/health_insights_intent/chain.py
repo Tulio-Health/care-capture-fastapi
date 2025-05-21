@@ -1,4 +1,3 @@
-
 from langchain.prompts import ChatPromptTemplate
 from langchain.chat_models import init_chat_model
 from langchain_core.output_parsers import PydanticOutputParser
@@ -33,7 +32,6 @@ class HealthInsightsIntentChain:
             ("user", "Extract health insights from the context '{context}' to answer the query '{text}' in the format specified above.")
         ])
         self.chain = self.prompt | model | self.parser
-
 
     async def handle_intent(self, **kwargs) -> HealthInsightsExtractionResponse:
         text = kwargs['text']
