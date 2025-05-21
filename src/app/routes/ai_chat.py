@@ -55,8 +55,8 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
         user_result = await db.execute(user_stmt)
         user_profile_record = user_result.scalar_one_or_none()
         
+        # Clean by using db/objects/repositories/user_profiles.py
         # Format user profile information
-        user_profile = "Patient Profile"  # Default fallback
         if user_profile_record:
             user_profile = {
                 "id": str(user_profile_record.id),
@@ -68,6 +68,8 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
                 "zip_code": user_profile_record.zip_code
             }
         
+        
+        # This is in the cache
         # Fetch messages for the specific conversation_id
         messages_stmt = select(ChatbotMessage).where(ChatbotMessage.conversation_id == conversation_id)
         messages_result = await db.execute(messages_stmt)
@@ -101,6 +103,7 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
         
         # If the intent is past_visit, fetch all appointments for the user
         if intent == RouterOptions.PAST_VISITS.value:
+            #TODO: Do this in the chain (the pulling from db)
             # Fetch all appointments for this user
             # Convert UUID to string when querying since user_id is stored as string in the database
             user_id_str = str(user_id)
@@ -162,6 +165,7 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
         print(f"Context data visit_summary: {context_data.get('visit_summary', '')}")
         print(f"Context data appointments count: {len(context_data.get('appointments', []))}")
         print(f"Context data healthcare_providers count: {len(context_data.get('healthcare_providers', []))}")
+        # TODO: Cache this
         
         ai_response = await intent_router.route(
             intent=intent,

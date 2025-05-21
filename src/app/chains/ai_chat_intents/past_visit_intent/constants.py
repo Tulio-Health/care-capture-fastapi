@@ -79,6 +79,10 @@ The system invoking you will provide the following information *alongside* the u
 Remember: The placeholders `{user_profile}`, `{appointment_keys}`, `{provider_keys}`, `{healthcare_providers}`, and `{query_format}` will be filled in by the system when this prompt is used. Your focus is on processing the user's text based on these instructions.
 """
 
+
+
+
+
 RESPONSE_PROMPT = """
 You are an AI assistant with expertise in understanding medical history. Your goal is to provide a direct, conversational, and professional answer to the patient's specific question using the provided context.
 
