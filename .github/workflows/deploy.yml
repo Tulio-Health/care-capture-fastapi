@@ -3,10 +3,10 @@ name: Deploy FastAPI to AWS App Runner
 on:
   push:
     branches:
-      - main
+      - develop
   pull_request:
     branches:
-      - main
+      - develop
 
 permissions:
   id-token: write
@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   build_and_push:
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/develop')
     runs-on: ubuntu-latest
     outputs:
       registry: ${{ steps.login-ecr.outputs.registry }}
