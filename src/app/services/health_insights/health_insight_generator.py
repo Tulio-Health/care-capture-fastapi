@@ -1,5 +1,6 @@
 import logging
 from typing import Dict, Any, List, Optional
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -140,9 +141,8 @@ class HealthInsightGenerator:
                     ])
                     
                     # Generate health insights using the chain
-                    health_insights = self.health_insights_chain.generate_health_insights(combined_text)
-                                        
-                    health_insights_by_user[user_id] = health_insights
+                    health_insights = self.health_insights_chain.generate_health_insights(combined_text)                                   
+                    health_insights_by_user[user_id] = jsonable_encoder(health_insights)
                     self.logger.info(f"Successfully generated health insights for user {user_id}")
                     
                 except Exception as e:
@@ -178,7 +178,7 @@ class HealthInsightGenerator:
                     # Example:
                     await self.health_insights_repo.create(
                         user_id=user_id,
-                        health_insights=insights.model_dump_json(),
+                        health_insights=insights,
                         month=datetime.utcnow().month,
                         year=datetime.utcnow().year,
                        # generated_at=datetime.utcnow()
