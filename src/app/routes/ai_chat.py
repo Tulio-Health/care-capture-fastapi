@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from langchain_core.messages import HumanMessage
+from src.app.cache.redis import redis_client
 from src.app.chains.ai_chat_intents.intend_identifier.chain import IntendIdentifierChain
 from src.app.chains.ai_chat_intents.intend_identifier.router import IntentRouter
 from src.app.chains.ai_chat_intents.intend_identifier.models import RouterOptions
@@ -22,6 +23,8 @@ from src.app.db.models.user_profiles import UserProfile
 from src.app.db.models.appointments import Appointment
 from src.app.db.models.healthcare_providers import HealthcareProvider
 
+import json
+
 router = APIRouter(
     prefix="/care-capture/ai-chat",
     tags=["care-capture-ai-chat"]
@@ -35,28 +38,49 @@ router = APIRouter(
 async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db)):
     print(f"Chat request: {chat_request}")
     try:
-        conversation_id = chat_request.conversation_id
         
-        # Fetch conversation context from the database using ORM model
+        conversation_id = chat_request.conversation_id
+        cache_key = CACHE_KEY.CONVERSATION_CHAT_HISTORY.format(conversation_id)
+        chat_ctx_raw = redis_client.get(cache_key) # Tries to get data from Redis
+        print(f"Chat context raw: {chat_ctx_raw}")
+        
+        chat_history_from_cache = []
+        if chat_ctx_raw:
+            # Assuming chat_ctx_raw is a JSON string that needs to be parsed
+            # and that it represents a list of messages. Adjust if structure is different.
+            try:
+                loaded_chat_ctx = json.loads(chat_ctx_raw)
+                if isinstance(loaded_chat_ctx, list):
+                    chat_history_from_cache = loaded_chat_ctx[0:-1] # Example: last element is summary
+                    # visit_summary_from_cache = loaded_chat_ctx[-1] # if you also store summary here
+                else:
+                    # Handle case where chat_ctx_raw is not a list as expected
+                    print(f"Warning: Unexpected chat context structure from Redis for {conversation_id}")
+            except json.JSONDecodeError:
+                print(f"Warning: Could not decode chat context from Redis for {conversation_id}. Raw: {chat_ctx_raw}")
+        else:
+            print(f"No chat context found in Redis for conversation_id: {conversation_id}. Assuming new conversation.")
+
+        # Fetch conversation record from DB (contains user_id and potentially other context)
         stmt = select(ChatbotConversation).where(ChatbotConversation.id == conversation_id)
         result = await db.execute(stmt)
         conversation_record = result.scalar_one_or_none()
 
         if not conversation_record:
-            raise HTTPException(status_code=404, detail="Conversation not found in database")
+            # If there's no conversation record in the DB at all, this ID is truly unknown.
+            # You might want to create one here, or raise a 404 if conversations must be pre-initiated.
+            # For now, we'll raise 404 if DB record is missing, as it implies user_id is unknown.
+            raise HTTPException(status_code=404, detail=f"Conversation record not found in database for ID: {conversation_id}")
 
-        # Use the ORM object's attributes
-        db_context_summary = conversation_record.context
-        
-        # Fetch user information using user_id from conversation record
         user_id = conversation_record.user_id
-        # Query the user_profiles table where user_id column matches the user_id from conversation
+        db_context_summary = conversation_record.context # This is the summary from the DB conversation record
+        
+        # Fetch user profile information using user_id
         user_stmt = select(UserProfile).where(UserProfile.user_id == user_id)
         user_result = await db.execute(user_stmt)
         user_profile_record = user_result.scalar_one_or_none()
         
-        # Clean by using db/objects/repositories/user_profiles.py
-        # Format user profile information
+        user_profile = {} # Default to empty dict
         if user_profile_record:
             user_profile = {
                 "id": str(user_profile_record.id),
@@ -67,30 +91,19 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
                 "is_active": user_profile_record.is_active,
                 "zip_code": user_profile_record.zip_code
             }
-        
-        
-        # This is in the cache
-        # Fetch messages for the specific conversation_id
-        messages_stmt = select(ChatbotMessage).where(ChatbotMessage.conversation_id == conversation_id)
-        messages_result = await db.execute(messages_stmt)
-        db_chat_history = messages_result.scalars().all()  # Get all messages
+        else:
+            print(f"Warning: No user profile found for user_id: {user_id}")
 
-        # Prepare the chat history in the desired format
-        formatted_chat_history = [
-            {
-                "user_query": msg.user_query,
-                "ai_response": msg.ai_response,
-                "detected_intent": msg.detected_intent,
-                "created_at": msg.created_at,
-                "updated_at": msg.updated_at
-            }
-            for msg in db_chat_history
-        ]
+        # Use chat history from cache if available, otherwise it's an empty list (new conversation)
+        # The 'formatted_chat_history' as expected by the chain might need specific keys.
+        # The 'chat_history_from_cache' is assumed to be a list of message objects/dicts.
+        # If 'chat_history_from_cache' is not in the right format, it needs transformation here.
+        # For this example, we'll assume it's already in a list-of-dicts format suitable for the chain's context.
 
         context_data = {
             "user_profile": user_profile,
-            "visit_summary": db_context_summary,
-            "chat_history": formatted_chat_history
+            "visit_summary": db_context_summary, # Using summary from DB conversation record
+            "chat_history": chat_history_from_cache # Using (possibly empty) history from cache
         }
         
         # Initialize intent identifier and router
