@@ -157,6 +157,7 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
             text=chat_request.message,
             context=context_data, 
             conversation_id=conversation_id_str
+
         )
 
         return ai_response

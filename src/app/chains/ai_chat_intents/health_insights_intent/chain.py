@@ -3,8 +3,14 @@ from langchain.chat_models import init_chat_model
 from langchain_core.output_parsers import PydanticOutputParser
 from src.app.common.constants.cache_keys import CACHE_KEY
 from src.app.common.constants.llm import LLM_MODEL , LLM_PROVIDER
+from src.app.db.config.database import get_db
+from src.app.db.objects.entities.patient_health_insights import PatientHealthInsights
+from src.app.db.objects.repositories.patient_health_insights import PatientHealthInsightsRepository
 from src.app.models.intent_identify import IntentResponse
 from src.app.cache.redis import redis_client
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi.encoders import jsonable_encoder
+
 
 from src.app.core import get_settings
 
@@ -26,17 +32,18 @@ class HealthInsightsIntentChain:
             ("user", "Extract health insights from the context '{context}' to answer the query '{text}' in the format specified above.")
         ])
         self.chain = self.prompt | model | self.parser
-        self.cache = redis_client.client
 
     async def handle_intent(self, **kwargs) -> HealthInsightsExtractionResponse:
         text = kwargs['text']
-        conversation_id = kwargs['conversation_id']
-        context = self.fetch_visit_summary(conversation_id)
+        user_id = kwargs['user_id']
+        context = await self.fetch_health_insights(user_id)
         return self.invoke(text, context)
     
-    def fetch_visit_summary(self, conversation_id: str) -> str:
-        cache_key = CACHE_KEY.CONVERSATION_PROVIDER_VISIT_SUMMARY.format(conversation_id)
-        return self.cache.get(cache_key)
+    async def fetch_health_insights(self, user_id: str ) -> str:
+        async for session in get_db():
+            repo = PatientHealthInsightsRepository(session)
+            health_insights = await repo.get_by_user_id(user_id)
+            return jsonable_encoder([r.__dict__ for r in health_insights])
     
     def invoke(self, text: str, context: str) -> HealthInsightsExtractionResponse:
         return self.chain.invoke({"text": text ,"context":context , "output_format": self.parser.get_format_instructions()})

@@ -64,7 +64,6 @@ class IntentRouter:
         return await self.past_visit_chain.handle_intent(**kwargs)
     
     # Priority - 1 
-    async def handle_health_insights(self, **kwargs) -> IntentResponse:
         """Handle health insights related queries."""
         return await self.health_insights_chain.handle_intent(**kwargs)
     

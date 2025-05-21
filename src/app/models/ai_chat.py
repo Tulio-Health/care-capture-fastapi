@@ -3,4 +3,6 @@ from uuid import UUID
 
 class AiChatRequest(BaseModel):
     message: str
+
     conversation_id: UUID
+
