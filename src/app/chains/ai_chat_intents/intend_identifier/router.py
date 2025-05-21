@@ -36,7 +36,7 @@ class IntentRouter:
         # Map intents to their handler methods
         self.intent_handlers: Dict[str, Callable] = {
             RouterOptions.PAST_VISITS.value: self.handle_past_visits,
-            RouterOptions.HEALTH_INSIGHTS.value: self.handle_health_insights,
+            # RouterOptions.HEALTH_INSIGHTS.value: self.handle_health_insights,
             # RouterOptions.UPCOMING_VISITS.value: self.handle_upcoming_visits,
             # RouterOptions.MANAGE_VISITS.value: self.handle_manage_visits,
             RouterOptions.NOT_A_VALID_OPTION.value: self.handle_invalid_option,
@@ -55,6 +55,7 @@ class IntentRouter:
         Returns:
             str: The response from the appropriate handler
         """
+        print(f"DEBUG: Routing intent: {intent}")
         handler = self.intent_handlers.get(intent, self.handle_invalid_option)
         return await handler(**kwargs)
     

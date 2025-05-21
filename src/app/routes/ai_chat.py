@@ -40,7 +40,6 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
         print(f"DEBUG: cache_key = '{cache_key}'")
 
         raw_messages_from_cache = redis_client.lrange(cache_key, 0, -1)
-        print(f"DEBUG: raw_messages_from_cache = {raw_messages_from_cache}")
         
         chat_history_for_context = []
         if raw_messages_from_cache:
@@ -150,7 +149,6 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
         
         print(f"Intent identified: {intent}")
         print(f"Context data keys: {list(context_data.keys())}")
-        print(f"Context data chat_history: {context_data.get('chat_history')}")
         
         ai_response = await intent_router.route(
             intent=intent,
