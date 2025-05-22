@@ -31,9 +31,9 @@ async def lifespan(app: FastAPI):
     logger.info("Redis client initialized and attached to app state")
     
     # Initialize scheduler
-    # scheduler = init_scheduler()
-    # app.state.scheduler = scheduler
-    # logger.info("Scheduler initialized and attached to app state")
+    scheduler = init_scheduler()
+    app.state.scheduler = scheduler
+    logger.info("Scheduler initialized and attached to app state")
     
     yield
     
