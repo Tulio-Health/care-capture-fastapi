@@ -3,16 +3,14 @@ from sqlalchemy import select
 from src.app.db.models.user_profiles import UserProfile
 from src.app.db.models.appointments import Appointment
 from src.app.db.models.ref_cms_provider_data import RefCmsProviderData
-from src.app.db.models.chatbot_conversations import ChatbotConversation
-from src.app.db.models.chatbot_messages import ChatbotMessage
 from src.app.db.objects.entities.conversation_summaries import ConversationSummaries as ConversationSummary
 from typing import Dict, Any, List
 import json
 from datetime import date, timedelta
 from uuid import UUID
 
-# 4. Get all user data of last 6 months
-async def cache_all_user_data(db: AsyncSession, user_id, redis_client) -> None:
+# Get all user data of last 6 months (except conversation messages which are handled by Node API)
+async def cache_all_user_data(db: AsyncSession, user_id: str, conversation_id: str, redis_client) -> None:
     # Convert user_id to UUID if it's a string
     user_id_uuid = UUID(user_id) if isinstance(user_id, str) else user_id
     user_id_str = str(user_id)  # String version for models that use String columns
@@ -35,11 +33,11 @@ async def cache_all_user_data(db: AsyncSession, user_id, redis_client) -> None:
     # Set value with expiry
     redis_client.set(f"user_profile:{user_id}", json.dumps(user_profile), expiry=60*60*12)
 
-    # Calculate 6 months ago
+    # Calculate 12 months ago
     today = date.today()
     twelve_months_ago = today - timedelta(days=365)
 
-    # Appointments + providers (2h, only from last 6 months)
+    # Appointments + providers (2h, only from last 12 months)
     appointments_stmt = select(Appointment).where(
         Appointment.user_id == str(user_id),
         Appointment.appointment_date >= twelve_months_ago
@@ -78,7 +76,7 @@ async def cache_all_user_data(db: AsyncSession, user_id, redis_client) -> None:
     # Set value with expiry
     redis_client.set(f"appointments:{user_id}", json.dumps(formatted_appointments), expiry=60*60*2)
 
-    # Visit summaries (2h, only from last 6 months)
+    # Visit summaries (2h, only from last 12 months)
     summaries_stmt = select(ConversationSummary).where(
         ConversationSummary.user_id == user_id_uuid,
         ConversationSummary.created_at >= twelve_months_ago
@@ -104,29 +102,5 @@ async def cache_all_user_data(db: AsyncSession, user_id, redis_client) -> None:
         })
     # Set value with expiry
     redis_client.set(f"visit_summaries:{user_id}", json.dumps(summaries), expiry=60*60*2)
-
-    # Conversation messages (12h, only from last 6 months)
-    conv_stmt = select(ChatbotConversation).where(ChatbotConversation.user_id == user_id_str)
-    conv_result = await db.execute(conv_stmt)
-    conversations = conv_result.scalars().all()
-    conversation_ids = [str(conv.id) for conv in conversations]
-    messages = []
-    if conversation_ids:
-        msg_stmt = select(ChatbotMessage).where(
-            ChatbotMessage.conversation_id.in_(conversation_ids),
-            ChatbotMessage.created_at >= twelve_months_ago
-        )
-        msg_result = await db.execute(msg_stmt)
-        messages_orm = msg_result.scalars().all()
-        for msg in messages_orm:
-            messages.append({
-                "id": str(msg.id),
-                "conversation_id": str(msg.conversation_id),
-                "user_query": msg.user_query,
-                "ai_response": msg.ai_response,
-                "detected_intent": msg.detected_intent,
-                "timestamp": msg.created_at.isoformat() if msg.created_at else None
-            })
-    # Set value with expiry
-    redis_client.set(f"conversation_messages:{user_id}", json.dumps(messages), expiry=60*60*12)
-    # No return value
+    
+    # No conversation messages handling - this is done by the Node API

@@ -104,14 +104,8 @@ class PastVisitIntentChain:
             filtered = [appt for appt in filtered if 
                        query.start_date.isoformat() <= appt.get('date', '') <= end_date]
         else:
-            # Default case (including when timeframe is 'all'): last 6 months
-            # Calculate date 6 months ago
-            six_months_ago = date(today.year - 1 if today.month <= 6 else today.year,
-                                 (today.month - 6) % 12 or 12,
-                                 min(today.day, 28))  # Using 28 to avoid month boundary issues
-            six_months_ago_iso = six_months_ago.isoformat()
-            
-            filtered = [appt for appt in filtered if six_months_ago_iso <= appt.get('date', '') <= today_iso]
+            # Default case (including when timeframe is 'all'): only pick appointments from the past
+            filtered = [appt for appt in filtered if appt.get('date', '') <= today_iso]
         
         # Sort the results
         if query.sort_by == 'date':
@@ -143,7 +137,6 @@ class PastVisitIntentChain:
 
         # Get appointments directly from the passed context
         appointments = context.get('appointments', [])
-        print(f"Appointments: {appointments}")
         # If no appointment data is available
         if not appointments:
             print("No appointments found in context")
@@ -169,7 +162,6 @@ class PastVisitIntentChain:
 
             # Step 2: Filter appointments based on query
             filtered_appointments = self.filter_appointments(query_params, appointments, [])
-
             print(f"Found {len(filtered_appointments)} relevant appointments")
 
             # Get all visit summaries from context

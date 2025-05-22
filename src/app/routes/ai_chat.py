@@ -43,9 +43,9 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
         user_profile_key = f"user_profile:{user_id}"
         appointments_key = f"appointments:{user_id}"
         visit_summaries_key = f"visit_summaries:{user_id}"
-        conversation_messages_key = f"conversation_messages:{user_id}"
+        conversation_messages_key = f"care-capture-cache-key:conversation:{conversation_id_str}"
         
-        # Check if all required cache keys exist
+        # Check if required cache keys exist
         cache_miss = False
         if not redis_client.get(user_profile_key):
             print(f"Cache miss: user_profile for user_id={user_id}")
@@ -56,42 +56,60 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
         if not redis_client.get(visit_summaries_key):
             print(f"Cache miss: visit_summaries for user_id={user_id}")
             cache_miss = True
-        if not redis_client.get(conversation_messages_key):
-            print(f"Cache miss: conversation_messages for user_id={user_id}")
-            cache_miss = True
+        # Don't check conversation_messages_key here - it's a LIST type, not a STRING type
+        # No need to set cache_miss for conversation messages as they're handled by Node.js
             
-        # Populate cache if any key is missing
+        # Populate cache if any key is missing (for user_profile, appointments, visit_summaries)
         if cache_miss:
-            print(f"Repopulating cache for user_id={user_id}")
-            await cache_all_user_data(db, user_id, redis_client)
+            print(f"Repopulating cache for user_id={user_id} (excluding messages)")
+            await cache_all_user_data(db, user_id, conversation_id_str, redis_client)
             
-        # Always load from cache
+        # Always load user_profile, appointments, and visit_summaries from their dedicated cache
         try:
             user_profile = json.loads(redis_client.get(user_profile_key))
             appointments = json.loads(redis_client.get(appointments_key))
             visit_summaries = json.loads(redis_client.get(visit_summaries_key))
-            conversation_messages = json.loads(redis_client.get(conversation_messages_key))
         except Exception as e:
-            print(f"Error loading from cache: {str(e)}")
-            # If there's an error loading from cache, refresh the cache and try again
-            await cache_all_user_data(db, user_id, redis_client)
+            print(f"Error loading primary context from cache: {str(e)}")
+            # If there's an error loading, refresh the primary context cache and try again
+            await cache_all_user_data(db, user_id, conversation_id_str, redis_client)
             user_profile = json.loads(redis_client.get(user_profile_key))
             appointments = json.loads(redis_client.get(appointments_key))
             visit_summaries = json.loads(redis_client.get(visit_summaries_key))
-            conversation_messages = json.loads(redis_client.get(conversation_messages_key))
-            
+
+        # Load conversation messages using lrange from its specific key, handled by Node API
+        # This is done once, outside the try/except for primary context loading.
+        raw_conversation_history_items = redis_client.lrange(conversation_messages_key, 0, -2)
+        conversation_messages = []
+        if raw_conversation_history_items:
+            for item_str in raw_conversation_history_items:
+                try:
+                    # Attempt to parse each item as JSON
+                    # If successful, it could be a dict (like AI response obj) or a list (like summary snapshot)
+                    parsed_item = json.loads(item_str)
+                    conversation_messages.append(parsed_item)
+                except json.JSONDecodeError:
+                    # If it's not valid JSON (e.g., plain user query string), append as is
+                    conversation_messages.append(item_str)
+        
         # Build context data
         context_data = {
             "user_profile": user_profile,
             "appointments": appointments,
             "visit_summaries": visit_summaries,
-            "conversation_messages": conversation_messages
+            "conversation_messages": conversation_messages  # Empty list for now - Node API will handle this
         }
+        
+        print(f"User profile: {user_profile}")
+        print(f"Appointments length: {len(appointments)}")
+        print(f"Visit summaries length: {len(visit_summaries)}")
+        print(f"Conversation messages length: {len(conversation_messages)}")
         
         # Process the chat request
         intent_identifier = IntendIdentifierChain()
         intent_router = IntentRouter(db=db)
         messages = [HumanMessage(content=chat_request.message)]
+        print(f"Messages sent to intent identifier: {messages}")
         intent = intent_identifier.identify_intent(messages)
         ai_response = await intent_router.route(
             intent=intent,
