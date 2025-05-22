@@ -7,6 +7,7 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import uuid
+from datetime import date, datetime
 
 from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
 from src.app.models.intent_identify import IntentResponse, IntentAiResponse
@@ -87,14 +88,30 @@ class PastVisitIntentChain:
                 filtered = [appt for appt in filtered if query.location.lower() in appt.get('location', '').lower()]
         
         # Apply date filters
-        if query.timeframe != 'all':
-            # Implementation of date filtering based on timeframe would go here
-            # This is a simplified version
-            if query.timeframe == 'specific_date' and query.start_date:
-                filtered = [appt for appt in filtered if appt.get('date') == query.start_date.isoformat()]
-            elif query.timeframe == 'date_range' and query.start_date and query.end_date:
-                filtered = [appt for appt in filtered if 
-                           query.start_date.isoformat() <= appt.get('date', '') <= query.end_date.isoformat()]
+        today = date.today()
+        today_iso = today.isoformat()  # Get today's date in ISO format
+        
+        # Define how we'll filter based on timeframe
+        if query.timeframe == 'specific_date' and query.start_date:
+            # For specific date, only show appointments on that exact date
+            filtered = [appt for appt in filtered if appt.get('date') == query.start_date.isoformat()]
+        elif query.timeframe == 'date_range' and query.start_date:
+            # For date range, calculate appropriate end date
+            end_date = today_iso
+            if query.end_date and query.end_date.isoformat() <= today_iso:
+                end_date = query.end_date.isoformat()
+            
+            filtered = [appt for appt in filtered if 
+                       query.start_date.isoformat() <= appt.get('date', '') <= end_date]
+        else:
+            # Default case (including when timeframe is 'all'): last 6 months
+            # Calculate date 6 months ago
+            six_months_ago = date(today.year - 1 if today.month <= 6 else today.year,
+                                 (today.month - 6) % 12 or 12,
+                                 min(today.day, 28))  # Using 28 to avoid month boundary issues
+            six_months_ago_iso = six_months_ago.isoformat()
+            
+            filtered = [appt for appt in filtered if six_months_ago_iso <= appt.get('date', '') <= today_iso]
         
         # Sort the results
         if query.sort_by == 'date':
@@ -114,60 +131,19 @@ class PastVisitIntentChain:
         """
         return [p for p in providers if p.get('id') in provider_ids]
 
-    async def get_relevant_summaries(self, appointment_ids: List[str]) -> List[Dict[str, Any]]:
-        """
-        Get conversation summaries related to the given appointment IDs from the database.
-        """
-        if not appointment_ids:
-            return []
-        
-        # Convert string IDs to UUID objects for query
-        appointment_uuid_ids = [uuid.UUID(aid) for aid in appointment_ids if aid]
-
-        if not appointment_uuid_ids:
-            return []
-
-        stmt = select(ORMConversationSummaries).where(ORMConversationSummaries.appointment_id.in_(appointment_uuid_ids))
-        result = await self.db.execute(stmt)
-        summaries_orm = result.scalars().all()
-        
-        # Convert ORM objects to dictionaries (similar to Pydantic model structure)
-        relevant_summaries = []
-        for summary_orm in summaries_orm:
-            relevant_summaries.append({
-                "id": str(summary_orm.id),
-                "appointment_id": str(summary_orm.appointment_id),
-                "user_id": str(summary_orm.user_id),
-                "summary_text": summary_orm.summary_text,
-                "key_points": summary_orm.key_points,
-                "medications": summary_orm.medications,
-                "diagnoses": summary_orm.diagnoses,
-                "instructions": summary_orm.instructions,
-                "recommendations": summary_orm.recommendations,
-                "created_at": summary_orm.created_at.isoformat() if summary_orm.created_at else None,
-                "updated_at": summary_orm.updated_at.isoformat() if summary_orm.updated_at else None,
-                "created_by": str(summary_orm.created_by),
-                "updated_by": str(summary_orm.updated_by) if summary_orm.updated_by else None
-            })
-        return relevant_summaries
-
     @traceable(name="handle_intent")
     async def handle_intent(self, **kwargs) -> IntentResponse[None]:
         text = kwargs['text']
         context = kwargs['context']
-        
-        print(f"Received context keys: {list(context.keys())}")
-        
-        # Extract data from context
+
         user_profile = context.get('user_profile', {})
+        # Use 'conversation_messages' key for consistency with ai_chat.py
+        chat_history = context.get('conversation_messages', []) 
+        user_id = user_profile.get('id')
+
+        # Get appointments directly from the passed context
         appointments = context.get('appointments', [])
-        providers = context.get('healthcare_providers', [])
-        chat_history = context.get('chat_history', [])
-        
-        print(f"User profile: {user_profile}")
-        print(f"Appointments count: {len(appointments)}")
-        print(f"Providers count: {len(providers)}")
-        
+        print(f"Appointments: {appointments}")
         # If no appointment data is available
         if not appointments:
             print("No appointments found in context")
@@ -175,39 +151,38 @@ class PastVisitIntentChain:
                 intent="past_visits",
                 responses=[IntentAiResponse(type="text", content=NO_PAST_VISIT_INFORMATION_AVAILABLE, data=None)]
             )
-        
-        # Get sample keys from the first appointment for the schema
+
         appointment_keys = list(appointments[0].keys()) if appointments else []
-        provider_keys = list(providers[0].keys()) if providers else []
-        
+
         try:
-            # Step 1: Extract query parameters
+            print(f"Extracting query parameters for query: {text}")
             query_params = self.query_chain.invoke({
                 "text": text,
                 "user_profile": json.dumps(user_profile, default=str),
                 "appointment_keys": json.dumps(appointment_keys),
-                "provider_keys": json.dumps(provider_keys),
-                "healthcare_providers": json.dumps(providers, default=str),
+                "provider_keys": json.dumps([]),
+                "healthcare_providers": json.dumps([], default=str),
                 "query_format": self.query_parser.get_format_instructions()
             })
-            
-            print(f"Extracted query parameters: {query_params}")
-            
-            # Step 2: Filter appointments based on query
-            filtered_appointments = self.filter_appointments(query_params, appointments, providers)
-            
-            # Get relevant provider information
-            provider_ids = list(set(appt.get('provider_id') for appt in filtered_appointments if appt.get('provider_id')))
-            relevant_providers = self.get_providers_info(provider_ids, providers)
-            
-            print(f"Found {len(filtered_appointments)} matching appointments")
-            print(f"Found {len(relevant_providers)} relevant providers")
 
-            # Step 2.5: Get relevant conversation summaries from DB
-            appointment_ids_for_summaries = [str(appt.get('id')) for appt in filtered_appointments if appt.get('id')]
-            relevant_summaries = await self.get_relevant_summaries(appointment_ids_for_summaries)
-            print(f"Found {len(relevant_summaries)} relevant summaries for the filtered appointments from DB")
+            print(f"Extracted query parameters: {query_params}")
+
+            # Step 2: Filter appointments based on query
+            filtered_appointments = self.filter_appointments(query_params, appointments, [])
+
+            print(f"Found {len(filtered_appointments)} relevant appointments")
+
+            # Get all visit summaries from context
+            all_visit_summaries = context.get('visit_summaries', [])
             
+            # Filter summaries relevant to the filtered_appointments
+            appointment_ids_for_summaries_set = set(str(appt.get('id')) for appt in filtered_appointments if appt.get('id'))
+            relevant_summaries = [
+                summary for summary in all_visit_summaries
+                if summary.get('appointment_id') and str(summary.get('appointment_id')) in appointment_ids_for_summaries_set
+            ]
+            print(f"Found {len(relevant_summaries)} relevant summaries from context for the filtered appointments")
+
             # Step 3: Generate final response
             if not filtered_appointments and not relevant_summaries:
                 return IntentResponse[None](
@@ -218,30 +193,25 @@ class PastVisitIntentChain:
                         data=None
                     )]
                 )
-            
-            # Generate the response content using the filtered data
+
             ai_content_string = await self.response_content_chain.ainvoke({
                 "text": text,
                 "filtered_appointments": json.dumps(filtered_appointments, default=str),
-                "providers_info": json.dumps(relevant_providers, default=str),
+                "providers_info": json.dumps([], default=str),
                 "conversation_summaries": json.dumps(relevant_summaries, default=str)
             })
-            
-            # Manually construct the IntentResponse
+
             return IntentResponse[None](
                 intent="past_visits",
                 responses=[IntentAiResponse(type="text", content=ai_content_string, data=None)]
             )
-            
+
         except Exception as e:
             print(f"Error processing past visit query: {str(e)}")
             import traceback
             traceback.print_exc()
-            # Fallback content should be generic
             fallback_content = NO_PAST_VISIT_INFORMATION_AVAILABLE
-            
             print(f"Falling back. Content: {fallback_content}")
-            
             return IntentResponse[None](
                 intent="past_visits",
                 responses=[IntentAiResponse(
