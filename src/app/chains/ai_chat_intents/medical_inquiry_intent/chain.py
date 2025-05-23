@@ -1,3 +1,4 @@
+import logging
 from langchain.prompts import ChatPromptTemplate
 from langchain.chat_models import init_chat_model
 from langchain_core.output_parsers import PydanticOutputParser, StrOutputParser
@@ -16,46 +17,35 @@ model = init_chat_model(
     temperature=0.2,
 )
 
+logger = logging.getLogger(__name__)
+
+
 MedicalInquiryResponse = IntentResponse[None]
 
 class MedicalInquiryIntentChain:
     def __init__(self):
         self.parser = PydanticOutputParser(pydantic_object=MedicalInquiryResponse)
         self.prompt = ChatPromptTemplate.from_messages([
-            ("system","""Answer the medical inquiry
-                
-                Rules:
-                -No duplicates unless new details
-                -Always add a disclaimer "It is advisable to consult your PCP or a specialist".
-                -Output format {output_format}"""),
+            ("system","""
+                You are an AI assistant that provides medical information to users. Respond to the user's medical inquiry based on the following rules:
+                - Whenever you quantify a value or share symptoms, add the disclaimer "It is advisable to consult your PCP or a specialist." For example: "Your blood sugar range is 80-120 mg/dL. It is advisable to consult your PCP or a specialist."
+                - Avoid providing duplicate information unless there are new details to add.
+                - Format your response as specified in the {output_format} parameter.
+            """),
             ("user", "Answer this question in the format specified above: {text}")
             ])
-        self.chain = self.prompt | model | StrOutputParser()
+        self.chain = self.prompt | model | self.parser
 
     async def handle_intent(self, **kwargs) -> MedicalInquiryResponse:
-        text = kwargs['text']
-        response_str = self.chain.invoke({"text": text, "output_format": self.parser.get_format_instructions()})
-        
         try:
-            return IntentResponse(
-                intent=RouterOptions.MEDICAL_INQUIRY,
-                responses=[
-                    IntentAiResponse(
-                        type="text",
-                        content=response_str if "it is advisable to consult" in response_str.lower() else response_str + " It is advisable to consult your PCP or a specialist.",
-                        data=None
-                    )
-                ]
-            )
+            text = kwargs['text']
+            response = self.chain.invoke({"text": text, "output_format": self.parser.get_format_instructions()})
+            return response
         except Exception as e:
-            print(f"Error creating medical inquiry response: {e}")
-            return IntentResponse(
-                intent=RouterOptions.MEDICAL_INQUIRY,
-                responses=[
-                    IntentAiResponse(
-                        type="text",
-                        content="I apologize, but I couldn't process your medical inquiry properly. It is advisable to consult your PCP or a specialist.",
-                        data=None
-                    )
-                ]
-            )
+            logger.error(f"Error processing medical inquiry: {str(e)}")
+            return MedicalInquiryResponse(
+                intent=RouterOptions.MEDICAL_INQUIRY, 
+                responses=[IntentAiResponse(
+                    type="text", 
+                    content="I apologize, but I couldn't process your medical inquiry. It is advisable to consult your PCP or a specialist.", 
+                    data=None)])
