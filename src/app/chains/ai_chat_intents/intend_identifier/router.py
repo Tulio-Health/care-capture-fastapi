@@ -36,7 +36,7 @@ class IntentRouter:
         # Map intents to their handler methods
         self.intent_handlers: Dict[str, Callable] = {
             RouterOptions.PAST_VISITS.value: self.handle_past_visits,
-            # RouterOptions.HEALTH_INSIGHTS.value: self.handle_health_insights,
+            RouterOptions.HEALTH_INSIGHTS.value: self.handle_health_insights,
             # RouterOptions.UPCOMING_VISITS.value: self.handle_upcoming_visits,
             # RouterOptions.MANAGE_VISITS.value: self.handle_manage_visits,
             RouterOptions.NOT_A_VALID_OPTION.value: self.handle_invalid_option,
@@ -64,7 +64,8 @@ class IntentRouter:
         """Handle past visits related queries."""
         return await self.past_visit_chain.handle_intent(**kwargs)
     
-    # Priority - 1 
+    # Priority - 1
+    async def handle_health_insights(self, **kwargs) -> IntentResponse:
         """Handle health insights related queries."""
         return await self.health_insights_chain.handle_intent(**kwargs)
     

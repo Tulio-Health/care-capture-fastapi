@@ -1,4 +1,4 @@
-from click import UUID
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from langchain_core.messages import HumanMessage
@@ -30,20 +30,20 @@ router = APIRouter(
 async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db)):
     print(f"Chat request: {chat_request}")
     try:
-        conversation_id_str = str(chat_request.conversation_id)
-        stmt = select(ChatbotConversation).where(ChatbotConversation.id == chat_request.conversation_id)
-        result = await db.execute(stmt)
-        conversation_record = result.scalar_one_or_none()
-        if not conversation_record:
-            raise HTTPException(status_code=404, detail=f"Conversation record not found in database for ID: {conversation_id_str}")
-        user_id = conversation_record.user_id
-        print(f"User ID: {user_id}")
+        conversation_id = chat_request.conversation_id
+        # stmt = select(ChatbotConversation).where(ChatbotConversation.id == chat_request.conversation_id)
+        # result = await db.execute(stmt)
+        # conversation_record = result.scalar_one_or_none()
+        # if not conversation_record:
+        #     raise HTTPException(status_code=404, detail=f"Conversation record not found in database for ID: {conversation_id_str}")
+        user_id = chat_request.user_id
+        #user_id = UUID("58ae6e54-c712-4900-bc02-f80a2f2d9e85")  # HARDCODED FOR TESTING
         
         # Set up cache keys
         user_profile_key = f"user_profile:{user_id}"
         appointments_key = f"appointments:{user_id}"
         visit_summaries_key = f"visit_summaries:{user_id}"
-        conversation_messages_key = f"care-capture-cache-key:conversation:{conversation_id_str}"
+        conversation_messages_key = f"care-capture-cache-key:conversation:{conversation_id}"
         
         # Check if required cache keys exist
         cache_miss = False
@@ -62,7 +62,7 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
         # Populate cache if any key is missing (for user_profile, appointments, visit_summaries)
         if cache_miss:
             print(f"Repopulating cache for user_id={user_id} (excluding messages)")
-            await cache_all_user_data(db, user_id, conversation_id_str, redis_client)
+            await cache_all_user_data(db, user_id, conversation_id, redis_client)
             
         # Always load user_profile, appointments, and visit_summaries from their dedicated cache
         try:
@@ -72,7 +72,7 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
         except Exception as e:
             print(f"Error loading primary context from cache: {str(e)}")
             # If there's an error loading, refresh the primary context cache and try again
-            await cache_all_user_data(db, user_id, conversation_id_str, redis_client)
+            await cache_all_user_data(db, user_id, conversation_id, redis_client)
             user_profile = json.loads(redis_client.get(user_profile_key))
             appointments = json.loads(redis_client.get(appointments_key))
             visit_summaries = json.loads(redis_client.get(visit_summaries_key))
@@ -115,7 +115,8 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
             intent=intent,
             text=chat_request.message,
             context=context_data, 
-            conversation_id=conversation_id_str
+            conversation_id=conversation_id,
+            user_id=user_id
         )
         return ai_response
     except Exception as e:
