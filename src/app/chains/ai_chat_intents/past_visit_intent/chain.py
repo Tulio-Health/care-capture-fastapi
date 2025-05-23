@@ -36,13 +36,13 @@ class PastVisitIntentChain:
         # First prompt: Extract structured query parameters
         self.query_prompt = ChatPromptTemplate.from_messages([
             ("system", QUERY_PROMPT),
-            ("user", "{text}")
+            ("user", "Generate the query parameters for the following user question: {text}")
         ])
         
         # Second prompt: Generate the final response based on filtered appointments
         self.response_prompt = ChatPromptTemplate.from_messages([
             ("system", RESPONSE_PROMPT),
-            ("user", "User Original Question: {text}\nFiltered Appointments: {filtered_appointments}\nHealthcare Provider Details: {providers_info}\nConversation Summaries: {conversation_summaries}")
+            ("user", "User Original Question: {text}\nConversation History: {conversation_history}\nFiltered Appointments: {filtered_appointments}\nHealthcare Provider Details: {providers_info}\nConversation Summaries: {conversation_summaries}")
         ])
         
         # Chain for query extraction
@@ -125,6 +125,7 @@ class PastVisitIntentChain:
         """
         return [p for p in providers if p.get('id') in provider_ids]
 
+
     @traceable(name="handle_intent")
     async def handle_intent(self, **kwargs) -> IntentResponse[None]:
         text = kwargs['text']
@@ -149,12 +150,15 @@ class PastVisitIntentChain:
 
         try:
             print(f"Extracting query parameters for query: {text}")
+            print(f"user profile: {user_profile}")
+            print(f"appointments keys: {appointment_keys}")
+            print(f"appointments data: {appointments}")
             query_params = self.query_chain.invoke({
                 "text": text,
                 "user_profile": json.dumps(user_profile, default=str),
                 "appointment_keys": json.dumps(appointment_keys),
-                "provider_keys": json.dumps([]),
-                "healthcare_providers": json.dumps([], default=str),
+                "appointments_data": json.dumps(appointments, default=str),
+                "conversation_history": json.dumps(chat_history, default=str),
                 "query_format": self.query_parser.get_format_instructions()
             })
 
@@ -188,6 +192,7 @@ class PastVisitIntentChain:
 
             ai_content_string = await self.response_content_chain.ainvoke({
                 "text": text,
+                "conversation_history": json.dumps(chat_history, default=str),
                 "filtered_appointments": json.dumps(filtered_appointments, default=str),
                 "providers_info": json.dumps([], default=str),
                 "conversation_summaries": json.dumps(relevant_summaries, default=str)

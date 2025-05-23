@@ -37,7 +37,7 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
         if not conversation_record:
             raise HTTPException(status_code=404, detail=f"Conversation record not found in database for ID: {conversation_id_str}")
         user_id = conversation_record.user_id
-        user_id = UUID("58ae6e54-c712-4900-bc02-f80a2f2d9e85")  # HARDCODED FOR TESTING
+        print(f"User ID: {user_id}")
         
         # Set up cache keys
         user_profile_key = f"user_profile:{user_id}"
@@ -97,7 +97,7 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
             "user_profile": user_profile,
             "appointments": appointments,
             "visit_summaries": visit_summaries,
-            "conversation_messages": conversation_messages  # Empty list for now - Node API will handle this
+            "conversation_messages": conversation_messages  # Contains parsed conversation history from Redis
         }
         
         print(f"User profile: {user_profile}")

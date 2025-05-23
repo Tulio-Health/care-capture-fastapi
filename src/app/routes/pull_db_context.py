@@ -59,6 +59,7 @@ async def cache_all_user_data(db: AsyncSession, user_id: str, conversation_id: s
         if appt.provider_id and str(appt.provider_id) in providers_map:
             provider = providers_map[str(appt.provider_id)]
             provider_info = {
+                "provider_id": str(provider.id),
                 "provider_first_name": provider.provider_first_name,
                 "provider_last_name": provider.provider_last_name,
                 "specialty": provider.pri_spec
