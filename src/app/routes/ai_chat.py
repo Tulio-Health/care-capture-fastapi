@@ -28,7 +28,6 @@ router = APIRouter(
              response_model=IntentResponse,
              status_code=200)
 async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db)):
-    print(f"Chat request: {chat_request}")
     try:
         conversation_id = chat_request.conversation_id
         # stmt = select(ChatbotConversation).where(ChatbotConversation.id == chat_request.conversation_id)
@@ -37,7 +36,11 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
         # if not conversation_record:
         #     raise HTTPException(status_code=404, detail=f"Conversation record not found in database for ID: {conversation_id_str}")
         user_id = chat_request.user_id
-        #user_id = UUID("58ae6e54-c712-4900-bc02-f80a2f2d9e85")  # HARDCODED FOR TESTING
+        # If user_id is not provided, use hardcoded value for testing
+        if user_id is None:
+            user_id = "58ae6e54-c712-4900-bc02-f80a2f2d9e85" # HARDCODED FOR TESTING
+        # Convert user_id to UUID for internal use
+        user_id = UUID(user_id) if isinstance(user_id, str) else user_id
         
         # Set up cache keys
         user_profile_key = f"user_profile:{user_id}"
@@ -100,16 +103,10 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
             "conversation_messages": conversation_messages  # Contains parsed conversation history from Redis
         }
         
-        print(f"User profile: {user_profile}")
-        print(f"Appointments length: {len(appointments)}")
-        print(f"Visit summaries length: {len(visit_summaries)}")
-        print(f"Conversation messages length: {len(conversation_messages)}")
-        
         # Process the chat request
         intent_identifier = IntendIdentifierChain()
         intent_router = IntentRouter(db=db)
         messages = [HumanMessage(content=chat_request.message)]
-        print(f"Messages sent to intent identifier: {messages}")
         intent = intent_identifier.identify_intent(messages)
         ai_response = await intent_router.route(
             intent=intent,

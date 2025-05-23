@@ -70,9 +70,9 @@ class IntentRouter:
         return await self.health_insights_chain.handle_intent(**kwargs)
     
     # # Priority - 3
-    # async def handle_upcoming_visits(self, text: str, context: dict, **kwargs) -> IntentResponse:
-    #     """Handle upcoming visits related queries."""
-    #     return self.handle_upcoming_visits.chat(text, context)
+    async def handle_upcoming_visits(self, text: str, context: dict, **kwargs) -> IntentResponse:
+        """Handle upcoming visits related queries."""
+        return self.handle_upcoming_visits.chat(text, context)
     
     # # Priority - 4
     # async def handle_manage_visits(self, text: str, context: dict, **kwargs) -> IntentResponse:

@@ -33,14 +33,15 @@ async def cache_all_user_data(db: AsyncSession, user_id: str, conversation_id: s
     # Set value with expiry
     redis_client.set(f"user_profile:{user_id}", json.dumps(user_profile), expiry=60*60*12)
 
-    # Calculate 12 months ago
-    today = date.today()
-    twelve_months_ago = today - timedelta(days=365)
+    # Calculate the day before today and 12 months ago
+    yesterday = date.today() - timedelta(days=1)
+    twelve_months_ago = date.today() - timedelta(days=365)
 
-    # Appointments + providers (2h, only from last 12 months)
+    # Appointments + providers (2h, only from the past 12 months)
     appointments_stmt = select(Appointment).where(
         Appointment.user_id == str(user_id),
-        Appointment.appointment_date >= twelve_months_ago
+        Appointment.appointment_date < yesterday,  # Only fetch appointments before today
+        Appointment.appointment_date >= twelve_months_ago  # Only fetch appointments from last 12 months
     )
     appointments_result = await db.execute(appointments_stmt)
     appointments = appointments_result.scalars().all()

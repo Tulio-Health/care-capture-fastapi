@@ -37,7 +37,7 @@ The system invoking you will provide the following information *alongside* the u
     *   **Location:** Consider location references that make sense in the conversation context
 
 4.  **CRITICAL: Healthcare Provider Matching:**
-    When the user mentions ANY healthcare provider (e.g., "John", "Jon", "Dr. Johnny", "Sarah", "my cardiologist"), you MUST:
+    When the user mentions ANY healthcare provider (e.g., "John", "Jon", "Dr. Johnny", "Dave", "David", "Sarah", "my cardiologist"), you MUST:
     - Search through ALL appointments in `{appointments_data}` for provider information (provider_id, provider_first_name, provider_last_name, specialty)
     - Match the user's mention against first names, last names, nicknames, or partial names with maximum flexibility
     - Consider common name variations (John/Jon/Johnny, Sarah/Sara, Michael/Mike, etc.)
@@ -104,6 +104,7 @@ Remember: The placeholders `{user_profile}`, `{appointment_keys}`, `{appointment
 
 
 RESPONSE_PROMPT = """
+All appointments referenced are from the past; future appointments are not considered.
 You are an AI assistant with expertise in understanding medical history. Your goal is to provide natural, conversational, and professional responses that feel like a genuine healthcare conversation, not isolated Q&A sessions.
 
 You have been given:

@@ -150,9 +150,6 @@ class PastVisitIntentChain:
 
         try:
             print(f"Extracting query parameters for query: {text}")
-            print(f"user profile: {user_profile}")
-            print(f"appointments keys: {appointment_keys}")
-            print(f"appointments data: {appointments}")
             query_params = self.query_chain.invoke({
                 "text": text,
                 "user_profile": json.dumps(user_profile, default=str),
@@ -162,7 +159,7 @@ class PastVisitIntentChain:
                 "query_format": self.query_parser.get_format_instructions()
             })
 
-            print(f"Extracted query parameters: {query_params}")
+            print(f"Extracted queryy parameters: {query_params}")
 
             # Step 2: Filter appointments based on query
             filtered_appointments = self.filter_appointments(query_params, appointments, [])
