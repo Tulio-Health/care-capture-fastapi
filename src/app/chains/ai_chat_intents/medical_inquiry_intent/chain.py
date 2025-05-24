@@ -1,22 +1,17 @@
 import logging
 from langchain.prompts import ChatPromptTemplate
 from langchain.chat_models import init_chat_model
-from langchain_core.output_parsers import PydanticOutputParser, StrOutputParser
+from langchain_core.output_parsers import StrOutputParser
 import json
 
 from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
-from src.app.common.constants.cache_keys import CACHE_KEY
 from src.app.models.intent_identify import IntentResponse, IntentAiResponse
 from src.app.core import get_settings
 from src.app.chains.ai_chat_intents.intend_identifier.models import RouterOptions
-from src.app.cache.redis import redis_client
-from src.app.db.config.database import get_db
-from src.app.routes.pull_db_context import cache_all_user_data
 from src.app.chains.ai_chat_intents.medical_inquiry_intent.constants import (
     MEDICAL_INQUIRY_SYSTEM_PROMPT,
     MEDICAL_INQUIRY_USER_PROMPT
 )
-from sqlalchemy.ext.asyncio import AsyncSession
 
 settings = get_settings()
 model = init_chat_model(
@@ -29,78 +24,60 @@ model = init_chat_model(
 logger = logging.getLogger(__name__)
 
 
-MedicalInquiryResponse = IntentResponse[None]
-
 class MedicalInquiryIntentChain:
     def __init__(self):
-        self.parser = PydanticOutputParser(pydantic_object=MedicalInquiryResponse)
+        # Use StrOutputParser for natural text responses like past visit chain
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", MEDICAL_INQUIRY_SYSTEM_PROMPT),
             ("user", MEDICAL_INQUIRY_USER_PROMPT)
         ])
-        self.chain = self.prompt | model | self.parser
+        # Chain for generating natural text content
+        self.chain = self.prompt | model | StrOutputParser()
 
-    async def handle_intent(self, **kwargs) -> MedicalInquiryResponse:
+    async def handle_intent(self, **kwargs) -> IntentResponse[None]:
         try:
             text = kwargs['text']
-            user_id = kwargs.get('user_id')
+            context = kwargs.get('context', {})
             
-            # Get cached context data
-            user_profile, health_insights = await self._get_cached_context(user_id)
+            # Extract user profile and conversation history from context
+            user_profile = context.get('user_profile', {})
+            # Use 'conversation_messages' key for consistency with ai_chat.py
+            chat_history = context.get('conversation_messages', [])
+            # Get health insights directly from context instead of fetching from cache
+            health_insights = context.get('health_insights', [])
             
-            response = self.chain.invoke({
+            # Format context data for prompt
+            user_profile_str = self._format_user_profile(user_profile)
+            health_insights_str = self._format_health_insights(health_insights)
+            
+            # Generate natural text response
+            ai_content_string = await self.chain.ainvoke({
                 "text": text, 
-                "user_profile": user_profile,
-                "health_insights": health_insights,
-                "output_format": self.parser.get_format_instructions()
+                "user_profile": user_profile_str,
+                "health_insights": health_insights_str,
+                "conversation_history": json.dumps(chat_history, default=str)
             })
-            return response
+            
+            # Return the response in the expected format
+            return IntentResponse[None](
+                intent=RouterOptions.MEDICAL_INQUIRY,
+                responses=[IntentAiResponse(
+                    type="text", 
+                    content=ai_content_string, 
+                    data=None
+                )]
+            )
+            
         except Exception as e:
             logger.error(f"Error processing medical inquiry: {str(e)}")
-            return MedicalInquiryResponse(
+            return IntentResponse[None](
                 intent=RouterOptions.MEDICAL_INQUIRY, 
                 responses=[IntentAiResponse(
                     type="text", 
                     content="I apologize, but I couldn't process your medical inquiry. It is advisable to consult your PCP or a specialist.", 
-                    data=None)])
-
-    async def _get_cached_context(self, user_id: str) -> tuple[str, str]:
-        """Get cached user profile and health insights data"""
-        try:
-            if not user_id:
-                return "No user profile available", "No health insights available"
-            
-            # Try to get cached data
-            user_profile_key = CACHE_KEY.CONVERSATION_USER_PROFILE.format(user_id)
-            health_insights_key = CACHE_KEY.CONVERSATION_HEALTH_INSIGHTS.format(user_id)
-            
-            user_profile_data = redis_client.get(user_profile_key)
-            health_insights_data = redis_client.get(health_insights_key)
-            
-            # If cache miss, populate cache
-            if not user_profile_data or not health_insights_data:
-                logger.info(f"Cache miss for medical inquiry context, user_id={user_id}")
-                async for db in get_db():
-                    await cache_all_user_data(db, user_id, None, redis_client)
-                    break
-                
-                # Retry getting cached data
-                user_profile_data = redis_client.get(user_profile_key)
-                health_insights_data = redis_client.get(health_insights_key)
-            
-            # Parse cached data
-            user_profile = json.loads(user_profile_data) if user_profile_data else {}
-            health_insights = json.loads(health_insights_data) if health_insights_data else []
-            
-            # Format for prompt
-            user_profile_str = self._format_user_profile(user_profile)
-            health_insights_str = self._format_health_insights(health_insights)
-            
-            return user_profile_str, health_insights_str
-            
-        except Exception as e:
-            logger.error(f"Error getting cached context: {str(e)}")
-            return "No user profile available", "No health insights available"
+                    data=None
+                )]
+            )
 
     def _format_user_profile(self, profile: dict) -> str:
         """Format user profile for prompt context"""
@@ -126,20 +103,51 @@ class MedicalInquiryIntentChain:
         for insight in insights:
             insight_data = insight.get('insight_data', {})
             if isinstance(insight_data, dict):
-                # Extract key information from insight data
+                # Extract comprehensive information from insight data
                 conditions = insight_data.get('conditions', [])
                 medications = insight_data.get('medications', [])
+                prior_testing = insight_data.get('priorTesting', [])
+                surgeries = insight_data.get('surgeriesAndProcedures', [])
                 
                 insight_summary = []
-                if conditions:
-                    condition_names = [c.get('name', '') for c in conditions if c.get('name')]
-                    if condition_names:
-                        insight_summary.append(f"Conditions: {', '.join(condition_names[:3])}")
                 
+                # Format conditions with details
+                if conditions:
+                    condition_details = []
+                    for c in conditions[:5]:  # Limit to 5 most recent
+                        if c.get('name'):
+                            detail = c['name']
+                            if c.get('details'):
+                                detail += f" ({c['details']})"
+                            condition_details.append(detail)
+                    if condition_details:
+                        insight_summary.append(f"Conditions: {', '.join(condition_details)}")
+                
+                # Format medications with dosage
                 if medications:
-                    med_names = [m.get('name', '') for m in medications if m.get('name')]
-                    if med_names:
-                        insight_summary.append(f"Medications: {', '.join(med_names[:3])}")
+                    med_details = []
+                    for m in medications[:5]:  # Limit to 5 most recent
+                        if m.get('name'):
+                            detail = m['name']
+                            if m.get('dosage'):
+                                detail += f" {m['dosage']}"
+                            if m.get('frequency'):
+                                detail += f" {m['frequency']}"
+                            med_details.append(detail)
+                    if med_details:
+                        insight_summary.append(f"Medications: {', '.join(med_details)}")
+                
+                # Format prior testing
+                if prior_testing:
+                    test_names = [t.get('name', '') for t in prior_testing[:3] if t.get('name')]
+                    if test_names:
+                        insight_summary.append(f"Recent Testing: {', '.join(test_names)}")
+                
+                # Format surgeries/procedures
+                if surgeries:
+                    surgery_names = [s.get('name', '') for s in surgeries[:3] if s.get('name')]
+                    if surgery_names:
+                        insight_summary.append(f"Procedures: {', '.join(surgery_names)}")
                 
                 if insight_summary:
                     formatted_insights.append("; ".join(insight_summary))

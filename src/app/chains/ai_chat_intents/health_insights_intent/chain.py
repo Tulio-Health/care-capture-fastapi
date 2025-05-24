@@ -4,18 +4,13 @@ from langchain.chat_models import init_chat_model
 from langchain_core.output_parsers import PydanticOutputParser
 import json
 
-from src.app.common.constants.cache_keys import CACHE_KEY
 from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
 from src.app.models.intent_identify import IntentResponse, IntentAiResponse
-from src.app.cache.redis import redis_client
-from src.app.db.config.database import get_db
-from src.app.routes.pull_db_context import cache_all_user_data
 from src.app.chains.ai_chat_intents.intend_identifier.models import RouterOptions
 from src.app.chains.ai_chat_intents.health_insights_intent.constants import (
     HEALTH_INSIGHTS_SYSTEM_PROMPT,
     HEALTH_INSIGHTS_USER_PROMPT
 )
-from sqlalchemy.ext.asyncio import AsyncSession
 from src.app.core import get_settings
 
 settings = get_settings()
@@ -42,15 +37,20 @@ class HealthInsightsIntentChain:
     async def handle_intent(self, **kwargs) -> HealthInsightsExtractionResponse:
         try:
             text = kwargs['text']
-            user_id = kwargs.get('user_id')
+            context = kwargs.get('context', {})
             
-            # Get cached context data
-            user_profile, health_insights = await self._get_cached_context(user_id)
+            # Get data directly from context instead of fetching from cache
+            user_profile = context.get('user_profile', {})
+            health_insights = context.get('health_insights', [])
+            
+            # Format context data for prompt
+            user_profile_str = self._format_user_profile(user_profile)
+            health_insights_str = self._format_health_insights(health_insights)
             
             response = self.chain.invoke({
                 "text": text, 
-                "user_profile": user_profile,
-                "health_insights": health_insights,
+                "user_profile": user_profile_str,
+                "health_insights": health_insights_str,
                 "output_format": self.parser.get_format_instructions()
             })
             return response
@@ -62,47 +62,6 @@ class HealthInsightsIntentChain:
                     type="text", 
                     content="I apologize, but I couldn't access your health insights at the moment. Please try again later or consult with your healthcare provider.", 
                     data=None)])
-
-    async def _get_cached_context(self, user_id: str) -> tuple[str, str]:
-        """Get cached user profile and health insights data"""
-        try:
-            if not user_id:
-                return "No user profile available", "No health insights available"
-            
-            # Try to get cached data
-            user_profile_key = CACHE_KEY.CONVERSATION_USER_PROFILE.format(user_id)
-            health_insights_key = CACHE_KEY.CONVERSATION_HEALTH_INSIGHTS.format(user_id)
-            
-            user_profile_data = redis_client.get(user_profile_key)
-            health_insights_data = redis_client.get(health_insights_key)
-            
-            print(f"User profile data from cache: {user_profile_data}")
-            print(f"Health insights data from cache: {health_insights_data}")
-            
-            # If cache miss, populate cache 
-            if not user_profile_data or not health_insights_data:
-                logger.info(f"Cache miss for health insights context, user_id={user_id}")
-                async for db in get_db():
-                    await cache_all_user_data(db, user_id, None, redis_client)
-                    break
-                
-                # Retry getting cached data
-                user_profile_data = redis_client.get(user_profile_key)
-                health_insights_data = redis_client.get(health_insights_key)
-            
-            # Parse cached data
-            user_profile = json.loads(user_profile_data) if user_profile_data else {}
-            health_insights = json.loads(health_insights_data) if health_insights_data else []
-            
-            # Format for prompt
-            user_profile_str = self._format_user_profile(user_profile)
-            health_insights_str = self._format_health_insights(health_insights)
-            
-            return user_profile_str, health_insights_str
-            
-        except Exception as e:
-            logger.error(f"Error getting cached context: {str(e)}")
-            return "No user profile available", "No health insights available"
 
     def _format_user_profile(self, profile: dict) -> str:
         """Format user profile for prompt context"""
