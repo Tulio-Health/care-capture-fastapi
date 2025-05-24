@@ -30,51 +30,38 @@ router = APIRouter(
 async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db)):
     try:
         conversation_id = chat_request.conversation_id
-        # stmt = select(ChatbotConversation).where(ChatbotConversation.id == chat_request.conversation_id)
-        # result = await db.execute(stmt)
-        # conversation_record = result.scalar_one_or_none()
-        # if not conversation_record:
-        #     raise HTTPException(status_code=404, detail=f"Conversation record not found in database for ID: {conversation_id_str}")
         user_id = chat_request.user_id
-        # If user_id is not provided, use hardcoded value for testing
-        if user_id is None:
-            user_id = "58ae6e54-c712-4900-bc02-f80a2f2d9e85" # HARDCODED FOR TESTING
-        # Convert user_id to UUID for internal use
-        user_id = UUID(user_id) if isinstance(user_id, str) else user_id
         
         # Set up cache keys
-        user_profile_key = f"user_profile:{user_id}"
-        appointments_key = f"appointments:{user_id}"
-        visit_summaries_key = f"visit_summaries:{user_id}"
-        conversation_messages_key = f"care-capture-cache-key:conversation:{conversation_id}"
+        user_profile_key = CACHE_KEY.CONVERSATION_USER_PROFILE.format(user_id)
+        appointments_key = CACHE_KEY.CONVERSATION_PAST_APPOINTMENTS.format(user_id)
+        visit_summaries_key = CACHE_KEY.CONVERSATION_PROVIDER_VISIT_SUMMARY.format(user_id)
+        conversation_messages_key = CACHE_KEY.CONVERSATION_CHAT_HISTORY.format(conversation_id)
         
         # Check if required cache keys exist
         cache_miss = False
-        if not redis_client.get(user_profile_key):
-            print(f"Cache miss: user_profile for user_id={user_id}")
-            cache_miss = True
-        if not redis_client.get(appointments_key):
-            print(f"Cache miss: appointments for user_id={user_id}")
-            cache_miss = True
-        if not redis_client.get(visit_summaries_key):
-            print(f"Cache miss: visit_summaries for user_id={user_id}")
-            cache_miss = True
-        # Don't check conversation_messages_key here - it's a LIST type, not a STRING type
-        # No need to set cache_miss for conversation messages as they're handled by Node.js
-            
-        # Populate cache if any key is missing (for user_profile, appointments, visit_summaries)
-        if cache_miss:
-            print(f"Repopulating cache for user_id={user_id} (excluding messages)")
-            await cache_all_user_data(db, user_id, conversation_id, redis_client)
-            
-        # Always load user_profile, appointments, and visit_summaries from their dedicated cache
+        
         try:
             user_profile = json.loads(redis_client.get(user_profile_key))
-            appointments = json.loads(redis_client.get(appointments_key))
-            visit_summaries = json.loads(redis_client.get(visit_summaries_key))
         except Exception as e:
-            print(f"Error loading primary context from cache: {str(e)}")
-            # If there's an error loading, refresh the primary context cache and try again
+            user_profile = None
+        
+        try:
+            appointments = json.loads(redis_client.get(appointments_key))
+        except Exception as e:
+            appointments = None
+        
+        try:
+            visit_summaries = json.loads(redis_client.get(visit_summaries_key)) 
+        except Exception as e:    
+            visit_summaries = None
+        
+        if not user_profile or not appointments or not visit_summaries:
+            print(f"Cache miss: user_profile, appointments, or visit_summaries for user_id={user_id}")
+            cache_miss = True
+            
+        if cache_miss:
+            print(f"Repopulating cache for user_id={user_id} (excluding messages)")
             await cache_all_user_data(db, user_id, conversation_id, redis_client)
             user_profile = json.loads(redis_client.get(user_profile_key))
             appointments = json.loads(redis_client.get(appointments_key))

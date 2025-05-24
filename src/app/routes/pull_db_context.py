@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from src.app.common.constants.cache_keys import CACHE_KEY
 from src.app.db.models.user_profiles import UserProfile
 from src.app.db.models.appointments import Appointment
 from src.app.db.models.ref_cms_provider_data import RefCmsProviderData
@@ -13,7 +14,6 @@ from uuid import UUID
 async def cache_all_user_data(db: AsyncSession, user_id: str, conversation_id: str, redis_client) -> None:
     # Convert user_id to UUID if it's a string
     user_id_uuid = UUID(user_id) if isinstance(user_id, str) else user_id
-    user_id_str = str(user_id)  # String version for models that use String columns
     
     # User profile (12h)
     user_stmt = select(UserProfile).where(UserProfile.user_id == user_id_uuid)
@@ -31,7 +31,7 @@ async def cache_all_user_data(db: AsyncSession, user_id: str, conversation_id: s
             "zip_code": user_profile_record.zip_code
         }
     # Set value with expiry
-    redis_client.set(f"user_profile:{user_id}", json.dumps(user_profile), expiry=60*60*12)
+    redis_client.set(CACHE_KEY.CONVERSATION_USER_PROFILE.format(user_id), json.dumps(user_profile), expiry=60*60*12)
 
     # Calculate the day before today and 12 months ago
     yesterday = date.today() - timedelta(days=1)
@@ -75,7 +75,7 @@ async def cache_all_user_data(db: AsyncSession, user_id: str, conversation_id: s
         }
         formatted_appointments.append(formatted_appt)
     # Set value with expiry
-    redis_client.set(f"appointments:{user_id}", json.dumps(formatted_appointments), expiry=60*60*2)
+    redis_client.set(CACHE_KEY.CONVERSATION_PAST_APPOINTMENTS.format(user_id), json.dumps(formatted_appointments), expiry=60*60*2)
 
     # Visit summaries (2h, only from last 12 months)
     summaries_stmt = select(ConversationSummary).where(
@@ -102,6 +102,6 @@ async def cache_all_user_data(db: AsyncSession, user_id: str, conversation_id: s
             "updated_by": str(summary.updated_by) if summary.updated_by else None
         })
     # Set value with expiry
-    redis_client.set(f"visit_summaries:{user_id}", json.dumps(summaries), expiry=60*60*2)
+    redis_client.set(CACHE_KEY.CONVERSATION_PROVIDER_VISIT_SUMMARY.format(user_id), json.dumps(summaries), expiry=60*60*2)
     
     # No conversation messages handling - this is done by the Node API
