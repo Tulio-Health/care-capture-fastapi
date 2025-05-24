@@ -18,6 +18,13 @@ INTENT_IDENTIFIER_SYSTEM_PROMPT = """You are an expert medical coordinator route
             - "Could you pull up notes from my previous consultations?"
             - "Do you have a record of my last check-up?"
             
+            UPCOMING_VISITS queries (for upcoming visits inquiries):
+            - "When is my next doctor's appointment?"
+            - "Do I have any checkups scheduled this month?"
+            - "Can you remind me of my upcoming visits?"
+            - "What's the date and time for my next consultation?"
+            - "Who am I scheduled to meet with next?"
+            
             HEALTH_INSIGHTS queries (for health insights inquiries):
             - "What does my recent blood work say about my overall health?"
             - "Can you help me understand my latest health trends?"
@@ -49,7 +56,7 @@ INTENT_IDENTIFIER_SYSTEM_PROMPT = """You are an expert medical coordinator route
             - "I'd like to end the session, please."
             - Bye for now
             
-            Respond with ONLY one of these exact values: "past_visits", "health_insights",  "medical_inquiry", "not_a_valid_option", or "end_conversation".
+            Respond with ONLY one of these exact values: "past_visits", "upcoming_visits", "health_insights", "medical_inquiry", "not_a_valid_option", or "end_conversation".
             Do not include any additional text or formatting.
             
             REMEMBER: When in doubt, return "not_a_valid_option".

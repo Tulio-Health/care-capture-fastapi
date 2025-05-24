@@ -7,6 +7,7 @@ class CACHE_KEY(str, Enum):
     CONVERSATION_PROVIDER_VISIT_SUMMARY = "conversation:provider-visit-summary"
     CONVERSATION_PAST_APPOINTMENTS = "conversation:past-appointments"
     CONVERSATION_UPCOMING_APPOINTMENTS = "conversation:upcoming-appointments"
+    CONVERSATION_USER_PROFILE = "conversation:user-profile"
 
     def format(self, identifier: str) -> str:
         return f"{CACHE_KEY_PREFIX}:{self.value}:{identifier}"

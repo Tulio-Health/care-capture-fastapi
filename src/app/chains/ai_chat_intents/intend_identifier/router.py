@@ -5,6 +5,7 @@ from src.app.chains.ai_chat_intents.intend_identifier.models import RouterOption
 from src.app.chains.ai_chat_intents.medical_inquiry_intent.chain import MedicalInquiryIntentChain
 from src.app.chains.ai_chat_intents.health_insights_intent.chain import HealthInsightsIntentChain
 from src.app.chains.ai_chat_intents.past_visit_intent.chain import PastVisitIntentChain
+from src.app.chains.ai_chat_intents.upcoming_visit_intent.chain import UpcomingVisitIntentChain
 from src.app.models.intent_identify import IntentAiResponse, IntentResponse
 
 class IntentRouter:
@@ -27,7 +28,7 @@ class IntentRouter:
 
         # TODO: PastVisitSummarizationChain is still in development, working... need some refinement to the response object...
         self.health_insights_chain = HealthInsightsIntentChain() # MVP - Pulls the details from the health insights table
-        # self.upcoming_visit_chain = UpcomingVisitChain() # PostMVP - Pulls the details from the appointment visit table
+        self.upcoming_visit_chain = UpcomingVisitIntentChain(db=self.db) # PostMVP - Pulls the details from the appointment visit table
         # self.manage_visit_chain = ManageVisitChain() # PostMVP - Pulls the details from the manage visit table
         self.medical_inquiry_chain = MedicalInquiryIntentChain() # MVP - Any generic medical inquiry
 
@@ -36,8 +37,8 @@ class IntentRouter:
         # Map intents to their handler methods
         self.intent_handlers: Dict[str, Callable] = {
             RouterOptions.PAST_VISITS.value: self.handle_past_visits,
-            # RouterOptions.HEALTH_INSIGHTS.value: self.handle_health_insights,
-            # RouterOptions.UPCOMING_VISITS.value: self.handle_upcoming_visits,
+            RouterOptions.HEALTH_INSIGHTS.value: self.handle_health_insights,
+            RouterOptions.UPCOMING_VISITS.value: self.handle_upcoming_visits,
             # RouterOptions.MANAGE_VISITS.value: self.handle_manage_visits,
             RouterOptions.NOT_A_VALID_OPTION.value: self.handle_invalid_option,
             RouterOptions.END_CONVERSATION.value: self.handle_end_conversation,
@@ -64,14 +65,15 @@ class IntentRouter:
         """Handle past visits related queries."""
         return await self.past_visit_chain.handle_intent(**kwargs)
     
-    # Priority - 1 
+    # Priority - 1
+    async def handle_health_insights(self, **kwargs) -> IntentResponse:
         """Handle health insights related queries."""
         return await self.health_insights_chain.handle_intent(**kwargs)
     
     # # Priority - 3
-    # async def handle_upcoming_visits(self, text: str, context: dict, **kwargs) -> IntentResponse:
-    #     """Handle upcoming visits related queries."""
-    #     return self.handle_upcoming_visits.chat(text, context)
+    async def handle_upcoming_visits(self, **kwargs) -> IntentResponse:
+        """Handle upcoming visits related queries."""
+        return await self.upcoming_visit_chain.handle_intent(**kwargs)
     
     # # Priority - 4
     # async def handle_manage_visits(self, text: str, context: dict, **kwargs) -> IntentResponse:

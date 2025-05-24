@@ -11,7 +11,7 @@ from datetime import date, datetime
 
 from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
 from src.app.models.intent_identify import IntentResponse, IntentAiResponse
-from src.app.models.past_visit_query import PastVisitQuery
+from src.app.models.upcoming_visit_query import UpcomingVisitQuery
 from src.app.models.conversation_summaries import ConversationSummary as PydanticConversationSummary
 from src.app.db.objects.entities.conversation_summaries import ConversationSummaries as ORMConversationSummaries
 from src.app.core import get_settings
@@ -25,13 +25,13 @@ model = init_chat_model(
     temperature=0.2,
 )
 
-NO_PAST_VISIT_INFORMATION_AVAILABLE = "I am sorry, but I don't have any past Provider visit information available for you, please try with a different query."
+NO_UPCOMING_VISIT_INFORMATION_AVAILABLE = "I am sorry, but I don't have any Upcoming Provider visit information available for you, please try with a different query."
 
-class PastVisitIntentChain:
+class UpcomingVisitIntentChain:
     def __init__(self, db: AsyncSession):
         self.db = db
         # Initialize output parser for query parameters
-        self.query_parser = PydanticOutputParser(pydantic_object=PastVisitQuery)
+        self.query_parser = PydanticOutputParser(pydantic_object=UpcomingVisitQuery)
         
         # First prompt: Extract structured query parameters
         self.query_prompt = ChatPromptTemplate.from_messages([
@@ -42,7 +42,7 @@ class PastVisitIntentChain:
         # Second prompt: Generate the final response based on filtered appointments
         self.response_prompt = ChatPromptTemplate.from_messages([
             ("system", RESPONSE_PROMPT),
-            ("user", "User Original Question: {text}\nConversation History: {conversation_history}\nFiltered Appointments: {filtered_appointments}\nHealthcare Provider Details: {providers_info}\nConversation Summaries: {conversation_summaries}")
+            ("user", "User Original Question: {text}\nConversation History: {conversation_history}\nFiltered Appointments: {filtered_appointments}\nHealthcare Provider Details: {providers_info}")
         ])
         
         # Chain for query extraction
@@ -51,7 +51,7 @@ class PastVisitIntentChain:
         # Chain for final response content generation
         self.response_content_chain = self.response_prompt | model | StrOutputParser()
 
-    def filter_appointments(self, query: PastVisitQuery, appointments: List[Dict[str, Any]], providers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def filter_appointments(self, query: UpcomingVisitQuery, appointments: List[Dict[str, Any]], providers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Filter appointments based on the query parameters
         """
@@ -104,8 +104,8 @@ class PastVisitIntentChain:
             filtered = [appt for appt in filtered if 
                        query.start_date.isoformat() <= appt.get('date', '') <= end_date]
         else:
-            # Default case (including when timeframe is 'all'): only pick appointments from the past
-            filtered = [appt for appt in filtered if appt.get('date', '') <= today_iso]
+            # Default case (including when timeframe is 'all'): only pick appointments from the future
+            filtered = [appt for appt in filtered if appt.get('date', '') >= today_iso]
         
         # Sort the results
         if query.sort_by == 'date':
@@ -142,8 +142,8 @@ class PastVisitIntentChain:
         if not appointments:
             print("No appointments found in context")
             return IntentResponse[None](
-                intent="past_visits",
-                responses=[IntentAiResponse(type="text", content=NO_PAST_VISIT_INFORMATION_AVAILABLE, data=None)]
+                intent="upcoming_visits",
+                responses=[IntentAiResponse(type="text", content=NO_UPCOMING_VISIT_INFORMATION_AVAILABLE, data=None)]
             )
 
         appointment_keys = list(appointments[0].keys()) if appointments else []
@@ -165,24 +165,13 @@ class PastVisitIntentChain:
             filtered_appointments = self.filter_appointments(query_params, appointments, [])
             print(f"Found {len(filtered_appointments)} relevant appointments")
 
-            # Get all visit summaries from context
-            all_visit_summaries = context.get('visit_summaries', [])
-            
-            # Filter summaries relevant to the filtered_appointments
-            appointment_ids_for_summaries_set = set(str(appt.get('id')) for appt in filtered_appointments if appt.get('id'))
-            relevant_summaries = [
-                summary for summary in all_visit_summaries
-                if summary.get('appointment_id') and str(summary.get('appointment_id')) in appointment_ids_for_summaries_set
-            ]
-            print(f"Found {len(relevant_summaries)} relevant summaries from context for the filtered appointments")
-
             # Step 3: Generate final response
-            if not filtered_appointments and not relevant_summaries:
+            if not filtered_appointments:
                 return IntentResponse[None](
-                    intent="past_visits",
+                    intent="upcoming_visits",
                     responses=[IntentAiResponse(
                         type="text", 
-                        content="I'm sorry, but I couldn't find any past visits or related summaries matching your criteria.", 
+                        content="I'm sorry, but I couldn't find any upcoming visits matching your criteria.", 
                         data=None
                     )]
                 )
@@ -191,26 +180,25 @@ class PastVisitIntentChain:
                 "text": text,
                 "conversation_history": json.dumps(chat_history, default=str),
                 "filtered_appointments": json.dumps(filtered_appointments, default=str),
-                "providers_info": json.dumps([], default=str),
-                "conversation_summaries": json.dumps(relevant_summaries, default=str)
+                "providers_info": json.dumps([], default=str)
             })
 
             return IntentResponse[None](
-                intent="past_visits",
+                intent="upcoming_visits",
                 responses=[IntentAiResponse(type="text", content=ai_content_string, data=None)]
             )
 
         except Exception as e:
-            print(f"Error processing past visit query: {str(e)}")
+            print(f"Error processing upcoming visit query: {str(e)}")
             import traceback
             traceback.print_exc()
-            fallback_content = NO_PAST_VISIT_INFORMATION_AVAILABLE
+            fallback_content = NO_UPCOMING_VISIT_INFORMATION_AVAILABLE
             print(f"Falling back. Content: {fallback_content}")
             return IntentResponse[None](
-                intent="past_visits",
+                intent="upcoming_visits",
                 responses=[IntentAiResponse(
                     type="text", 
-                    content=f"I apologize, but I encountered an issue processing your request about past visits. {fallback_content}", 
+                    content=f"I apologize, but I encountered an issue processing your request about upcoming visits. {fallback_content}", 
                     data=None
                 )]
             )
