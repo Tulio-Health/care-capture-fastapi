@@ -9,6 +9,7 @@ from typing import Dict, Any, List
 import json
 from datetime import date, timedelta
 from uuid import UUID
+from src.app.db.objects.entities.patient_health_insights import PatientHealthInsights
 
 # Get all user data of last 6 months (except conversation messages which are handled by Node API)
 async def cache_all_user_data(db: AsyncSession, user_id: str, conversation_id: str, redis_client) -> None:
@@ -53,7 +54,6 @@ async def cache_all_user_data(db: AsyncSession, user_id: str, conversation_id: s
         providers_db = providers_result.scalars().all()
         for provider in providers_db:
             providers_map[str(provider.id)] = provider
-    print(f"Providers map: {providers_map}")
     for appt in appointments:
         provider_info = None
         if appt.provider_id and str(appt.provider_id) in providers_map:
@@ -103,5 +103,20 @@ async def cache_all_user_data(db: AsyncSession, user_id: str, conversation_id: s
         })
     # Set value with expiry
     redis_client.set(CACHE_KEY.CONVERSATION_PROVIDER_VISIT_SUMMARY.format(user_id), json.dumps(summaries), expiry=60*60*2)
+
+    # Health insights (2h) - Get insight_data only
+    health_insights_stmt = select(PatientHealthInsights).where(PatientHealthInsights.user_id == user_id_uuid)
     
+    health_insights_result = await db.execute(health_insights_stmt)
+    health_insights_orm = health_insights_result.scalars().all()
+    
+    health_insights = []   
+    for insight in health_insights_orm:
+        print(f"Processing insight: {insight.id}, user_id: {insight.user_id}")
+        health_insights.append({
+            "insight_data": insight.insight_data
+        })
+        
+    # Set value with expiry
+    redis_client.set(CACHE_KEY.CONVERSATION_HEALTH_INSIGHTS.format(user_id), json.dumps(health_insights), expiry=60*60*2)
     # No conversation messages handling - this is done by the Node API

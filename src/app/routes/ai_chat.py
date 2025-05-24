@@ -30,13 +30,15 @@ router = APIRouter(
 async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db)):
     try:
         conversation_id = chat_request.conversation_id
+        # To ensure it's being received properly, and add validation:
         user_id = chat_request.user_id
-        
+        user_id = "58ae6e54-c712-4900-bc02-f80a2f2d9e85" # HARDCODED (I don't know how user id is fetched). TODO: Remove this.
         # Set up cache keys
         user_profile_key = CACHE_KEY.CONVERSATION_USER_PROFILE.format(user_id)
         appointments_key = CACHE_KEY.CONVERSATION_PAST_APPOINTMENTS.format(user_id)
         visit_summaries_key = CACHE_KEY.CONVERSATION_PROVIDER_VISIT_SUMMARY.format(user_id)
         conversation_messages_key = CACHE_KEY.CONVERSATION_CHAT_HISTORY.format(conversation_id)
+        health_insights_key = CACHE_KEY.CONVERSATION_HEALTH_INSIGHTS.format(user_id)
         
         # Check if required cache keys exist
         cache_miss = False
@@ -55,9 +57,14 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
             visit_summaries = json.loads(redis_client.get(visit_summaries_key)) 
         except Exception as e:    
             visit_summaries = None
+            
+        try:
+            health_insights = json.loads(redis_client.get(health_insights_key))
+        except Exception as e:
+            health_insights = None
         
-        if not user_profile or not appointments or not visit_summaries:
-            print(f"Cache miss: user_profile, appointments, or visit_summaries for user_id={user_id}")
+        if not user_profile or not appointments or not visit_summaries or not health_insights:
+            print(f"Cache miss: user_profile, appointments, visit_summaries, or health_insights for user_id={user_id}")
             cache_miss = True
             
         if cache_miss:
@@ -66,6 +73,7 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
             user_profile = json.loads(redis_client.get(user_profile_key))
             appointments = json.loads(redis_client.get(appointments_key))
             visit_summaries = json.loads(redis_client.get(visit_summaries_key))
+            health_insights = json.loads(redis_client.get(health_insights_key))
 
         # Load conversation messages using lrange from its specific key, handled by Node API
         # This is done once, outside the try/except for primary context loading.
@@ -87,7 +95,8 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
             "user_profile": user_profile,
             "appointments": appointments,
             "visit_summaries": visit_summaries,
-            "conversation_messages": conversation_messages  # Contains parsed conversation history from Redis
+            "conversation_messages": conversation_messages,
+            "health_insights": health_insights
         }
         
         # Process the chat request

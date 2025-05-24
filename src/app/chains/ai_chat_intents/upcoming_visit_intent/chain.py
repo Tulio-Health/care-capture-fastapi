@@ -42,7 +42,7 @@ class UpcomingVisitIntentChain:
         # Second prompt: Generate the final response based on filtered appointments
         self.response_prompt = ChatPromptTemplate.from_messages([
             ("system", RESPONSE_PROMPT),
-            ("user", "User Original Question: {text}\nConversation History: {conversation_history}\nFiltered Appointments: {filtered_appointments}\nHealthcare Provider Details: {providers_info}")
+            ("user", "User Original Question: {text}\nConversation History: {conversation_history}\nFiltered Appointments: {filtered_appointments}\nHealthcare Provider Details: {providers_info}\nToday's Date: {today_date}")
         ])
         
         # Chain for query extraction
@@ -180,7 +180,8 @@ class UpcomingVisitIntentChain:
                 "text": text,
                 "conversation_history": json.dumps(chat_history, default=str),
                 "filtered_appointments": json.dumps(filtered_appointments, default=str),
-                "providers_info": json.dumps([], default=str)
+                "providers_info": json.dumps([], default=str),
+                "today_date": date.today().isoformat()
             })
 
             return IntentResponse[None](

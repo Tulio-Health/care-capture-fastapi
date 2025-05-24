@@ -15,7 +15,8 @@ class PatientHealthInsights(Base):
     insight_data = Column(JSON, nullable=False)
     is_viewed = Column(Boolean, default=False)
     additional_metadata = Column(JSON, nullable=True)
-
+    created_by = Column(UUID(as_uuid=True), nullable=False)
+    updated_by = Column(UUID(as_uuid=True), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
