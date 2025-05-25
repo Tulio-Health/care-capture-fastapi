@@ -83,6 +83,7 @@ class IntentRouter:
     async def handle_invalid_option(self, **kwargs) -> IntentResponse:
         """Handle invalid or unrecognized queries."""
         message = "Hello! I'm Tulio Care Capture Assistant. I'm here to help you with all things health-related. You can ask me about your past visits, upcoming appointments, health insights, or any other health-related questions. How can I assist you today?"
+        # TODO: Add a more specific message related to the query. Extra LLM call to generate a more specific message. So it can guide the user to ask a valid question.
         InvalidOptionResponse = IntentResponse[None]
         return InvalidOptionResponse(intent=RouterOptions.NOT_A_VALID_OPTION.value, responses=[IntentAiResponse(type="text", content=message , data=None)])
     

@@ -46,7 +46,7 @@ class PastVisitIntentChain:
         # Second prompt: Generate the final response based on filtered appointments
         self.response_prompt = ChatPromptTemplate.from_messages([
             ("system", RESPONSE_PROMPT),
-            ("user", "User Original Question: {text}\nConversation History: {conversation_history}\nFiltered Appointments: {filtered_appointments}\nHealthcare Provider Details: {providers_info}\nConversation Summaries: {conversation_summaries}")
+            ("user", "User Original Question: {text}\nConversation History: {conversation_history}\nFiltered Appointments: {filtered_appointments}\nHealthcare Provider Details: {providers_info}\nConversation Summaries: {conversation_summaries}\nToday's Date: {today_date}")
         ])
         
         # Chain for query extraction
@@ -186,7 +186,7 @@ class PastVisitIntentChain:
                     intent="past_visits",
                     responses=[IntentAiResponse(
                         type="text", 
-                        content="I'm sorry, but I couldn't find any past visits or related summaries matching your criteria.", 
+                        content="I'm sorry, but I couldn't find any past visits or related summaries matching your criteria.", #TODO: Add a more specific message related to the query. Extra LLM call to generate a more specific message.
                         data=None
                     )]
                 )
@@ -196,8 +196,9 @@ class PastVisitIntentChain:
                 "conversation_history": json.dumps(chat_history, default=str),
                 "filtered_appointments": json.dumps(filtered_appointments, default=str),
                 "providers_info": json.dumps([], default=str),
-                "conversation_summaries": json.dumps(relevant_summaries, default=str)
-            }, config={"callbacks": [tracer]})
+                "conversation_summaries": json.dumps(relevant_summaries, default=str),
+                "today_date": date.today().isoformat()
+            },config={"callbacks": [tracer]})
 
             return IntentResponse[None](
                 intent="past_visits",

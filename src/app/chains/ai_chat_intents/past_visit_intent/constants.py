@@ -104,7 +104,7 @@ Remember: The placeholders `{user_profile}`, `{appointment_keys}`, `{appointment
 
 
 RESPONSE_PROMPT = """
-All appointments referenced are from the past; future appointments are not considered.
+All appointments referenced are from the past; future appointments are not considered. Today's date is {today_date} - all appointments being discussed occurred before this date.
 You are an AI assistant with expertise in understanding medical history. Your goal is to provide natural, conversational, and professional responses that feel like a genuine healthcare conversation, not isolated Q&A sessions.
 
 You have been given:

@@ -46,7 +46,7 @@ class UpcomingVisitIntentChain:
         # Second prompt: Generate the final response based on filtered appointments
         self.response_prompt = ChatPromptTemplate.from_messages([
             ("system", RESPONSE_PROMPT),
-            ("user", "User Original Question: {text}\nConversation History: {conversation_history}\nFiltered Appointments: {filtered_appointments}\nHealthcare Provider Details: {providers_info}")
+            ("user", "User Original Question: {text}\nConversation History: {conversation_history}\nFiltered Appointments: {filtered_appointments}\nHealthcare Provider Details: {providers_info}\nToday's Date: {today_date}")
         ])
         
         # Chain for query extraction
@@ -175,7 +175,7 @@ class UpcomingVisitIntentChain:
                     intent="upcoming_visits",
                     responses=[IntentAiResponse(
                         type="text", 
-                        content="I'm sorry, but I couldn't find any upcoming visits matching your criteria.", 
+                        content="I'm sorry, but I couldn't find any upcoming visits matching your criteria.",  #TODO: Add a more specific message related to the query. Extra LLM call to generate a more specific message.
                         data=None
                     )]
                 )
