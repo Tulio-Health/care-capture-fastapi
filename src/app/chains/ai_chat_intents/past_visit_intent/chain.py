@@ -16,6 +16,7 @@ from src.app.models.past_visit_query import PastVisitQuery
 from src.app.models.conversation_summaries import ConversationSummary as PydanticConversationSummary
 from src.app.db.objects.entities.conversation_summaries import ConversationSummaries as ORMConversationSummaries
 from src.app.core import get_settings
+from src.app.chains.ai_chat_intents.not_found_intent.chain import NoDataFoundIntentChain
 from .constants import QUERY_PROMPT, RESPONSE_PROMPT
 
 settings = get_settings()
@@ -34,6 +35,9 @@ NO_PAST_VISIT_INFORMATION_AVAILABLE = "I am sorry, but I don't have any past Pro
 class PastVisitIntentChain:
     def __init__(self, db: AsyncSession):
         self.db = db
+        # Initialize the no data found chain
+        self.no_data_found_chain = NoDataFoundIntentChain()
+        
         # Initialize output parser for query parameters
         self.query_parser = PydanticOutputParser(pydantic_object=PastVisitQuery)
         
@@ -152,9 +156,11 @@ class PastVisitIntentChain:
         # If no appointment data is available
         if not appointments:
             print("No appointments found in context")
-            return IntentResponse[None](
+            return await self.no_data_found_chain.handle_intent(
+                text=text,
+                context=context,
                 intent="past_visits",
-                responses=[IntentAiResponse(type="text", content=NO_PAST_VISIT_INFORMATION_AVAILABLE, data=None)]
+                search_details="past appointments"
             )
 
         appointment_keys = list(appointments[0].keys()) if appointments else []
@@ -189,13 +195,13 @@ class PastVisitIntentChain:
 
             # Step 3: Generate final response
             if not filtered_appointments and not relevant_summaries:
-                return IntentResponse[None](
+                # Create search details based on query parameters
+                search_details = self._create_search_details(query_params)
+                return await self.no_data_found_chain.handle_intent(
+                    text=text,
+                    context=context,
                     intent="past_visits",
-                    responses=[IntentAiResponse(
-                        type="text", 
-                        content="I'm sorry, but I couldn't find any past visits or related summaries matching your criteria.", #TODO: Add a more specific message related to the query. Extra LLM call to generate a more specific message.
-                        data=None
-                    )]
+                    search_details=search_details
                 )
 
             ai_content_string = await self.response_content_chain.ainvoke({
@@ -226,3 +232,22 @@ class PastVisitIntentChain:
                     data=None
                 )]
             )
+
+    def _create_search_details(self, query_params: PastVisitQuery) -> str:
+        """Create a human-readable description of what was searched for"""
+        details = []
+        if query_params.provider_name:
+            details.append(f"past visits with {query_params.provider_name}")
+        if query_params.purpose:
+            details.append(f"past visits for {query_params.purpose}")
+        if query_params.location:
+            details.append(f"past visits at {query_params.location}")
+        if query_params.start_date:
+            if query_params.timeframe == 'specific_date':
+                details.append(f"past visits on {query_params.start_date}")
+            elif query_params.end_date:
+                details.append(f"past visits between {query_params.start_date} and {query_params.end_date}")
+            else:
+                details.append(f"past visits from {query_params.start_date}")
+        
+        return " ".join(details) if details else "past visits matching your criteria"

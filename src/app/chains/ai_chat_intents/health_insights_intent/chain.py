@@ -17,6 +17,7 @@ from fastapi.encoders import jsonable_encoder
 from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
 from src.app.models.intent_identify import IntentResponse, IntentAiResponse
 from src.app.chains.ai_chat_intents.intend_identifier.models import RouterOptions
+from src.app.chains.ai_chat_intents.not_found_intent.chain import NoDataFoundIntentChain
 from src.app.chains.ai_chat_intents.health_insights_intent.constants import (
     HEALTH_INSIGHTS_SYSTEM_PROMPT,
     HEALTH_INSIGHTS_USER_PROMPT
@@ -39,6 +40,9 @@ HealthInsightsExtractionResponse = IntentResponse[None]
 
 class HealthInsightsIntentChain:
     def __init__(self):
+        # Initialize the no data found chain
+        self.no_data_found_chain = NoDataFoundIntentChain()
+        
         self.parser = PydanticOutputParser(pydantic_object=HealthInsightsExtractionResponse)
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", HEALTH_INSIGHTS_SYSTEM_PROMPT),
@@ -54,6 +58,15 @@ class HealthInsightsIntentChain:
             # Get data directly from context instead of fetching from cache
             user_profile = context.get('user_profile', {})
             health_insights = context.get('health_insights', [])
+            
+            # Check if health insights are available
+            if not health_insights:
+                return await self.no_data_found_chain.handle_intent(
+                    text=text,
+                    context=context,
+                    intent=RouterOptions.HEALTH_INSIGHTS.value,
+                    search_details="health insights data"
+                )
             
             # Format context data for prompt
             user_profile_str = self._format_user_profile(user_profile)
