@@ -43,6 +43,9 @@ class PastVisitIntentChain:
             ("user", "Generate the query parameters for the following user question: {text}")
         ])
         
+        # Today's date in ISO format
+        today_date = date.today().isoformat()
+
         # Second prompt: Generate the final response based on filtered appointments
         self.response_prompt = ChatPromptTemplate.from_messages([
             ("system", RESPONSE_PROMPT),
