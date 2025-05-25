@@ -171,7 +171,7 @@ class UpcomingVisitIntentChain:
                     intent="upcoming_visits",
                     responses=[IntentAiResponse(
                         type="text", 
-                        content="I'm sorry, but I couldn't find any upcoming visits matching your criteria.", 
+                        content="I'm sorry, but I couldn't find any upcoming visits matching your criteria.",  #TODO: Add a more specific message related to the query. Extra LLM call to generate a more specific message.
                         data=None
                     )]
                 )
