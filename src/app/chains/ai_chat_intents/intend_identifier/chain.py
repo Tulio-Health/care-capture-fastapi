@@ -15,7 +15,9 @@ from langchain_core.output_parsers import StrOutputParser
 import logging
 
 from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
+from src.app.core.langsmith_trace import LangSmithTrace
 from src.app.core.settings import get_settings
+from src.app.common.logging import get_logger
 from .models import RouterOptions
 from .constants import INTENT_IDENTIFIER_SYSTEM_PROMPT
 
@@ -28,7 +30,9 @@ model = init_chat_model(
     temperature=0.1,  # Lower temperature for more consistent classification
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
+
+tracer = LangSmithTrace().trace(tags=[__name__])
 
 class IntendIdentifierChain:
     """

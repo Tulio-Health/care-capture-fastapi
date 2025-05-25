@@ -5,6 +5,7 @@ from langchain_core.output_parsers import StrOutputParser
 import json
 
 from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
+from src.app.core.langsmith_trace import LangSmithTrace
 from src.app.models.intent_identify import IntentResponse, IntentAiResponse
 from src.app.core import get_settings
 from src.app.chains.ai_chat_intents.intend_identifier.models import RouterOptions
@@ -14,7 +15,10 @@ from src.app.chains.ai_chat_intents.medical_inquiry_intent.constants import (
 )
 
 settings = get_settings()
-model = init_chat_model(
+
+tracer = LangSmithTrace().trace(tags=[__name__])
+
+model =init_chat_model(
     model=LLM_MODEL.GPT_4O_MINI,
     model_provider=LLM_PROVIDER.OPENAI,
     openai_api_key=settings.OPENAI_API_KEY,
@@ -56,7 +60,7 @@ class MedicalInquiryIntentChain:
                 "user_profile": user_profile_str,
                 "health_insights": health_insights_str,
                 "conversation_history": json.dumps(chat_history, default=str)
-            })
+            },config={"callbacks": [tracer]})
             
             # Return the response in the expected format
             return IntentResponse[None](

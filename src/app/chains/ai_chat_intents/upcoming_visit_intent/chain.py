@@ -10,6 +10,7 @@ import uuid
 from datetime import date, datetime
 
 from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
+from src.app.core.langsmith_trace import LangSmithTrace
 from src.app.models.intent_identify import IntentResponse, IntentAiResponse
 from src.app.models.upcoming_visit_query import UpcomingVisitQuery
 from src.app.models.conversation_summaries import ConversationSummary as PydanticConversationSummary
@@ -24,6 +25,9 @@ model = init_chat_model(
     openai_api_key=settings.OPENAI_API_KEY,
     temperature=0.2,
 )
+
+tracer = LangSmithTrace().trace(tags=[__name__])
+
 
 NO_UPCOMING_VISIT_INFORMATION_AVAILABLE = "I am sorry, but I don't have any Upcoming Provider visit information available for you, please try with a different query."
 
@@ -157,7 +161,7 @@ class UpcomingVisitIntentChain:
                 "appointments_data": json.dumps(appointments, default=str),
                 "conversation_history": json.dumps(chat_history, default=str),
                 "query_format": self.query_parser.get_format_instructions()
-            })
+            }, config={"callbacks": [tracer]})
 
             print(f"Extracted queryy parameters: {query_params}")
 
@@ -180,9 +184,8 @@ class UpcomingVisitIntentChain:
                 "text": text,
                 "conversation_history": json.dumps(chat_history, default=str),
                 "filtered_appointments": json.dumps(filtered_appointments, default=str),
-                "providers_info": json.dumps([], default=str),
-                "today_date": date.today().isoformat()
-            })
+                "providers_info": json.dumps([], default=str)
+            }, config={"callbacks": [tracer]})
 
             return IntentResponse[None](
                 intent="upcoming_visits",

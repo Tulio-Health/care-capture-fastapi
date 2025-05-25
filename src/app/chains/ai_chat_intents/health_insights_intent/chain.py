@@ -2,7 +2,17 @@ import logging
 from langchain.prompts import ChatPromptTemplate
 from langchain.chat_models import init_chat_model
 from langchain_core.output_parsers import PydanticOutputParser
-import json
+from src.app.common.constants.cache_keys import CACHE_KEY
+from src.app.common.constants.llm import LLM_MODEL , LLM_PROVIDER
+from src.app.core.langsmith_trace import LangSmithTrace
+from src.app.db.config.database import get_db
+from src.app.db.objects.entities.patient_health_insights import PatientHealthInsights
+from src.app.db.objects.repositories.patient_health_insights import PatientHealthInsightsRepository
+from src.app.models.intent_identify import IntentResponse
+from src.app.cache.redis import redis_client
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi.encoders import jsonable_encoder
+
 
 from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
 from src.app.models.intent_identify import IntentResponse, IntentAiResponse
@@ -20,6 +30,8 @@ model = init_chat_model(
     openai_api_key=settings.OPENAI_API_KEY,
     temperature=0.2,
 )
+tracer = LangSmithTrace().trace(tags=[__name__])
+
 
 logger = logging.getLogger(__name__)
 
@@ -158,3 +170,12 @@ class HealthInsightsIntentChain:
                     formatted_insights.append(" | ".join(insight_parts))
         
         return " || ".join(formatted_insights) if formatted_insights else "No specific health insights available"
+    
+    async def fetch_health_insights(self, user_id: str ) -> str:
+        async for session in get_db():
+            repo = PatientHealthInsightsRepository(session)
+            health_insights = await repo.get_by_user_id(user_id)
+            return jsonable_encoder(health_insights)
+    
+    def invoke(self, text: str, context: str) -> HealthInsightsExtractionResponse:
+        return self.chain.invoke({"text": text ,"context":context , "output_format": self.parser.get_format_instructions()}, config={"callbacks": [tracer]})

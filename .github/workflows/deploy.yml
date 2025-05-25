@@ -36,6 +36,10 @@ jobs:
           PORT=${{ secrets.PORT }}
           REDIS_HOST=${{ secrets.REDIS_HOST }}
           REDIS_PORT=${{ secrets.REDIS_PORT }}
+          LANGSMITH_TRACING=${{ secrets.LANGSMITH_TRACING }}
+          LANGSMITH_API_KEY=${{ secrets.LANGSMITH_API_KEY }}
+          LANGSMITH_ENDPOINT=${{ secrets.LANGSMITH_ENDPOINT }}
+          LANGSMITH_PROJECT=${{ secrets.LANGSMITH_PROJECT }}
           EOF
 
       - name: Configure AWS credentials
@@ -83,6 +87,10 @@ jobs:
           PORT=${{ secrets.PORT }}
           REDIS_HOST=${{ secrets.REDIS_HOST }}
           REDIS_PORT=${{ secrets.REDIS_PORT }}
+          LANGSMITH_TRACING=${{ secrets.LANGSMITH_TRACING }}
+          LANGSMITH_API_KEY=${{ secrets.LANGSMITH_API_KEY }}
+          LANGSMITH_ENDPOINT=${{ secrets.LANGSMITH_ENDPOINT }}
+          LANGSMITH_PROJECT=${{ secrets.LANGSMITH_PROJECT }}
           EOF
 
       - name: Configure AWS credentials
