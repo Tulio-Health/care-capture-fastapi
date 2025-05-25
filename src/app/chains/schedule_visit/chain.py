@@ -4,6 +4,7 @@ from datetime import datetime
 
 from langchain_core.output_parsers import PydanticOutputParser
 from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
+from src.app.core.langsmith_trace import LangSmithTrace
 from src.app.models.schedule_visit import ScheduleVisitResponse
 from src.app.core import get_settings
 
@@ -14,6 +15,9 @@ model = init_chat_model(
     openai_api_key=settings.OPENAI_API_KEY,
     temperature=0.2,
 )
+
+tracer = LangSmithTrace().trace(tags=[__name__])
+
 
 
 class ScheduleVisitChain:
@@ -36,4 +40,4 @@ class ScheduleVisitChain:
     def schedule_visit(self, **kwargs) -> str:
         text = kwargs['text']
         providers = kwargs['providers']
-        return self.chain.invoke({"text": text, "providers": providers, "output_format": self.parser.get_format_instructions() , "current_timestamp": datetime.now()})
+        return self.chain.invoke({"text": text, "providers": providers, "output_format": self.parser.get_format_instructions() , "current_timestamp": datetime.now()}, config={"callbacks": [tracer]})

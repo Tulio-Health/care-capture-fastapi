@@ -14,6 +14,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 
 from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
+from src.app.core.langsmith_trace import LangSmithTrace
 from src.app.core.settings import get_settings
 from .models import RouterOptions
 from .constants import INTENT_IDENTIFIER_SYSTEM_PROMPT
@@ -26,6 +27,9 @@ model = init_chat_model(
     openai_api_key=settings.OPENAI_API_KEY,
     temperature=0.2,
 )
+
+tracer = LangSmithTrace().trace(tags=[__name__])
+
 
 class IntendIdentifierChain:
     """
@@ -73,7 +77,7 @@ class IntendIdentifierChain:
         2. Cleans and validates the output
         3. Returns a valid intent or defaults to GENERAL
         """
-        result = self.chain.invoke({"messages": messages})
+        result = self.chain.invoke({"messages": messages}, config={"callbacks": [tracer]})
         # Clean the result to ensure it's one of our expected values
         result = result.strip().lower()
         if result not in [option.value for option in RouterOptions]:
