@@ -27,6 +27,7 @@ asyncpg = "^0.30.0"
 langgraph = "^0.3.31"
 langchain-community = "^0.3.22"
 apscheduler = "^3.11.0"
+langsmith = "^0.3.42"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

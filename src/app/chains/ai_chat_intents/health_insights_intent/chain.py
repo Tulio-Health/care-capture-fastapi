@@ -3,6 +3,7 @@ from langchain.chat_models import init_chat_model
 from langchain_core.output_parsers import PydanticOutputParser
 from src.app.common.constants.cache_keys import CACHE_KEY
 from src.app.common.constants.llm import LLM_MODEL , LLM_PROVIDER
+from src.app.core.langsmith_trace import LangSmithTrace
 from src.app.db.config.database import get_db
 from src.app.db.objects.entities.patient_health_insights import PatientHealthInsights
 from src.app.db.objects.repositories.patient_health_insights import PatientHealthInsightsRepository
@@ -21,6 +22,8 @@ model = init_chat_model(
     openai_api_key=settings.OPENAI_API_KEY,
     temperature=0.2,
 )
+tracer = LangSmithTrace().trace(tags=[__name__])
+
 
 
 HealthInsightsExtractionResponse = IntentResponse[None]
@@ -46,4 +49,4 @@ class HealthInsightsIntentChain:
             return jsonable_encoder([r.__dict__ for r in health_insights])
     
     def invoke(self, text: str, context: str) -> HealthInsightsExtractionResponse:
-        return self.chain.invoke({"text": text ,"context":context , "output_format": self.parser.get_format_instructions()})
+        return self.chain.invoke({"text": text ,"context":context , "output_format": self.parser.get_format_instructions()}, config={"callbacks": [tracer]})

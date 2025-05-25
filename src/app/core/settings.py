@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
     REDIS_PASSWORD: str = ''
     
+    # LANGSMITH 
+    LANGSMITH_TRACING: str
+    LANGSMITH_ENDPOINT: str
+    LANGSMITH_PROJECT: str
+    LANGSMITH_API_KEY: str
+    
     @property
     def DATABASE_URL(self) -> PostgresDsn:
         try:
@@ -64,10 +70,10 @@ class Settings(BaseSettings):
     
     # API Keys
     OPENAI_API_KEY: str
-    # LANGSMITH_TRACING: str
-    # LANGSMITH_ENDPOINT:str
-    # LANGSMITH_PROJECT: str
-    # LANGCHAIN_API_KEY: str
+    LANGSMITH_TRACING: str
+    LANGSMITH_ENDPOINT:str
+    LANGSMITH_PROJECT: str
+    LANGSMITH_API_KEY: str
     
     class Config:
         env_file = ".env"

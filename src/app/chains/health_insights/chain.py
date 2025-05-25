@@ -4,6 +4,7 @@ from langsmith import traceable
 from langchain_core.output_parsers import PydanticOutputParser
 
 from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
+from src.app.core.langsmith_trace import LangSmithTrace
 from src.app.core.settings import get_settings
 from src.app.models.health_insights_extraction import HealthInsightsResponse
 
@@ -14,6 +15,9 @@ model = init_chat_model(
     openai_api_key=settings.OPENAI_API_KEY,
     temperature=0.2,
 )
+
+tracer = LangSmithTrace().trace(tags=[__name__])
+
 
 
 class GenerateHealthInsightsChain:
@@ -39,5 +43,5 @@ class GenerateHealthInsightsChain:
 
     @traceable(name="generate_health_insights")
     def generate_health_insights(self, text) -> HealthInsightsResponse:
-        result = self.chain.invoke({"text": text, "output_format": self.parser.get_format_instructions()})
+        result = self.chain.invoke({"text": text, "output_format": self.parser.get_format_instructions()}, config={"callbacks": [tracer]})
         return result
