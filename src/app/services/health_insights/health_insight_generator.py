@@ -4,6 +4,7 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from src.app.db.objects.entities.patient_health_insights import PatientHealthInsights
 from src.app.db.objects.repositories.patient_health_insights import PatientHealthInsightsRepository
 from ...db.objects.repositories.conversation_summaries import ConversationSummariesRepository
 from ...db.objects.entities.conversation_summaries import ConversationSummaries
@@ -111,7 +112,7 @@ class HealthInsightGenerator:
             self.logger.error(f"Error fetching patient visit summaries: {str(e)}", exc_info=e)
             raise
     
-    async def _generate_health_insights(self, grouped_summaries: Dict[UUID, GroupedConversationSummaries]) -> Dict[UUID, HealthInsightsResponse]:
+    async def _generate_health_insights(self, grouped_summaries: Dict[UUID, GroupedConversationSummaries] , prev_health_insights: Optional[List[PatientHealthInsights]] = None) -> Dict[UUID, HealthInsightsResponse]:
         """
         Generate health insights for each user based on their conversation summaries.
         
@@ -141,7 +142,8 @@ class HealthInsightGenerator:
                     ])
                     
                     # Generate health insights using the chain
-                    health_insights = self.health_insights_chain.generate_health_insights(combined_text)                                   
+                    prev_health_insight_user = next((insights for insights in prev_health_insights if insights.user_id == user_id), None)                    
+                    health_insights = self.health_insights_chain.generate_health_insights(combined_text , prev_health_insight_user)                                   
                     health_insights_by_user[user_id] = jsonable_encoder(health_insights)
                     self.logger.info(f"Successfully generated health insights for user {user_id}")
                     
@@ -176,11 +178,9 @@ class HealthInsightGenerator:
                     
                     # TODO: Add your database save logic here
                     # Example:
-                    await self.health_insights_repo.create(
+                    await self.health_insights_repo.upsert(
                         user_id=user_id,
                         health_insights=insights,
-                        month=datetime.utcnow().month,
-                        year=datetime.utcnow().year,
                        # generated_at=datetime.utcnow()
                     )
                     
@@ -196,6 +196,24 @@ class HealthInsightGenerator:
             self.logger.error(f"Error saving health insights: {str(e)}", exc_info=e)
             raise
 
+    async def _fetch_patient_health_insights(self, user_ids: list[UUID] = None) -> Optional[PatientHealthInsights]:
+        try:
+            self.logger.info(f"Fetching health insights for user {user_ids}")
+            
+            # Fetch health insights from the database
+            health_insights = await self.health_insights_repo.get_by_user_ids(user_ids)
+            
+            if health_insights:
+                self.logger.info(f"Successfully fetched health insights for user {user_ids}")
+                return health_insights
+            else:
+                self.logger.info(f"No health insights found for user {user_ids}")
+                return None
+            
+        except Exception as e:
+            self.logger.error(f"Error fetching health insights for user {user_ids}: {str(e)}", exc_info=e)
+            return None
+    
     async def generate(self, job_id: str = None) -> Dict[str, Any]:
         """
         Generate health insights.
@@ -232,11 +250,14 @@ class HealthInsightGenerator:
                 # Fetch patient visit summaries created after job start
                 self.logger.info("Fetching patient visit summaries...")
                 grouped_patient_summaries = await self._fetch_patient_visit_summaries(job_start_time)
+                
+                user_ids = list(grouped_patient_summaries.keys())
+                
+                health_insights = await self._fetch_patient_health_insights(user_ids)
     
-
                 ## Lets call LLM to generate the Health Insights by iterating the user id and summaries... 
                 self.logger.info("Generating health insights...")
-                health_insights = await self._generate_health_insights(grouped_patient_summaries)
+                health_insights = await self._generate_health_insights(grouped_patient_summaries , health_insights)
     
                 ## Lets save the health insights to the database... 
             self.logger.info("Saving health insights to the database...")

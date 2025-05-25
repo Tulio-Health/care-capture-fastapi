@@ -1,13 +1,16 @@
 from typing import Optional, List
 from uuid import UUID
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.app.common.logging import get_logger
+
 
 from ..entities.patient_health_insights import PatientHealthInsights
-
+logger = get_logger(__name__)
 class PatientHealthInsightsRepository:
     def __init__(self, db_session: AsyncSession):
         self.db_session = db_session
@@ -37,6 +40,18 @@ class PatientHealthInsightsRepository:
             result = await self.db_session.execute(
                 select(PatientHealthInsights).where(
                     PatientHealthInsights.user_id == user_id
+                )
+            )
+            return result.scalars().first()
+        except Exception as e:
+            raise e
+        
+    async def get_by_user_ids(self, user_ids: list[UUID]) -> List[PatientHealthInsights]:
+        """Get all health insights for a list of users"""
+        try:
+            result = await self.db_session.execute(
+                select(PatientHealthInsights).where(
+                    PatientHealthInsights.user_id.in_(user_ids)
                 )
             )
             return result.scalars().all()
@@ -71,3 +86,19 @@ class PatientHealthInsightsRepository:
             self.db_session.commit()
             return True
         return False
+    
+    async def upsert(self, user_id: UUID, health_insights: dict) -> Optional[PatientHealthInsights]:
+        try:
+            db_insight = await self.get_by_user_id(user_id)
+            if db_insight:
+                db_insight.insight_data = health_insights
+                db_insight.updated_at = datetime.utcnow()
+            else:
+                db_insight = PatientHealthInsights(user_id=user_id, **health_insights)
+                self.db_session.add(db_insight)
+            await self.db_session.commit()
+            await self.db_session.refresh(db_insight)
+            return db_insight
+        except Exception as e:
+            logger.error(f"Error upserting health insights: {str(e)}", exc_info=e)
+            raise e
