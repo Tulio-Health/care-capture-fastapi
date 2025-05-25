@@ -42,7 +42,7 @@ class UpcomingVisitIntentChain:
             ("system", QUERY_PROMPT),
             ("user", "Generate the query parameters for the following user question: {text}")
         ])
-        
+        # Today's date in ISO format
         today_date = date.today().isoformat()
         # Second prompt: Generate the final response based on filtered appointments
         self.response_prompt = ChatPromptTemplate.from_messages([
@@ -180,9 +180,13 @@ class UpcomingVisitIntentChain:
                         data=None
                     )]
                 )
+            
+            # Today's date in ISO format
+            today_date = date.today().isoformat()
 
             ai_content_string = await self.response_content_chain.ainvoke({
                 "text": text,
+                "today_date": today_date,
                 "conversation_history": json.dumps(chat_history, default=str),
                 "filtered_appointments": json.dumps(filtered_appointments, default=str),
                 "providers_info": json.dumps([], default=str),
