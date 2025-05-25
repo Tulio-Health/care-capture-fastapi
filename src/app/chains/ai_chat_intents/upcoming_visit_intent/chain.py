@@ -43,6 +43,7 @@ class UpcomingVisitIntentChain:
             ("user", "Generate the query parameters for the following user question: {text}")
         ])
         
+        today_date = date.today().isoformat()
         # Second prompt: Generate the final response based on filtered appointments
         self.response_prompt = ChatPromptTemplate.from_messages([
             ("system", RESPONSE_PROMPT),
@@ -184,7 +185,7 @@ class UpcomingVisitIntentChain:
                 "text": text,
                 "conversation_history": json.dumps(chat_history, default=str),
                 "filtered_appointments": json.dumps(filtered_appointments, default=str),
-                "providers_info": json.dumps([], default=str)
+                "providers_info": json.dumps([], default=str),
             }, config={"callbacks": [tracer]})
 
             return IntentResponse[None](

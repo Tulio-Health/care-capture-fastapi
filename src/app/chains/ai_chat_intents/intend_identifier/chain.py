@@ -67,7 +67,7 @@ class IntendIdentifierChain:
         
         self.chain = self.prompt | model | StrOutputParser()
 
-    def identify_intent(self, messages: Sequence[HumanMessage]) -> str:
+    def identify_intent(self, conversation_messages: Sequence[HumanMessage]) -> str:
         """
         Identifies the intent of a sequence of messages using advanced conversation analysis.
         
@@ -85,10 +85,10 @@ class IntendIdentifierChain:
         """
         try:
             # Format conversation history for better context understanding
-            formatted_messages = self._format_conversation_history(messages)
             
+            print(f"DEBUG: Formatted messages: {conversation_messages}")
             # Process through the chain
-            result = self.chain.invoke({"messages": formatted_messages})
+            result = self.chain.invoke({"messages": conversation_messages})
             
             # Clean and validate the result
             result = result.strip().lower().replace('"', '').replace("'", "")
@@ -106,6 +106,8 @@ class IntendIdentifierChain:
         except Exception as e:
             logger.error(f"Error in intent identification: {str(e)}")
             return RouterOptions.NOT_A_VALID_OPTION.value
+
+
 
     def _format_conversation_history(self, messages: Sequence[HumanMessage]) -> str:
         """
