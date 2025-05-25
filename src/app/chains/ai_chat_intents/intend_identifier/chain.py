@@ -60,14 +60,14 @@ class IntendIdentifierChain:
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", INTENT_IDENTIFIER_SYSTEM_PROMPT),
             ("human", """Conversation history:
-            {messages}
+            {messages} "Last user message: {text}"
             
             Based on this conversation, which assistant should handle the next message? If the last message is not clear, look at the conversation history to determine what the intent can be.""")
         ])
         
         self.chain = self.prompt | model | StrOutputParser()
 
-    def identify_intent(self, conversation_messages: Sequence[HumanMessage]) -> str:
+    def identify_intent(self, conversation_messages: Sequence[HumanMessage], text: str) -> str:
         """
         Identifies the intent of a sequence of messages using advanced conversation analysis.
         
@@ -88,7 +88,7 @@ class IntendIdentifierChain:
             
             print(f"DEBUG: Formatted messages: {conversation_messages}")
             # Process through the chain
-            result = self.chain.invoke({"messages": conversation_messages})
+            result = self.chain.invoke({"messages": conversation_messages, "text": text})
             
             # Clean and validate the result
             result = result.strip().lower().replace('"', '').replace("'", "")

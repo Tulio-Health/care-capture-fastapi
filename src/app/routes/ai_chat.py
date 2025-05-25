@@ -102,9 +102,7 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
         # Process the chat request
         intent_identifier = IntendIdentifierChain()
         intent_router = IntentRouter(db=db)
-        messages = [HumanMessage(content=chat_request.message)]
-        print(f"DEBUG: Messages: {conversation_messages}")
-        intent = intent_identifier.identify_intent(conversation_messages)
+        intent = intent_identifier.identify_intent(conversation_messages, chat_request.message)
         ai_response = await intent_router.route(
             intent=intent,
             text=chat_request.message,

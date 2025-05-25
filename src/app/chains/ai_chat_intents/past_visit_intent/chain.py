@@ -40,7 +40,11 @@ class PastVisitIntentChain:
         # First prompt: Extract structured query parameters
         self.query_prompt = ChatPromptTemplate.from_messages([
             ("system", QUERY_PROMPT),
-            ("user", "Generate the query parameters for the following user question: {text}")
+            ("user", "Generate the query parameters for the following user question: {text}\n"
+                      "**Conversation History** (`{conversation_history}`): Previous messages in this conversation. "
+                      "Use this intelligently to understand the natural flow of conversation. The user might reference "
+                      "previous topics, ask follow-up questions, or build upon earlier discussions. Be contextually aware "
+                      "and extract relevant information that helps clarify the current query.")
         ])
         
         # Today's date in ISO format

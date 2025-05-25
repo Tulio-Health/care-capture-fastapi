@@ -51,8 +51,13 @@ class MedicalInquiryIntentChain:
             health_insights = context.get('health_insights', [])
             
             # Format context data for prompt
-            user_profile_str = self._format_user_profile(user_profile)
-            health_insights_str = self._format_health_insights(health_insights)
+            try:
+                user_profile_str = self._format_user_profile(user_profile)
+                health_insights_str = self._format_health_insights(health_insights)
+            except Exception as e:
+                logger.error(f"Error formatting user profile or health insights: {str(e)}. Still processing the request with no context.")
+                user_profile_str = "No user profile available"
+                health_insights_str = "No health insights available"
             
             # Generate natural text response
             ai_content_string = await self.chain.ainvoke({
