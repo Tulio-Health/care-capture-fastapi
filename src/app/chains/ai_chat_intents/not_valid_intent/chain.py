@@ -46,12 +46,15 @@ class NotValidIntentChain:
             # Use 'conversation_messages' key for consistency with other chains
             chat_history = context.get('conversation_messages', [])
             
-            # Generate helpful guidance response
-            ai_content_string = await self.chain.ainvoke({
-                "text": text,
-                "user_name": user_name,
-                "conversation_history": json.dumps(chat_history, default=str)
-            }, config={"callbacks": [tracer]})
+            # Comment out AI response generation - using hardcoded string instead
+            # ai_content_string = await self.chain.ainvoke({
+            #     "text": text,
+            #     "user_name": user_name,
+            #     "conversation_history": json.dumps(chat_history, default=str)
+            # }, config={"callbacks": [tracer]})
+            
+            # Hardcoded response from the image
+            ai_content_string = "Hi, I'm Tulio Care Capture Assistant!\n\nI can assist you with past and upcoming doctor visits, provide summaries of your discussions, and give you access to important health records which were provided by your doctor during visits and captured by the Care Capture AI platform.\n\n How can I assist you today on this regard?"
             
             return IntentResponse[None](
                 intent=RouterOptions.NOT_A_VALID_OPTION.value,
@@ -65,7 +68,7 @@ class NotValidIntentChain:
         except Exception as e:
             logger.error(f"Error processing invalid option: {str(e)}")
             # Fallback to simple message if LLM fails
-            fallback_message = "Hello! I'm Tulio Care Capture Assistant. I can help you with your past visits, upcoming appointments, health insights, or medical questions. How can I assist you today?"
+            fallback_message = "Hi, I'm Tulio Care Capture Assistant!\n\nI can assist you with past and upcoming doctor visits, provide summaries of your discussions, and give you access to important health records which were provided by your doctor during visits and captured by the Care Capture AI platform.\n\n How can I assist you today on this regard?"
             return IntentResponse[None](
                 intent=RouterOptions.NOT_A_VALID_OPTION.value, 
                 responses=[IntentAiResponse(
