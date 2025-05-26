@@ -6,6 +6,7 @@ from src.app.chains.ai_chat_intents.medical_inquiry_intent.chain import MedicalI
 from src.app.chains.ai_chat_intents.health_insights_intent.chain import HealthInsightsIntentChain
 from src.app.chains.ai_chat_intents.past_visit_intent.chain import PastVisitIntentChain
 from src.app.chains.ai_chat_intents.upcoming_visit_intent.chain import UpcomingVisitIntentChain
+from src.app.chains.ai_chat_intents.not_valid_intent.chain import NotValidIntentChain
 from src.app.models.intent_identify import IntentAiResponse, IntentResponse
 
 class IntentRouter:
@@ -31,6 +32,7 @@ class IntentRouter:
         self.upcoming_visit_chain = UpcomingVisitIntentChain(db=self.db) # PostMVP - Pulls the details from the appointment visit table
         # self.manage_visit_chain = ManageVisitChain() # PostMVP - Pulls the details from the manage visit table
         self.medical_inquiry_chain = MedicalInquiryIntentChain() # MVP - Any generic medical inquiry
+        self.not_valid_intent_chain = NotValidIntentChain() # Handle invalid options with LLM guidance
 
         # self.chat_chain = MedicalChatChain() # This might not be needed , will review later 
         
@@ -82,10 +84,7 @@ class IntentRouter:
     
     async def handle_invalid_option(self, **kwargs) -> IntentResponse:
         """Handle invalid or unrecognized queries."""
-        message = "Hello! I'm Tulio Care Capture Assistant. I'm here to help you with all things health-related. You can ask me about your past visits, upcoming appointments, health insights, or any other health-related questions. How can I assist you today?"
-        # TODO: Add a more specific message related to the query. Extra LLM call to generate a more specific message. So it can guide the user to ask a valid question.
-        InvalidOptionResponse = IntentResponse[None]
-        return InvalidOptionResponse(intent=RouterOptions.NOT_A_VALID_OPTION.value, responses=[IntentAiResponse(type="text", content=message , data=None)])
+        return await self.not_valid_intent_chain.handle_intent(**kwargs)
     
     async def handle_end_conversation(self, **kwargs) -> IntentResponse:
         """Handle conversation end requests."""

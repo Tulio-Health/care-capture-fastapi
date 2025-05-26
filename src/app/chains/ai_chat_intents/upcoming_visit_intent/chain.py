@@ -16,6 +16,7 @@ from src.app.models.upcoming_visit_query import UpcomingVisitQuery
 from src.app.models.conversation_summaries import ConversationSummary as PydanticConversationSummary
 from src.app.db.objects.entities.conversation_summaries import ConversationSummaries as ORMConversationSummaries
 from src.app.core import get_settings
+from src.app.chains.ai_chat_intents.not_found_intent.chain import NoDataFoundIntentChain
 from .constants import QUERY_PROMPT, RESPONSE_PROMPT
 
 settings = get_settings()
@@ -34,6 +35,9 @@ NO_UPCOMING_VISIT_INFORMATION_AVAILABLE = "I am sorry, but I don't have any Upco
 class UpcomingVisitIntentChain:
     def __init__(self, db: AsyncSession):
         self.db = db
+        # Initialize the no data found chain
+        self.no_data_found_chain = NoDataFoundIntentChain()
+        
         # Initialize output parser for query parameters
         self.query_parser = PydanticOutputParser(pydantic_object=UpcomingVisitQuery)
         
@@ -146,9 +150,11 @@ class UpcomingVisitIntentChain:
         # If no appointment data is available
         if not appointments:
             print("No appointments found in context")
-            return IntentResponse[None](
+            return await self.no_data_found_chain.handle_intent(
+                text=text,
+                context=context,
                 intent="upcoming_visits",
-                responses=[IntentAiResponse(type="text", content=NO_UPCOMING_VISIT_INFORMATION_AVAILABLE, data=None)]
+                search_details="upcoming appointments"
             )
 
         appointment_keys = list(appointments[0].keys()) if appointments else []
@@ -172,13 +178,13 @@ class UpcomingVisitIntentChain:
 
             # Step 3: Generate final response
             if not filtered_appointments:
-                return IntentResponse[None](
+                # Create search details based on query parameters
+                search_details = self._create_search_details(query_params)
+                return await self.no_data_found_chain.handle_intent(
+                    text=text,
+                    context=context,
                     intent="upcoming_visits",
-                    responses=[IntentAiResponse(
-                        type="text", 
-                        content="I'm sorry, but I couldn't find any upcoming visits matching your criteria.",  #TODO: Add a more specific message related to the query. Extra LLM call to generate a more specific message.
-                        data=None
-                    )]
+                    search_details=search_details
                 )
             
             # Today's date in ISO format
@@ -211,3 +217,22 @@ class UpcomingVisitIntentChain:
                     data=None
                 )]
             )
+
+    def _create_search_details(self, query_params: UpcomingVisitQuery) -> str:
+        """Create a human-readable description of what was searched for"""
+        details = []
+        if query_params.provider_name:
+            details.append(f"appointments with {query_params.provider_name}")
+        if query_params.purpose:
+            details.append(f"appointments for {query_params.purpose}")
+        if query_params.location:
+            details.append(f"appointments at {query_params.location}")
+        if query_params.start_date:
+            if query_params.timeframe == 'specific_date':
+                details.append(f"appointments on {query_params.start_date}")
+            elif query_params.end_date:
+                details.append(f"appointments between {query_params.start_date} and {query_params.end_date}")
+            else:
+                details.append(f"appointments from {query_params.start_date}")
+        
+        return " ".join(details) if details else "upcoming appointments matching your criteria"
