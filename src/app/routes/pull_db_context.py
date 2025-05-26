@@ -62,7 +62,8 @@ async def cache_all_user_data(db: AsyncSession, user_id: str, conversation_id: s
                 "provider_id": str(provider.id),
                 "provider_first_name": provider.provider_first_name,
                 "provider_last_name": provider.provider_last_name,
-                "specialty": provider.pri_spec
+                "specialty": provider.pri_spec,
+                "npi": provider.npi
             }
         formatted_appt = {
             "id": str(appt.id),

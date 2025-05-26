@@ -74,8 +74,24 @@ class PastVisitIntentChain:
         filtered = appointments
         
         # Apply filters based on query parameters
-        if query.provider_id:
-            filtered = [appt for appt in filtered if appt.get('provider_id') == query.provider_id]
+        if query.npi:
+            # First find the provider name from the appointments data
+            provider_name = None
+            for appt in appointments:
+                if appt.get('npi') == query.npi:
+                    first_name = appt.get('provider_first_name', '')
+                    last_name = appt.get('provider_last_name', '')
+                    if first_name and last_name:
+                        provider_name = f"{first_name} {last_name}"
+                        break
+            
+            # If we found the provider name, filter by name to catch all appointments for this provider
+            if provider_name:
+                filtered = [appt for appt in filtered if 
+                          f"{appt.get('provider_first_name', '')} {appt.get('provider_last_name', '')}" == provider_name]
+            else:
+                # Fallback to npi filtering if no name found
+                filtered = [appt for appt in filtered if appt.get('npi') == query.npi]
         
         if query.provider_name and providers:
             # Find provider_id matching the name
