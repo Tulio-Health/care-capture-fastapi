@@ -113,6 +113,7 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
             conversation_id=conversation_id,
             user_id=user_id
         )
+        print("AI response: ", ai_response)
         return ai_response
     except Exception as e:
         print(f"Error in chat route: {str(e)}")

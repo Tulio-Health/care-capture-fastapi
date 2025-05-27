@@ -13,6 +13,7 @@ from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 import logging
+from datetime import datetime
 
 from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
 from src.app.core.langsmith_trace import LangSmithTrace
@@ -84,9 +85,22 @@ class IntendIdentifierChain:
             # Format conversation history for better context understanding
             formatted_messages = self._format_conversation_history(conversation_messages)
             
-            print(f"DEBUG: Formatted messages: {formatted_messages}")
+            # Get today's date for context
+            today_date = datetime.now().strftime("%Y-%m-%d (%A)")
+            
+            # Create prompt with today's date
+            formatted_system_prompt = INTENT_IDENTIFIER_SYSTEM_PROMPT.format(today_date=today_date)
+            prompt_with_date = ChatPromptTemplate.from_messages([
+                ("system", formatted_system_prompt),
+                ("human", "Conversation history:\n{messages}\nLast user message:\n{text}\n\nRespond ONLY with the correct intent label.")
+            ])
+            chain_with_date = prompt_with_date | model | StrOutputParser()
+            
             # Process through the chain
-            result = self.chain.invoke({"messages": formatted_messages, "text": text})
+            result = chain_with_date.invoke({
+                "messages": formatted_messages, 
+                "text": text
+            })
             
             # Log the raw intent string before processing for debugging
             logger.info(f"Raw intent result from model: '{result}'")

@@ -1,0 +1,1180 @@
+[
+  {
+    "test_number": 1,
+    "query": "Summarize all the health issues I'm dealing with.",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "You are currently dealing with the following health issues:\n\n1. **Knee Inflammation**: This condition involves swelling and irritation of the knee joint, which can cause pain and limit mobility.\n\n2. **Fever**: You have reported suffering from a fever for the past three days. This could be a sign of an underlying infection or other health issue.\n\n**Medications**: You are taking ibuprofen as directed for knee inflammation and Panadol three times a day to help manage your fever.\n\nIt's important to monitor these conditions and consult with your healthcare provider for further evaluation and treatment options."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "4fdfa710-25c0-4a3a-b417-f2004df75502",
+        "detectedIntent": "health_insights",
+        "userQuery": "Summarize all the health issues I'm dealing with.",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "You are currently dealing with the following health issues:\n\n1. **Knee Inflammation**: This condition involves swelling and irritation of the knee joint, which can cause pain and limit mobility.\n\n2. **Fever**: You have reported suffering from a fever for the past three days. This could be a sign of an underlying infection or other health issue.\n\n**Medications**: You are taking ibuprofen as directed for knee inflammation and Panadol three times a day to help manage your fever.\n\nIt's important to monitor these conditions and consult with your healthcare provider for further evaluation and treatment options.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:18:40.643Z",
+        "updatedAt": "2025-05-27T19:18:40.643Z",
+        "id": "2f9ce2dd-b0ca-42b2-b8fe-91d038aa8980"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 2,
+    "query": "What record is there about my knee being bad? What have I been told to do about it?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "You have a recorded condition of knee inflammation. However, there are no specific medications or treatment instructions listed in your health insights regarding this condition. It's important to consult with your healthcare provider for personalized advice and treatment options for your knee inflammation."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "f79b5756-5f42-424d-b754-e395904392a6",
+        "detectedIntent": "health_insights",
+        "userQuery": "What record is there about my knee being bad? What have I been told to do about it?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "You have a recorded condition of knee inflammation. However, there are no specific medications or treatment instructions listed in your health insights regarding this condition. It's important to consult with your healthcare provider for personalized advice and treatment options for your knee inflammation.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:18:45.253Z",
+        "updatedAt": "2025-05-27T19:18:45.253Z",
+        "id": "bdf8d384-aba1-411b-a925-a5f0e27fdd20"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 3,
+    "query": "Remind me which of my problems are acute versus chronic.",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Based on your health insights, you have the following conditions:\n\n1. **Knee Inflammation** - This condition can be considered chronic if it persists over time, but it can also have acute flare-ups depending on the situation.\n\n2. **Fever** - Your fever has been reported for the past three days, which classifies it as an acute condition since it is a sudden onset of symptoms that is typically short-lived.\n\nIn summary:\n- **Chronic Condition:** Knee inflammation (may have acute episodes)\n- **Acute Condition:** Fever (ongoing for three days)\n\nIf you have further questions or need clarification on these conditions, feel free to ask!"
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "adeedd46-dec6-478e-9bf8-5bc6bb741a34",
+        "detectedIntent": "health_insights",
+        "userQuery": "Remind me which of my problems are acute versus chronic.",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Based on your health insights, you have the following conditions:\n\n1. **Knee Inflammation** - This condition can be considered chronic if it persists over time, but it can also have acute flare-ups depending on the situation.\n\n2. **Fever** - Your fever has been reported for the past three days, which classifies it as an acute condition since it is a sudden onset of symptoms that is typically short-lived.\n\nIn summary:\n- **Chronic Condition:** Knee inflammation (may have acute episodes)\n- **Acute Condition:** Fever (ongoing for three days)\n\nIf you have further questions or need clarification on these conditions, feel free to ask!",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:18:47.714Z",
+        "updatedAt": "2025-05-27T19:18:47.714Z",
+        "id": "2cfc3401-7f7a-4d74-8aac-a3a145acc562"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 4,
+    "query": "Do I have anything besides that fever noted?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Yes, in addition to the fever you've been experiencing for the past three days, you also have a condition of knee inflammation noted in your health insights. It's important to monitor both conditions and how they may affect each other. \n\nFor your fever, you're taking Panadol three times a day, which can help manage your symptoms. If you have any concerns about your knee inflammation or if your fever persists, please consult your healthcare provider for further evaluation and advice."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "cf60154d-f1b1-42e3-9f85-c8bc05dc1679",
+        "detectedIntent": "health_insights",
+        "userQuery": "Do I have anything besides that fever noted?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Yes, in addition to the fever you've been experiencing for the past three days, you also have a condition of knee inflammation noted in your health insights. It's important to monitor both conditions and how they may affect each other. \n\nFor your fever, you're taking Panadol three times a day, which can help manage your symptoms. If you have any concerns about your knee inflammation or if your fever persists, please consult your healthcare provider for further evaluation and advice.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:18:51.323Z",
+        "updatedAt": "2025-05-27T19:18:51.323Z",
+        "id": "9033ef07-faf1-4c0a-b42a-f9cc8da72dff"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 5,
+    "query": "Am I still running a temperature?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "You have reported suffering from a fever for the past three days, and you are currently taking Panadol three times a day to manage it. If your fever persists or worsens, it is important to consult with your healthcare provider for further evaluation. Monitoring your temperature regularly can help you determine if you are still running a fever."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "483b5c6d-8106-4ce2-a540-ca32ba9a5da7",
+        "detectedIntent": "health_insights",
+        "userQuery": "Am I still running a temperature?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "You have reported suffering from a fever for the past three days, and you are currently taking Panadol three times a day to manage it. If your fever persists or worsens, it is important to consult with your healthcare provider for further evaluation. Monitoring your temperature regularly can help you determine if you are still running a fever.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:18:54.667Z",
+        "updatedAt": "2025-05-27T19:18:54.667Z",
+        "id": "dc1f2d13-7c0a-4003-8919-fb1ca9459f62"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 6,
+    "query": "How long have I been febrile?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "You have been experiencing fever for the past three days, as reported in your health insights."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "84ccc91c-89e2-4676-900a-12fcafcd883b",
+        "detectedIntent": "health_insights",
+        "userQuery": "How long have I been febrile?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "You have been experiencing fever for the past three days, as reported in your health insights.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:18:57.662Z",
+        "updatedAt": "2025-05-27T19:18:57.662Z",
+        "id": "6d9b837b-665f-4bf6-98fb-1929a218a682"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 7,
+    "query": "Do the notes mention pyrexia in October?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Your health insights indicate that you have been suffering from fever for the past three days, which is a condition often referred to as pyrexia. This was noted on October 30, 2023. If you have any further questions or need assistance regarding your fever or related symptoms, feel free to ask!"
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "39c69415-5e17-4027-be20-348808243920",
+        "detectedIntent": "health_insights",
+        "userQuery": "Do the notes mention pyrexia in October?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Your health insights indicate that you have been suffering from fever for the past three days, which is a condition often referred to as pyrexia. This was noted on October 30, 2023. If you have any further questions or need assistance regarding your fever or related symptoms, feel free to ask!",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:18:59.795Z",
+        "updatedAt": "2025-05-27T19:18:59.795Z",
+        "id": "d01f6572-9ac7-40c6-bb95-7484d5d0168a"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 8,
+    "query": "Any record of patellar inflammation?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Currently, your health insights indicate that you have knee inflammation, but there is no specific mention of patellar inflammation. Knee inflammation can involve various structures around the knee, including the patella (kneecap). If you have concerns about patellar inflammation specifically, it may be beneficial to consult with your healthcare provider for a more detailed assessment."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "064936de-7737-4e8a-83a5-14548056fa23",
+        "detectedIntent": "health_insights",
+        "userQuery": "Any record of patellar inflammation?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Currently, your health insights indicate that you have knee inflammation, but there is no specific mention of patellar inflammation. Knee inflammation can involve various structures around the knee, including the patella (kneecap). If you have concerns about patellar inflammation specifically, it may be beneficial to consult with your healthcare provider for a more detailed assessment.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:19:02.724Z",
+        "updatedAt": "2025-05-27T19:19:02.724Z",
+        "id": "d10f088f-556c-4667-bcaf-4ac08872c0e5"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 9,
+    "query": "What's going on with my joints lately?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "It looks like you've been experiencing knee inflammation, which can cause discomfort and affect your joint mobility. This condition may be related to various factors such as overuse, injury, or underlying health issues. It's important to monitor your symptoms and consider how they may be impacting your daily activities. Additionally, you've been taking ibuprofen as directed, which can help reduce inflammation and relieve pain. If your symptoms persist or worsen, I recommend consulting with your healthcare provider for a thorough evaluation and tailored treatment plan."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "4d01117e-b027-4452-ab73-55238b523e31",
+        "detectedIntent": "health_insights",
+        "userQuery": "What's going on with my joints lately?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "It looks like you've been experiencing knee inflammation, which can cause discomfort and affect your joint mobility. This condition may be related to various factors such as overuse, injury, or underlying health issues. It's important to monitor your symptoms and consider how they may be impacting your daily activities. Additionally, you've been taking ibuprofen as directed, which can help reduce inflammation and relieve pain. If your symptoms persist or worsen, I recommend consulting with your healthcare provider for a thorough evaluation and tailored treatment plan.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:19:06.024Z",
+        "updatedAt": "2025-05-27T19:19:06.024Z",
+        "id": "23c3a548-ea7c-46a7-a7fa-038ea39073f9"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 10,
+    "query": "Which meds am I on for the fever?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "You are currently taking Panadol three times a day for your fever. Additionally, you have ibuprofen prescribed as directed. It's important to follow the dosage instructions for both medications. If your fever persists or worsens, please consult with your healthcare provider."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "c54a06f3-73ed-473f-8dab-a80ba5da516a",
+        "detectedIntent": "health_insights",
+        "userQuery": "Which meds am I on for the fever?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "You are currently taking Panadol three times a day for your fever. Additionally, you have ibuprofen prescribed as directed. It's important to follow the dosage instructions for both medications. If your fever persists or worsens, please consult with your healthcare provider.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:19:09.646Z",
+        "updatedAt": "2025-05-27T19:19:09.646Z",
+        "id": "5e837f60-4a93-4070-8f61-d17a94d2bee2"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 11,
+    "query": "Am I supposed to keep taking Panadols?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Based on your health insights, you have been taking Panadol three times a day for the past three days to manage your fever. It's important to follow the dosage instructions provided by your healthcare provider or the medication guidelines. If your fever persists or worsens, or if you have any concerns about your symptoms, please consult with your healthcare provider for personalized advice. This information is based on your stored health insights and should not replace professional medical advice."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "3a2f1b26-1ce1-4447-a159-04fcf65aaf89",
+        "detectedIntent": "health_insights",
+        "userQuery": "Am I supposed to keep taking Panadols?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Based on your health insights, you have been taking Panadol three times a day for the past three days to manage your fever. It's important to follow the dosage instructions provided by your healthcare provider or the medication guidelines. If your fever persists or worsens, or if you have any concerns about your symptoms, please consult with your healthcare provider for personalized advice. This information is based on your stored health insights and should not replace professional medical advice.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:19:12.058Z",
+        "updatedAt": "2025-05-27T19:19:12.058Z",
+        "id": "30f9e2e6-72df-4f84-b35c-e6c97ea84f44"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 12,
+    "query": "List my anti-inflammatory drugs.",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Your current anti-inflammatory medication is **ibuprofen**, which you are taking as directed. Ibuprofen is commonly used to reduce inflammation and relieve pain. If you have any specific questions about how to use it or its effects, feel free to ask!"
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "70ee1f03-8934-45fb-9dcd-3079e5bd2856",
+        "detectedIntent": "health_insights",
+        "userQuery": "List my anti-inflammatory drugs.",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Your current anti-inflammatory medication is **ibuprofen**, which you are taking as directed. Ibuprofen is commonly used to reduce inflammation and relieve pain. If you have any specific questions about how to use it or its effects, feel free to ask!",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:19:15.186Z",
+        "updatedAt": "2025-05-27T19:19:15.186Z",
+        "id": "17490603-31e1-4adf-92d5-161bc5c61b30"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 13,
+    "query": "Any note of ibuprophen dosage?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Your health insights indicate that you are taking ibuprofen as directed, but there are no specific dosage details provided in your records. It's important to follow the instructions given by your healthcare provider or the directions on the medication packaging. If you're unsure about the dosage or have any concerns, please consult with your healthcare provider for personalized advice."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "c492f3d4-b222-462a-99fa-d71ca5f414f5",
+        "detectedIntent": "health_insights",
+        "userQuery": "Any note of ibuprophen dosage?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Your health insights indicate that you are taking ibuprofen as directed, but there are no specific dosage details provided in your records. It's important to follow the instructions given by your healthcare provider or the directions on the medication packaging. If you're unsure about the dosage or have any concerns, please consult with your healthcare provider for personalized advice.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:19:17.650Z",
+        "updatedAt": "2025-05-27T19:19:17.650Z",
+        "id": "fb60c20f-da98-41c4-9562-848d7c56e195"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 14,
+    "query": "Show my recorded symptoms for Winter 2024-25.",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "It appears that I don't have any recorded symptoms for Winter 2024-25 in your health insights. Currently, your health data includes ongoing issues with knee inflammation and a fever that you've been experiencing for the past three days, treated with Panadol. If you have specific symptoms or concerns for that time period, please consult your healthcare provider for a complete medical history or to discuss any new symptoms you may experience."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "6bf24616-23e3-4aff-8fee-6b6935256124",
+        "detectedIntent": "health_insights",
+        "userQuery": "Show my recorded symptoms for Winter 2024-25.",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "It appears that I don't have any recorded symptoms for Winter 2024-25 in your health insights. Currently, your health data includes ongoing issues with knee inflammation and a fever that you've been experiencing for the past three days, treated with Panadol. If you have specific symptoms or concerns for that time period, please consult your healthcare provider for a complete medical history or to discuss any new symptoms you may experience.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:19:20.192Z",
+        "updatedAt": "2025-05-27T19:19:20.192Z",
+        "id": "12da17a0-1d1c-442c-b3e6-1a51847052e5"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 15,
+    "query": "Is there any log of fever on 25 October 2023?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "There is no log of fever recorded on 25 October 2023. The most recent entries indicate that you have been suffering from fever for three days, starting from 30 October 2023. If you have any other questions or need further assistance, feel free to ask!"
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "a41f641b-9dc1-41e1-8cde-0ae36660cab7",
+        "detectedIntent": "health_insights",
+        "userQuery": "Is there any log of fever on 25 October 2023?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "There is no log of fever recorded on 25 October 2023. The most recent entries indicate that you have been suffering from fever for three days, starting from 30 October 2023. If you have any other questions or need further assistance, feel free to ask!",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:19:23.155Z",
+        "updatedAt": "2025-05-27T19:19:23.155Z",
+        "id": "558eda66-f6ef-4ee7-b7b9-e739b67db523"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 16,
+    "query": "Any knee flare-ups noted this spring?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Based on your stored health insights, there are no specific entries regarding knee flare-ups noted this spring. However, you do have a condition of knee inflammation. If you have experienced any flare-ups recently or have concerns about your knee health, it might be helpful to monitor any symptoms and consult with your healthcare provider for personalized advice."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "8cf0ee76-8260-497b-af19-6dda37719943",
+        "detectedIntent": "health_insights",
+        "userQuery": "Any knee flare-ups noted this spring?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Based on your stored health insights, there are no specific entries regarding knee flare-ups noted this spring. However, you do have a condition of knee inflammation. If you have experienced any flare-ups recently or have concerns about your knee health, it might be helpful to monitor any symptoms and consult with your healthcare provider for personalized advice.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:19:25.737Z",
+        "updatedAt": "2025-05-27T19:19:25.737Z",
+        "id": "f2fc5e88-1057-4b23-a860-6edbacefd187"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 17,
+    "query": "Do I have any recorded allergies?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Based on your stored health insights, there are no recorded allergies listed in your profile. If you have any concerns or suspect you might have allergies, it's important to discuss this with your healthcare provider."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "bb8c3d52-d0e0-4c11-a0bb-b9c301a468b6",
+        "detectedIntent": "health_insights",
+        "userQuery": "Do I have any recorded allergies?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Based on your stored health insights, there are no recorded allergies listed in your profile. If you have any concerns or suspect you might have allergies, it's important to discuss this with your healthcare provider.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:19:28.473Z",
+        "updatedAt": "2025-05-27T19:19:28.473Z",
+        "id": "7848069b-d10d-4115-bd06-ea9e2ccc57a9"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 18,
+    "query": "Have I had any lab tests yet?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "It appears that there are no records of any lab tests in your stored health insights. If you have undergone any tests recently, they might not be documented here. For complete medical records or to inquire about specific tests, please consult with your healthcare provider."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "2a0b7687-2bc1-412d-b178-e0475c1c2d8e",
+        "detectedIntent": "health_insights",
+        "userQuery": "Have I had any lab tests yet?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "It appears that there are no records of any lab tests in your stored health insights. If you have undergone any tests recently, they might not be documented here. For complete medical records or to inquire about specific tests, please consult with your healthcare provider.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:19:30.758Z",
+        "updatedAt": "2025-05-27T19:19:30.758Z",
+        "id": "cf1da893-85a1-41c4-82f9-aaddcc9b012a"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 19,
+    "query": "What surgeries have I undergone?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "I don't have any information about surgeries you have undergone in your health insights. If you have had any surgeries, it might be best to consult your healthcare provider for complete medical records."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "75f229da-7bf6-4f22-af52-36adbf8ad51a",
+        "detectedIntent": "not_a_valid_option",
+        "userQuery": "What surgeries have I undergone?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "I don't have any information about surgeries you have undergone in your health insights. If you have had any surgeries, it might be best to consult your healthcare provider for complete medical records.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:19:33.592Z",
+        "updatedAt": "2025-05-27T19:19:33.592Z",
+        "id": "350f20ab-7abd-4082-9716-6e441819411d"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 20,
+    "query": "Is there anything the doctor said I should watch out for?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "It looks like your recent appointments included a few key discussions that might be relevant to what you should watch out for. During your visit on May 24, you reported experiencing joint pain in your knees, which has worsened over the past few months. The examination revealed inflammation in your knees, and you were prescribed ibuprofen to help manage the pain and inflammation. \n\nAdditionally, you mentioned feeling under the weather, although you did not report any significant weakness or fatigue. It might be a good idea to monitor your symptoms closely, especially if the joint pain continues or worsens. If you experience any new symptoms or if your current symptoms do not improve with the ibuprofen, I would recommend reaching out to your healthcare provider for further guidance. \n\nIf you have any specific concerns or symptoms you'd like to discuss further, feel free to share!"
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "3532b680-d78d-4f54-a47b-ed28742fdc96",
+        "detectedIntent": "past_visits",
+        "userQuery": "Is there anything the doctor said I should watch out for?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "It looks like your recent appointments included a few key discussions that might be relevant to what you should watch out for. During your visit on May 24, you reported experiencing joint pain in your knees, which has worsened over the past few months. The examination revealed inflammation in your knees, and you were prescribed ibuprofen to help manage the pain and inflammation. \n\nAdditionally, you mentioned feeling under the weather, although you did not report any significant weakness or fatigue. It might be a good idea to monitor your symptoms closely, especially if the joint pain continues or worsens. If you experience any new symptoms or if your current symptoms do not improve with the ibuprofen, I would recommend reaching out to your healthcare provider for further guidance. \n\nIf you have any specific concerns or symptoms you'd like to discuss further, feel free to share!",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:19:36.359Z",
+        "updatedAt": "2025-05-27T19:19:36.359Z",
+        "id": "e71fe7bf-79f9-4b68-bf57-e9a5876be133"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 21,
+    "query": "Give me the quick rundown of my current health status.",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Here's a quick overview of your current health status:\n\n- **Conditions:** You are experiencing knee inflammation and have been suffering from a fever for the past three days.\n- **Medications:** You are taking ibuprofen as directed for your knee inflammation and Panadol three times a day to manage your fever.\n\nIt's important to monitor your fever, especially since it has persisted for several days. If your symptoms worsen or do not improve, consider consulting your healthcare provider for further evaluation.\n\nThis information is based on your stored health insights and should not replace professional medical advice."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "866b5250-2ccf-4a3b-8535-c499895fd9bb",
+        "detectedIntent": "health_insights",
+        "userQuery": "Give me the quick rundown of my current health status.",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Here's a quick overview of your current health status:\n\n- **Conditions:** You are experiencing knee inflammation and have been suffering from a fever for the past three days.\n- **Medications:** You are taking ibuprofen as directed for your knee inflammation and Panadol three times a day to manage your fever.\n\nIt's important to monitor your fever, especially since it has persisted for several days. If your symptoms worsen or do not improve, consider consulting your healthcare provider for further evaluation.\n\nThis information is based on your stored health insights and should not replace professional medical advice.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:19:41.803Z",
+        "updatedAt": "2025-05-27T19:19:41.803Z",
+        "id": "58c91895-8148-441e-b647-8e7d94b94d78"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 22,
+    "query": "…and what about that thing with my knee again?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "You have a condition of knee inflammation noted in your health insights. Knee inflammation can be caused by various factors, including injury, arthritis, or overuse. It's important to manage this condition to prevent further discomfort or complications. \n\nIf you're experiencing pain or swelling, consider resting the knee, applying ice, and taking anti-inflammatory medications like ibuprofen, as directed. If the inflammation persists or worsens, it would be wise to consult with your healthcare provider for a thorough evaluation and tailored treatment plan."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "3ff2bcd1-4793-4a2e-8890-c5b9347512b6",
+        "detectedIntent": "health_insights",
+        "userQuery": "…and what about that thing with my knee again?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "You have a condition of knee inflammation noted in your health insights. Knee inflammation can be caused by various factors, including injury, arthritis, or overuse. It's important to manage this condition to prevent further discomfort or complications. \n\nIf you're experiencing pain or swelling, consider resting the knee, applying ice, and taking anti-inflammatory medications like ibuprofen, as directed. If the inflammation persists or worsens, it would be wise to consult with your healthcare provider for a thorough evaluation and tailored treatment plan.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:19:45.847Z",
+        "updatedAt": "2025-05-27T19:19:45.847Z",
+        "id": "8b9bba07-0092-4780-97ff-e16ff592aa53"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 23,
+    "query": "Okay, besides fever, what else do I have?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "In addition to your fever, you also have knee inflammation. It's important to monitor both conditions and how they may affect each other. If you have any specific concerns about your knee inflammation or how to manage it alongside your fever, feel free to ask!"
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "3d48d008-6959-4242-9871-6d04365767a3",
+        "detectedIntent": "health_insights",
+        "userQuery": "Okay, besides fever, what else do I have?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "In addition to your fever, you also have knee inflammation. It's important to monitor both conditions and how they may affect each other. If you have any specific concerns about your knee inflammation or how to manage it alongside your fever, feel free to ask!",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:19:49.170Z",
+        "updatedAt": "2025-05-27T19:19:49.170Z",
+        "id": "3543ed7a-8699-4ab4-a876-2789e99abb85"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 24,
+    "query": "What does my chart say about that knee swelling last month?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Your health insights indicate that you have a condition of knee inflammation, but there are no specific entries detailing the swelling from last month. It's important to monitor any swelling or inflammation in your knee, as it can be indicative of underlying issues. If you experienced significant swelling, it may be beneficial to consult with your healthcare provider for a thorough evaluation and management plan."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "c886d80b-2145-43c2-93bb-128ac5424ce8",
+        "detectedIntent": "health_insights",
+        "userQuery": "What does my chart say about that knee swelling last month?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Your health insights indicate that you have a condition of knee inflammation, but there are no specific entries detailing the swelling from last month. It's important to monitor any swelling or inflammation in your knee, as it can be indicative of underlying issues. If you experienced significant swelling, it may be beneficial to consult with your healthcare provider for a thorough evaluation and management plan.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:19:52.129Z",
+        "updatedAt": "2025-05-27T19:19:52.129Z",
+        "id": "b5f893d7-c985-456a-9825-250dc19a1f53"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 25,
+    "query": "Could you recap any musculoskeletal issues on file?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Currently, the only musculoskeletal issue on file is knee inflammation. This condition can cause pain, swelling, and stiffness in the knee joint. It's important to manage this condition appropriately to prevent further complications. If you have any specific symptoms or concerns regarding your knee inflammation, please consult with your healthcare provider for tailored advice and treatment options."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "08d78745-a883-4849-a201-be9539a1eb0d",
+        "detectedIntent": "health_insights",
+        "userQuery": "Could you recap any musculoskeletal issues on file?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Currently, the only musculoskeletal issue on file is knee inflammation. This condition can cause pain, swelling, and stiffness in the knee joint. It's important to manage this condition appropriately to prevent further complications. If you have any specific symptoms or concerns regarding your knee inflammation, please consult with your healthcare provider for tailored advice and treatment options.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:19:55.407Z",
+        "updatedAt": "2025-05-27T19:19:55.407Z",
+        "id": "43c1b420-8a2e-4e76-a921-05ba875b6b8b"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 26,
+    "query": "Remind me what medication regimen I'm currently following.",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Currently, you are following a medication regimen that includes:\n- **Ibuprofen**: Take as directed.\n- **Panadol**: Take three times a day.\n\nThese medications are being used to manage your knee inflammation and fever, which you've been experiencing for the past three days."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "44dcaa89-fd97-40ef-9ae6-dd051ed1723d",
+        "detectedIntent": "health_insights",
+        "userQuery": "Remind me what medication regimen I'm currently following.",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Currently, you are following a medication regimen that includes:\n- **Ibuprofen**: Take as directed.\n- **Panadol**: Take three times a day.\n\nThese medications are being used to manage your knee inflammation and fever, which you've been experiencing for the past three days.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:19:58.345Z",
+        "updatedAt": "2025-05-27T19:19:58.345Z",
+        "id": "ea31663a-2dd5-4c7f-b95d-d5b9e9a87002"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 27,
+    "query": "Did the notes mention my fever breaking after Panadol?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Hi Test User! I couldn't find any specific notes mentioning your fever breaking after taking Panadol in your past visits. It’s possible that the details weren't recorded or might be in a different format. \n\nIf you're looking for information about your fever history, you might want to check with your healthcare provider directly or see if there are any summaries of your past visits available. Is there anything else you’d like to know about your health records or any other questions I can help with?"
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "43cf30d8-b8f7-44c2-bbee-29d1ce970564",
+        "detectedIntent": "past_visits",
+        "userQuery": "Did the notes mention my fever breaking after Panadol?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Hi Test User! I couldn't find any specific notes mentioning your fever breaking after taking Panadol in your past visits. It’s possible that the details weren't recorded or might be in a different format. \n\nIf you're looking for information about your fever history, you might want to check with your healthcare provider directly or see if there are any summaries of your past visits available. Is there anything else you’d like to know about your health records or any other questions I can help with?",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:20:01.064Z",
+        "updatedAt": "2025-05-27T19:20:01.064Z",
+        "id": "65920bcc-01e1-47d8-baac-8040a364e0ed"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 28,
+    "query": "Am I on any OTC anti-pyretics besides Panadol?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Based on your health insights, you are currently taking Panadol (paracetamol) three times a day for your fever. You also have ibuprofen listed as a medication, which is another over-the-counter (OTC) anti-pyretic (fever reducer). Therefore, you are on both Panadol and ibuprofen as your OTC anti-pyretics."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "1a9c713f-25ad-4452-9430-d2ee8c2c5b5c",
+        "detectedIntent": "health_insights",
+        "userQuery": "Am I on any OTC anti-pyretics besides Panadol?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Based on your health insights, you are currently taking Panadol (paracetamol) three times a day for your fever. You also have ibuprofen listed as a medication, which is another over-the-counter (OTC) anti-pyretic (fever reducer). Therefore, you are on both Panadol and ibuprofen as your OTC anti-pyretics.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:20:04.911Z",
+        "updatedAt": "2025-05-27T19:20:04.911Z",
+        "id": "275aa415-4756-4fc6-be4d-7420ce7abaf5"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 29,
+    "query": "Is ibuprofen listed as 'take when needed' or on a schedule?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Ibuprofen is listed as 'as directed' in your health insights. This typically means you should take it when needed for pain or inflammation, rather than on a strict schedule. However, it's important to follow the specific instructions provided by your healthcare provider or the medication label."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "29991372-2d51-4f1a-8aef-172c58b75097",
+        "detectedIntent": "health_insights",
+        "userQuery": "Is ibuprofen listed as 'take when needed' or on a schedule?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Ibuprofen is listed as 'as directed' in your health insights. This typically means you should take it when needed for pain or inflammation, rather than on a strict schedule. However, it's important to follow the specific instructions provided by your healthcare provider or the medication label.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:20:09.434Z",
+        "updatedAt": "2025-05-27T19:20:09.434Z",
+        "id": "1c7d8aa7-fe3c-4704-b583-52bc70be772b"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 30,
+    "query": "Do my records show how many milligrams of ibu I should take each time?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Your records indicate that you are taking ibuprofen as directed, but they do not specify the exact dosage in milligrams. It's important to follow the instructions provided by your healthcare provider or the medication packaging for the correct dosage. If you are unsure, please consult with your healthcare provider for clarification on how much ibuprofen you should take each time."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "26eff49c-006b-43e8-9e21-697a5f470144",
+        "detectedIntent": "health_insights",
+        "userQuery": "Do my records show how many milligrams of ibu I should take each time?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Your records indicate that you are taking ibuprofen as directed, but they do not specify the exact dosage in milligrams. It's important to follow the instructions provided by your healthcare provider or the medication packaging for the correct dosage. If you are unsure, please consult with your healthcare provider for clarification on how much ibuprofen you should take each time.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:20:12.580Z",
+        "updatedAt": "2025-05-27T19:20:12.580Z",
+        "id": "d6c65683-cf61-4b96-a1c6-4334c82ec898"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 31,
+    "query": "Was the knee inflammation marked acute or chronic in my records?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Your health insights do not specify whether the knee inflammation is marked as acute or chronic. It simply indicates that you have knee inflammation as a condition. If you need more detailed information regarding the nature of your knee inflammation, I recommend consulting with your healthcare provider for a thorough evaluation."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "b9de02a0-2831-4240-a5f0-fbeebee1630f",
+        "detectedIntent": "health_insights",
+        "userQuery": "Was the knee inflammation marked acute or chronic in my records?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Your health insights do not specify whether the knee inflammation is marked as acute or chronic. It simply indicates that you have knee inflammation as a condition. If you need more detailed information regarding the nature of your knee inflammation, I recommend consulting with your healthcare provider for a thorough evaluation.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:20:15.595Z",
+        "updatedAt": "2025-05-27T19:20:15.595Z",
+        "id": "5a5e0e8f-acb2-4e25-84f5-c3552462fb75"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 32,
+    "query": "Do I have any imaging results or tests ordered for my knee?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Based on your stored health insights, there are no specific entries regarding imaging results or tests ordered for your knee inflammation. If you have had any imaging done or tests ordered, it may not be reflected in the current data. For complete medical records or to check on any imaging results, I recommend consulting with your healthcare provider."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "1d81b18d-d204-4e8a-9a2e-f781c75b4001",
+        "detectedIntent": "health_insights",
+        "userQuery": "Do I have any imaging results or tests ordered for my knee?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Based on your stored health insights, there are no specific entries regarding imaging results or tests ordered for your knee inflammation. If you have had any imaging done or tests ordered, it may not be reflected in the current data. For complete medical records or to check on any imaging results, I recommend consulting with your healthcare provider.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:20:18.611Z",
+        "updatedAt": "2025-05-27T19:20:18.611Z",
+        "id": "3ea340b2-2171-446a-8e6c-6992aa4b64c0"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 33,
+    "query": "When did I last record a normal temperature?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "I don't have specific records of your normal temperature readings. However, I can see that you've been experiencing a fever for the past three days, which suggests that your temperature has been elevated during this time. If you have recorded normal temperature readings elsewhere, please check those records. For any concerns about your fever, it's best to consult with your healthcare provider."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "db0cb29d-3bc9-4d62-8cc3-072b03001989",
+        "detectedIntent": "health_insights",
+        "userQuery": "When did I last record a normal temperature?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "I don't have specific records of your normal temperature readings. However, I can see that you've been experiencing a fever for the past three days, which suggests that your temperature has been elevated during this time. If you have recorded normal temperature readings elsewhere, please check those records. For any concerns about your fever, it's best to consult with your healthcare provider.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:20:21.456Z",
+        "updatedAt": "2025-05-27T19:20:21.456Z",
+        "id": "1d7e9980-904c-4403-b651-c765316d20d5"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 34,
+    "query": "Does it indicate if I've had chills along with the fever?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Your health insights do not specifically mention experiencing chills along with your fever. You have reported suffering from fever for the past three days and are taking Panadol three times a day. If you have experienced chills or any other symptoms, it would be important to discuss these with your healthcare provider for a comprehensive evaluation."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "25a73dec-5da9-4b81-b590-b305e341f877",
+        "detectedIntent": "health_insights",
+        "userQuery": "Does it indicate if I've had chills along with the fever?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Your health insights do not specifically mention experiencing chills along with your fever. You have reported suffering from fever for the past three days and are taking Panadol three times a day. If you have experienced chills or any other symptoms, it would be important to discuss these with your healthcare provider for a comprehensive evaluation.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:20:24.358Z",
+        "updatedAt": "2025-05-27T19:20:24.358Z",
+        "id": "0e91ffd6-dfeb-409a-9962-695411647c91"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 35,
+    "query": "Show any notes that link my joint pain and fever together.",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Currently, your health insights indicate that you have knee inflammation and have been suffering from a fever for the past three days. However, there are no specific notes linking your joint pain (knee inflammation) directly with the fever in your stored health data. \n\nIt's important to note that fever can sometimes be associated with inflammatory conditions, but without further details or medical evaluation, it's difficult to establish a direct connection. \n\nIf you're experiencing significant discomfort or if the fever persists, I recommend consulting with your healthcare provider for a thorough assessment and appropriate management."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "99b5378e-7eed-4369-a0b3-7e572bf959e6",
+        "detectedIntent": "health_insights",
+        "userQuery": "Show any notes that link my joint pain and fever together.",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Currently, your health insights indicate that you have knee inflammation and have been suffering from a fever for the past three days. However, there are no specific notes linking your joint pain (knee inflammation) directly with the fever in your stored health data. \n\nIt's important to note that fever can sometimes be associated with inflammatory conditions, but without further details or medical evaluation, it's difficult to establish a direct connection. \n\nIf you're experiencing significant discomfort or if the fever persists, I recommend consulting with your healthcare provider for a thorough assessment and appropriate management.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:20:27.388Z",
+        "updatedAt": "2025-05-27T19:20:27.388Z",
+        "id": "5d443e70-2649-4024-b49c-2bc89e62c034"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 36,
+    "query": "Any mention of swelling in my other joints?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Based on your stored health insights, there is no mention of swelling in any of your other joints. The only condition noted is knee inflammation. If you have concerns about swelling in other joints, it may be helpful to consult with your healthcare provider for a thorough evaluation."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "85beeb7f-c186-4cf6-90c4-df27dc4db111",
+        "detectedIntent": "health_insights",
+        "userQuery": "Any mention of swelling in my other joints?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Based on your stored health insights, there is no mention of swelling in any of your other joints. The only condition noted is knee inflammation. If you have concerns about swelling in other joints, it may be helpful to consult with your healthcare provider for a thorough evaluation.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:20:30.765Z",
+        "updatedAt": "2025-05-27T19:20:30.765Z",
+        "id": "5fea4433-8ff1-4426-b2d7-c1a5a9e8cd1f"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 37,
+    "query": "Am I cleared for light exercise with this knee issue?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Given your condition of knee inflammation, it's important to approach exercise with caution. Light exercise might be beneficial, but it should be tailored to avoid aggravating your knee. Activities like gentle stretching or low-impact exercises may be suitable, but you should listen to your body and stop if you experience pain. It's always best to consult with your healthcare provider for personalized advice regarding exercise with your specific condition."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "f1945e18-4dc4-41a7-b508-dbedf2d01886",
+        "detectedIntent": "health_insights",
+        "userQuery": "Am I cleared for light exercise with this knee issue?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Given your condition of knee inflammation, it's important to approach exercise with caution. Light exercise might be beneficial, but it should be tailored to avoid aggravating your knee. Activities like gentle stretching or low-impact exercises may be suitable, but you should listen to your body and stop if you experience pain. It's always best to consult with your healthcare provider for personalized advice regarding exercise with your specific condition.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:20:33.466Z",
+        "updatedAt": "2025-05-27T19:20:33.466Z",
+        "id": "7b4df832-6a4f-40ad-88b8-a50b71581656"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 38,
+    "query": "Which started first according to my notes, the fever or knee pain?",
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Based on your health insights, you have reported suffering from fever for the past three days. However, there is no specific date mentioned for the onset of your knee inflammation. Therefore, I cannot determine which condition started first based on the available information. If you have more details about when your knee pain began, I can help you further."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "7dc7ba81-f8be-46dd-8683-ad8cdaabaa78",
+        "detectedIntent": "health_insights",
+        "userQuery": "Which started first according to my notes, the fever or knee pain?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Based on your health insights, you have reported suffering from fever for the past three days. However, there is no specific date mentioned for the onset of your knee inflammation. Therefore, I cannot determine which condition started first based on the available information. If you have more details about when your knee pain began, I can help you further.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T19:20:36.941Z",
+        "updatedAt": "2025-05-27T19:20:36.941Z",
+        "id": "54593828-5873-458e-a67d-6793aa14b340"
+      },
+      "error": null
+    }
+  }
+]

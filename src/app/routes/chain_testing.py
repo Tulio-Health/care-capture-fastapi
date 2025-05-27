@@ -45,11 +45,11 @@ def run_past_visits_tests():
     test_results = []
     
     for idx, test in enumerate(TEST_CASES, 1):
-        print(f"\n[Past Visits Test {idx}] {test['userQuery']}")
-        response = requests.post(ENDPOINT, json=test)
-        print(f"Response: {response.status_code}")
-        
         try:
+            print(f"\n[Past Visits Test {idx}] {test['userQuery']}")
+            response = requests.post(ENDPOINT, json=test)
+            print(f"Response: {response.status_code}")
+            
             resp_json = response.json()
             
             # Extract AI responses
@@ -81,7 +81,6 @@ def run_past_visits_tests():
             }
             test_results.append(test_result)
         
-        time.sleep(15)  # Optional delay between requests
 
     # Save results to JSON file
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -104,14 +103,14 @@ def run_health_insights_tests():
     HEALTH_INSIGHTS_TEST_CASES = [
         # --- general symptom / condition summaries ---
         {"userQuery": "Summarize all the health issues I'm dealing with.", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
-        {"userQuery": "What did I mention was wrong with my knee again?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
-        {"userQuery": "Remind me which problems are acute versus chronic.", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "What record is there about my knee being bad? What have I been told to do about it?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Remind me which of my problems are acute versus chronic.", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
         {"userQuery": "Do I have anything besides that fever noted?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
 
         # --- fever phrasing variants ---
         {"userQuery": "Am I still running a temperature?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
         {"userQuery": "How long have I been febrile?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
-        {"userQuery": "Did the notes mention pyrexia last October?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Do the notes mention pyrexia in October?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
 
         # --- knee-related (catch synonyms & body part) ---
         {"userQuery": "Any record of patellar inflammation?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
@@ -125,7 +124,7 @@ def run_health_insights_tests():
 
         # --- time-bounded queries ---
         {"userQuery": "Show my recorded symptoms for Winter 2024-25.", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
-        {"userQuery": "Did I log a fever on 25 October 2023?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Is there any log of fever on 25 October 2023?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
         {"userQuery": "Any knee flare-ups noted this spring?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
 
         # --- negative / absence checks ---
@@ -134,12 +133,37 @@ def run_health_insights_tests():
         {"userQuery": "What surgeries have I undergone?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},  # surgeriesAndProcedures empty
 
         # --- vague / conversational ---
-        {"userQuery": "Is there anything the doctor said I should watch out for?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
         {"userQuery": "Give me the quick rundown of my current health status.", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
 
         # --- stress test with pronouns & ellipsis ---
         {"userQuery": "…and what about that thing with my knee again?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
-        {"userQuery": "Okay, besides fever, what else?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Okay, besides fever, what else do I have?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+    
+        {"userQuery": "What does my chart say about that knee swelling last month?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Could you recap any musculoskeletal issues on file?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+
+        # medication regimen & dosage subtleties
+        {"userQuery": "Remind me what medication regimen I'm currently following.", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Do the notes mention my fever breaking after Panadol?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Am I on any OTC anti-pyretics besides Panadol?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Is ibuprofen listed as 'take when needed' or on a schedule?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Do my records show how many milligrams of ibu I should take each time?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+
+        # condition classification & missing data checks
+        {"userQuery": "Was the knee inflammation marked acute or chronic in my records?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Do I have any imaging results or tests ordered for my knee?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+
+        # fever symptom details
+        {"userQuery": "When did I last record a normal temperature?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Does it indicate if I've had chills along with the fever?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+
+        # combined-symptom exploration
+        {"userQuery": "Show any notes that link my joint pain and fever together.", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Any mention of swelling in my other joints?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+
+        # activity clearance & chronology
+        {"userQuery": "Am I cleared for light exercise with this knee issue?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Which started first according to my notes, the fever or knee pain?", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
     ]
     
     ENDPOINT = "http://localhost:3000/chatbot-messages"
@@ -148,11 +172,11 @@ def run_health_insights_tests():
     test_results = []
     
     for idx, test in enumerate(HEALTH_INSIGHTS_TEST_CASES, 1):
-        print(f"\n[Health Insights Test {idx}] {test['userQuery']}")
-        response = requests.post(ENDPOINT, json=test)
-        print(f"Response: {response.status_code}")
-        
         try:
+            print(f"\n[Health Insights Test {idx}] {test['userQuery']}")
+            response = requests.post(ENDPOINT, json=test)
+            print(f"Response: {response.status_code}")
+        
             resp_json = response.json()
             
             # Extract AI responses
@@ -175,7 +199,8 @@ def run_health_insights_tests():
                 "full_response": resp_json
             }
             test_results.append(test_result)
-            print("Test result: ", test_result['ai_responses'])
+            print("Identified intent: ", identified_intent)
+            print("AI response: ", test_result['ai_responses'])
             
         except Exception as e:
             print(f"Error processing response: {e}")
@@ -189,7 +214,6 @@ def run_health_insights_tests():
             }
             test_results.append(test_result)
         
-        time.sleep(15)  # Optional delay between requests
 
     # Save results to JSON file
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -226,8 +250,8 @@ def run_intent_regression_tests():
         {"userQuery": "Do I keep taking ibuprofen or switch to something else?", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
         
         # Medical terms with typos/synonyms that should still work
-        {"userQuery": "Any record of patellar inflammation?", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
-        {"userQuery": "Did the notes mention pyrexia last October?", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Any record of inflammations?", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Do the notes mention anxiety in the year 2024?", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
         
         # General medical inquiry (should still work)
         {"userQuery": "What are the side-effects of ibuprofen?", "expected_intent": "not_a_valid_option", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
@@ -242,6 +266,24 @@ def run_intent_regression_tests():
         
         # Upcoming visits
         {"userQuery": "When is my next appointment?", "expected_intent": "upcoming_visits", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        # -- Past / Upcoming visits – Dr. David Levy (userId: 58ae6e54-…) --
+        {"userQuery": "Hey, did I ever swing by to see Dr Levy during that freak snow-storm on 14 Feb ’24?", "expected_intent": "past_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Did Dr. David squeeze me in late on New Year’s Eve 2024 for a quick BP check-up?", "expected_intent": "past_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "🤔 Did I ever no-show a 7 a.m. slot with Dr D. Levy?", "expected_intent": "past_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "When exactly is that follow-up with Levy that got bumped twice? It lives somewhere mid-June, right?", "expected_intent": "upcoming_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Got anything in the books with ‘Levee’ next fortnight?", "expected_intent": "upcoming_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Show all my cardio check-ins—but skip anything not at Main Campus.", "expected_intent": "past_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Did Schwartz stitch me up after that skateboard spill last December, or was that someone else?", "expected_intent": "past_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Are there *future* appointments tagged “annual review” that clash with public holidays?", "expected_intent": "upcoming_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+
+        {"userQuery": "Remind me what’s up with my “wonky knee” — any legit diagnosis in the notes?", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Can you see if I logged “elevated temps” between the summer and winter solstice last year?", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "List every med I’m supposed to pop at bedtime — typos welcome 😅", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Can you provide details on any C-reactive protein (CRP) labs that were ordered or are pending over the past 18 months?", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Did any note ever flag a “drug fever” even though my temp was normal?", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Check if my left-knee flare-up matched the marathon weekend on 21 Apr 2024.", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Any mention of me upping ibuprofen to 600 mg tabs instead of 400s?", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "¿Cuándo fue la última vez que vi al Dr. Levy para un examen físico?", "expected_intent": "past_visits", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
     ]
     
     ENDPOINT = "http://localhost:3000/chatbot-messages"
@@ -251,16 +293,16 @@ def run_intent_regression_tests():
     passed_tests = 0
     failed_tests = 0
     
-    print("=== INTENT ROUTING REGRESSION TESTS ===")
+    print("=== INTENT ROUTING TESTS ===")
     
     for idx, test in enumerate(REGRESSION_TEST_CASES, 1):
-        print(f"\n[Regression Test {idx}] {test['userQuery']}")
-        print(f"Expected intent: {test['expected_intent']}")
-        
-        response = requests.post(ENDPOINT, json=test)
-        print(f"Response: {response.status_code}")
-        
         try:
+            print(f"\n[Regression Test {idx}] {test['userQuery']}")
+            print(f"Expected intent: {test['expected_intent']}")
+            
+            response = requests.post(ENDPOINT, json=test)
+            print(f"Response: {response.status_code}")
+        
             resp_json = response.json()
             
             # Extract AI responses like other tests
@@ -313,7 +355,6 @@ def run_intent_regression_tests():
             }
             test_results.append(test_result)
         
-        time.sleep(15)  # Same delay as other tests
 
     # Save results to JSON file
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -326,7 +367,7 @@ def run_intent_regression_tests():
     total_tests = len(test_results)
     pass_rate = (passed_tests / total_tests * 100) if total_tests > 0 else 0
     
-    print(f"\n=== REGRESSION TEST SUMMARY ===")
+    print(f"\n=== INTENT ROUTING TEST SUMMARY ===")
     print(f"Total tests run: {total_tests}")
     print(f"Passed: {passed_tests} ✅")
     print(f"Failed: {failed_tests} ❌")
