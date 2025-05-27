@@ -59,10 +59,7 @@ class IntendIdentifierChain:
         """
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", INTENT_IDENTIFIER_SYSTEM_PROMPT),
-            ("human", """Conversation history:
-            {messages} "Last user message: {text}"
-            
-            Based on this conversation, which assistant should handle the next message? If the last message is not clear, look at the conversation history to determine what the intent can be.""")
+            ("human", "Conversation history:\n{messages}\nLast user message:\n{text}\n\nRespond ONLY with the correct intent label.")
         ])
         
         self.chain = self.prompt | model | StrOutputParser()
@@ -85,10 +82,15 @@ class IntendIdentifierChain:
         """
         try:
             # Format conversation history for better context understanding
+            formatted_messages = self._format_conversation_history(conversation_messages)
             
-            print(f"DEBUG: Formatted messages: {conversation_messages}")
+            print(f"DEBUG: Formatted messages: {formatted_messages}")
             # Process through the chain
-            result = self.chain.invoke({"messages": conversation_messages, "text": text})
+            result = self.chain.invoke({"messages": formatted_messages, "text": text})
+            
+            # Log the raw intent string before processing for debugging
+            logger.info(f"Raw intent result from model: '{result}'")
+            print(f"DEBUG: Raw intent result: '{result}'")
             
             # Clean and validate the result
             result = result.strip().lower().replace('"', '').replace("'", "")
@@ -107,11 +109,9 @@ class IntendIdentifierChain:
             logger.error(f"Error in intent identification: {str(e)}")
             return RouterOptions.NOT_A_VALID_OPTION.value
 
-
-
     def _format_conversation_history(self, messages: Sequence[HumanMessage]) -> str:
         """
-        Formats conversation history for optimal context analysis.
+        Formats conversation history for optimal context analysis with concise bullet list.
         
         Args:
             messages: Sequence of HumanMessage objects
@@ -124,26 +124,17 @@ class IntendIdentifierChain:
         
         formatted_lines = []
         
-        # Add conversation context header
-        formatted_lines.append("=== CONVERSATION CONTEXT ===")
-        
-        # Format each message with clear attribution and numbering
+        # Format each message as a concise bullet point
         for i, message in enumerate(messages, 1):
             content = message.content.strip()
             if content:
                 # Determine if this is likely a user message or AI response
                 if self._is_likely_ai_response(content):
-                    formatted_lines.append(f"[{i}] AI Assistant: {content}")
+                    formatted_lines.append(f"• AI: {content}")
                 else:
-                    formatted_lines.append(f"[{i}] User: {content}")
+                    formatted_lines.append(f"• User: {content}")
         
-        # Add analysis focus
-        formatted_lines.append("\n=== FOCUS ON LATEST MESSAGE ===")
-        if messages:
-            latest_message = messages[-1].content.strip()
-            formatted_lines.append(f"Latest User Message: \"{latest_message}\"")
-        
-        return "\n".join(formatted_lines)
+        return "\n".join(formatted_lines) if formatted_lines else "No conversation history available."
 
     def _is_likely_ai_response(self, content: str) -> bool:
         """

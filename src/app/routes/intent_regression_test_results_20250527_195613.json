@@ -1,0 +1,492 @@
+[
+  {
+    "test_number": 1,
+    "query": "Which meds am I on for the fever?",
+    "expected_intent": "health_insights",
+    "identified_intent": "health_insights",
+    "is_correct": true,
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "You are currently taking Panadol three times a day for your fever. Additionally, you have been advised to take ibuprofen as directed. It's important to follow the dosage instructions for both medications."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "0ddc3461-f2c8-4c73-a09c-cc6ffd491ca8",
+        "detectedIntent": "health_insights",
+        "userQuery": "Which meds am I on for the fever?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "You are currently taking Panadol three times a day for your fever. Additionally, you have been advised to take ibuprofen as directed. It's important to follow the dosage instructions for both medications.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "expected_intent": "health_insights",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T17:51:45.228Z",
+        "updatedAt": "2025-05-27T17:51:45.228Z",
+        "id": "cc33d081-3f36-4f8d-9466-862485c6ddf9"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 2,
+    "query": "List my anti-inflammatory drugs.",
+    "expected_intent": "health_insights",
+    "identified_intent": "health_insights",
+    "is_correct": true,
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Based on your health insights, the anti-inflammatory drug you are currently taking is ibuprofen, which you are using as directed. Ibuprofen is commonly used to reduce inflammation and relieve pain. If you have any questions about its use or effects, feel free to ask!"
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "fc75181c-b034-425e-bea9-7858035b5f0c",
+        "detectedIntent": "health_insights",
+        "userQuery": "List my anti-inflammatory drugs.",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Based on your health insights, the anti-inflammatory drug you are currently taking is ibuprofen, which you are using as directed. Ibuprofen is commonly used to reduce inflammation and relieve pain. If you have any questions about its use or effects, feel free to ask!",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "expected_intent": "health_insights",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T17:52:03.713Z",
+        "updatedAt": "2025-05-27T17:52:03.713Z",
+        "id": "76b57b75-6a03-4251-9d4c-28b8742da93e"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 3,
+    "query": "Any note of ibuprophen dosage?",
+    "expected_intent": "health_insights",
+    "identified_intent": "health_insights",
+    "is_correct": true,
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Your health insights indicate that you are taking ibuprofen as directed, but there are no specific dosage details provided in your records. It's important to follow the instructions given by your healthcare provider or the medication packaging for the correct dosage. If you have any questions about your dosage or if you need to adjust it, please consult with your healthcare provider."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "1a508496-63bd-44cd-b1cd-0b4d0ce2532c",
+        "detectedIntent": "health_insights",
+        "userQuery": "Any note of ibuprophen dosage?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Your health insights indicate that you are taking ibuprofen as directed, but there are no specific dosage details provided in your records. It's important to follow the instructions given by your healthcare provider or the medication packaging for the correct dosage. If you have any questions about your dosage or if you need to adjust it, please consult with your healthcare provider.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "expected_intent": "health_insights",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T17:52:22.849Z",
+        "updatedAt": "2025-05-27T17:52:22.849Z",
+        "id": "4e39127f-5dc3-4527-b1ef-f46bc77d8be8"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 4,
+    "query": "Am I supposed to keep taking Panadols?",
+    "expected_intent": "health_insights",
+    "identified_intent": "health_insights",
+    "is_correct": true,
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Based on your health insights, you have been taking Panadol three times a day for the past three days to manage your fever. It's important to follow the dosage instructions provided by your healthcare provider or the medication packaging. If your fever persists or worsens, or if you have any concerns about your symptoms or medication, please consult with your healthcare provider for personalized advice. \n\nThis information is based on your stored health insights and should not replace professional medical advice. If you have urgent health concerns, please seek immediate medical attention."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "ac0257be-699f-47bf-b8b6-88bad5f1678b",
+        "detectedIntent": "health_insights",
+        "userQuery": "Am I supposed to keep taking Panadols?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Based on your health insights, you have been taking Panadol three times a day for the past three days to manage your fever. It's important to follow the dosage instructions provided by your healthcare provider or the medication packaging. If your fever persists or worsens, or if you have any concerns about your symptoms or medication, please consult with your healthcare provider for personalized advice. \n\nThis information is based on your stored health insights and should not replace professional medical advice. If you have urgent health concerns, please seek immediate medical attention.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "expected_intent": "health_insights",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T17:52:41.555Z",
+        "updatedAt": "2025-05-27T17:52:41.555Z",
+        "id": "54110669-f490-4627-be10-096a233a25b9"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 5,
+    "query": "Which medications am I currently taking for my fever?",
+    "expected_intent": "health_insights",
+    "identified_intent": "health_insights",
+    "is_correct": true,
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "You are currently taking Panadol three times a day for your fever. Additionally, you have also been prescribed ibuprofen as directed. It's important to follow the dosage instructions for both medications."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "ab2b2213-c273-47a0-8836-46b2c3a60413",
+        "detectedIntent": "health_insights",
+        "userQuery": "Which medications am I currently taking for my fever?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "You are currently taking Panadol three times a day for your fever. Additionally, you have also been prescribed ibuprofen as directed. It's important to follow the dosage instructions for both medications.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "expected_intent": "health_insights",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T17:53:01.895Z",
+        "updatedAt": "2025-05-27T17:53:01.895Z",
+        "id": "143a755f-3950-465f-9e29-443b563d0824"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 6,
+    "query": "Do I keep taking ibuprofen or switch to something else?",
+    "expected_intent": "health_insights",
+    "identified_intent": "health_insights",
+    "is_correct": true,
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Based on your health insights, you are currently taking ibuprofen as directed for knee inflammation. However, you are also suffering from a fever for the past three days. It's important to note that ibuprofen can help reduce fever and relieve pain, but if your fever persists or worsens, it may be wise to consult with your healthcare provider about your treatment options. They may suggest continuing ibuprofen or switching to another medication, such as acetaminophen (Panadol), which you are already taking three times a day for your fever. \n\nAlways follow the guidance of your healthcare provider regarding medication changes, especially when dealing with multiple symptoms. \n\nThis information is based on your stored health insights and should not replace professional medical advice. For medical decisions or concerns, please consult with your healthcare provider. If you have urgent health concerns, please seek immediate medical attention."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "3ff82c3c-0009-4137-b6ab-795c06c84776",
+        "detectedIntent": "health_insights",
+        "userQuery": "Do I keep taking ibuprofen or switch to something else?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Based on your health insights, you are currently taking ibuprofen as directed for knee inflammation. However, you are also suffering from a fever for the past three days. It's important to note that ibuprofen can help reduce fever and relieve pain, but if your fever persists or worsens, it may be wise to consult with your healthcare provider about your treatment options. They may suggest continuing ibuprofen or switching to another medication, such as acetaminophen (Panadol), which you are already taking three times a day for your fever. \n\nAlways follow the guidance of your healthcare provider regarding medication changes, especially when dealing with multiple symptoms. \n\nThis information is based on your stored health insights and should not replace professional medical advice. For medical decisions or concerns, please consult with your healthcare provider. If you have urgent health concerns, please seek immediate medical attention.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "expected_intent": "health_insights",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T17:53:20.657Z",
+        "updatedAt": "2025-05-27T17:53:20.657Z",
+        "id": "99a964f7-f836-469e-8186-8667b16212f3"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 7,
+    "query": "Any record of patellar inflammation?",
+    "expected_intent": "health_insights",
+    "identified_intent": "health_insights",
+    "is_correct": true,
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Currently, there is no specific record of patellar inflammation in your health insights. However, you do have a record of knee inflammation. Patellar inflammation, also known as patellar tendinitis or jumper's knee, specifically affects the tendon connecting the kneecap (patella) to the shinbone. If you have concerns about your knee health or if you're experiencing symptoms related to patellar inflammation, it would be best to consult with your healthcare provider for a thorough evaluation and appropriate management."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "84feff7f-5576-4dff-bfff-9b31e7dce21f",
+        "detectedIntent": "health_insights",
+        "userQuery": "Any record of patellar inflammation?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Currently, there is no specific record of patellar inflammation in your health insights. However, you do have a record of knee inflammation. Patellar inflammation, also known as patellar tendinitis or jumper's knee, specifically affects the tendon connecting the kneecap (patella) to the shinbone. If you have concerns about your knee health or if you're experiencing symptoms related to patellar inflammation, it would be best to consult with your healthcare provider for a thorough evaluation and appropriate management.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "expected_intent": "health_insights",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T17:53:40.472Z",
+        "updatedAt": "2025-05-27T17:53:40.472Z",
+        "id": "ff66c494-8114-47a6-9d2e-4da606ec4f5f"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 8,
+    "query": "Did the notes mention pyrexia last October?",
+    "expected_intent": "health_insights",
+    "identified_intent": "health_insights",
+    "is_correct": true,
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Based on your stored health insights, there is no mention of pyrexia (which is another term for fever) in October. The records indicate that you have been suffering from fever for the past three days, but there are no entries from October regarding this condition. If you have any specific concerns or need further details, please consult your healthcare provider."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "ee129dc9-87e2-421f-9559-1a2593ca09f1",
+        "detectedIntent": "health_insights",
+        "userQuery": "Did the notes mention pyrexia last October?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Based on your stored health insights, there is no mention of pyrexia (which is another term for fever) in October. The records indicate that you have been suffering from fever for the past three days, but there are no entries from October regarding this condition. If you have any specific concerns or need further details, please consult your healthcare provider.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "expected_intent": "health_insights",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T17:53:59.876Z",
+        "updatedAt": "2025-05-27T17:53:59.876Z",
+        "id": "78d29aaf-f506-409b-a9be-1d35d05f9a25"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 9,
+    "query": "What are the side-effects of ibuprofen?",
+    "expected_intent": "not_a_valid_option",
+    "identified_intent": "not_a_valid_option",
+    "is_correct": true,
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Hi, I'm Tulio Care Capture Assistant!\n\nI can assist you with past and upcoming doctor visits, provide summaries of your discussions, and give you access to important health records which were provided by your doctor during visits and captured by the Care Capture AI platform.\n\n How can I assist you today on this regard?"
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "dfa511fc-dd44-46bb-aacb-8bda9663911d",
+        "detectedIntent": "not_a_valid_option",
+        "userQuery": "What are the side-effects of ibuprofen?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Hi, I'm Tulio Care Capture Assistant!\n\nI can assist you with past and upcoming doctor visits, provide summaries of your discussions, and give you access to important health records which were provided by your doctor during visits and captured by the Care Capture AI platform.\n\n How can I assist you today on this regard?",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "expected_intent": "not_a_valid_option",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T17:54:18.664Z",
+        "updatedAt": "2025-05-27T17:54:18.664Z",
+        "id": "565476f6-aba3-4b4f-9641-08047c4d014e"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 10,
+    "query": "How do you prevent cancer?",
+    "expected_intent": "not_a_valid_option",
+    "identified_intent": "not_a_valid_option",
+    "is_correct": true,
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Hi, I'm Tulio Care Capture Assistant!\n\nI can assist you with past and upcoming doctor visits, provide summaries of your discussions, and give you access to important health records which were provided by your doctor during visits and captured by the Care Capture AI platform.\n\n How can I assist you today on this regard?"
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "e46ad969-8b4c-4f26-825e-d0ecd34426c2",
+        "detectedIntent": "not_a_valid_option",
+        "userQuery": "How do you prevent cancer?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Hi, I'm Tulio Care Capture Assistant!\n\nI can assist you with past and upcoming doctor visits, provide summaries of your discussions, and give you access to important health records which were provided by your doctor during visits and captured by the Care Capture AI platform.\n\n How can I assist you today on this regard?",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "expected_intent": "not_a_valid_option",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T17:54:36.023Z",
+        "updatedAt": "2025-05-27T17:54:36.023Z",
+        "id": "e15d683d-0fe1-45cd-be7e-2c0914f3cac5"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 11,
+    "query": "How is my health?",
+    "expected_intent": "health_insights",
+    "identified_intent": "health_insights",
+    "is_correct": true,
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Hello Test User! Based on your health insights, you are currently experiencing knee inflammation and have been suffering from a fever for the past three days. You are taking ibuprofen as directed for your knee inflammation and Panadol three times a day to manage your fever. It's important to monitor your symptoms closely, especially since the fever has persisted for several days. If your symptoms worsen or do not improve, please consult with your healthcare provider for further evaluation and guidance."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "d5caec87-b399-40d3-b9f2-c59e451be757",
+        "detectedIntent": "health_insights",
+        "userQuery": "How is my health?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Hello Test User! Based on your health insights, you are currently experiencing knee inflammation and have been suffering from a fever for the past three days. You are taking ibuprofen as directed for your knee inflammation and Panadol three times a day to manage your fever. It's important to monitor your symptoms closely, especially since the fever has persisted for several days. If your symptoms worsen or do not improve, please consult with your healthcare provider for further evaluation and guidance.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "expected_intent": "health_insights",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T17:54:53.318Z",
+        "updatedAt": "2025-05-27T17:54:53.318Z",
+        "id": "330034ff-ee20-495f-9409-5147d6cf1692"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 12,
+    "query": "Am I healthy?",
+    "expected_intent": "health_insights",
+    "identified_intent": "health_insights",
+    "is_correct": true,
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Based on your current health insights, you are experiencing knee inflammation and have been suffering from a fever for the past three days. You are taking ibuprofen as directed for your knee inflammation and Panadol three times a day to manage your fever. \n\nWhile you are addressing these conditions with medication, it's important to consider how these issues affect your overall health. If your fever persists or worsens, or if you have concerns about your knee inflammation, I recommend consulting with a healthcare provider for a thorough evaluation. \n\nThis information is based on your stored health insights and should not replace professional medical advice. For medical decisions or concerns, please consult with your healthcare provider. If you have urgent health concerns, please seek immediate medical attention."
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "c0cabb30-6e08-4995-813d-b09d7c0ef7bc",
+        "detectedIntent": "health_insights",
+        "userQuery": "Am I healthy?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Based on your current health insights, you are experiencing knee inflammation and have been suffering from a fever for the past three days. You are taking ibuprofen as directed for your knee inflammation and Panadol three times a day to manage your fever. \n\nWhile you are addressing these conditions with medication, it's important to consider how these issues affect your overall health. If your fever persists or worsens, or if you have concerns about your knee inflammation, I recommend consulting with a healthcare provider for a thorough evaluation. \n\nThis information is based on your stored health insights and should not replace professional medical advice. For medical decisions or concerns, please consult with your healthcare provider. If you have urgent health concerns, please seek immediate medical attention.",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "expected_intent": "health_insights",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T17:55:12.895Z",
+        "updatedAt": "2025-05-27T17:55:12.895Z",
+        "id": "624987b3-145e-42ab-8d26-3442da4926b8"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 13,
+    "query": "What appointments have I had in 2024?",
+    "expected_intent": "past_visits",
+    "identified_intent": "past_visits",
+    "is_correct": true,
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "I couldn't find any records of your appointments in 2024, Test User. It's possible that there haven't been any scheduled yet, or the information might not be available at this time. If you're looking for past visits, would you like to check appointments from a different year, or perhaps see upcoming appointments instead? Let me know how else I can assist you!"
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "226b5dcd-2dfd-42b3-9cf2-6cc7098ff4a1",
+        "detectedIntent": "past_visits",
+        "userQuery": "What appointments have I had in 2024?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "I couldn't find any records of your appointments in 2024, Test User. It's possible that there haven't been any scheduled yet, or the information might not be available at this time. If you're looking for past visits, would you like to check appointments from a different year, or perhaps see upcoming appointments instead? Let me know how else I can assist you!",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "expected_intent": "past_visits",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T17:55:32.527Z",
+        "updatedAt": "2025-05-27T17:55:32.527Z",
+        "id": "b20a3d89-9bc1-47c5-b271-f85440c73d9a"
+      },
+      "error": null
+    }
+  },
+  {
+    "test_number": 14,
+    "query": "When is my next appointment?",
+    "expected_intent": "upcoming_visits",
+    "identified_intent": "upcoming_visits",
+    "is_correct": true,
+    "user_id": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+    "ai_responses": [
+      "Your next appointment is scheduled for May 29, 2025, at 9:30 AM. This will be an annual check-up with Dr. Smrita Sinha, a gastroenterologist. The appointment will take place at 301 Lakehurst Rd, Toms River. If you have any questions or need further details, feel free to ask!"
+    ],
+    "full_response": {
+      "success": true,
+      "message": null,
+      "data": {
+        "conversationId": "9a3ac560-74f3-4bc9-8e9d-e98201514df3",
+        "detectedIntent": "upcoming_visits",
+        "userQuery": "When is my next appointment?",
+        "aiResponses": [
+          {
+            "type": "text",
+            "content": "Your next appointment is scheduled for May 29, 2025, at 9:30 AM. This will be an annual check-up with Dr. Smrita Sinha, a gastroenterologist. The appointment will take place at 301 Lakehurst Rd, Toms River. If you have any questions or need further details, feel free to ask!",
+            "data": null
+          }
+        ],
+        "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a",
+        "expected_intent": "upcoming_visits",
+        "createdBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "updatedBy": "58ae6e54-c712-4900-bc02-f80a2f2d9e85",
+        "createdAt": "2025-05-27T17:55:53.167Z",
+        "updatedAt": "2025-05-27T17:55:53.167Z",
+        "id": "075e168f-e3e7-4d3a-b9af-861f0d7c098c"
+      },
+      "error": null
+    }
+  }
+]
