@@ -147,6 +147,15 @@ class PastVisitIntentChain:
         # Apply limit if specified
         if query.limit and len(filtered) > query.limit:
             filtered = filtered[:query.limit]
+        
+        print("Num appointments before 5 filter: " + str(len(filtered)))
+        # If more than 5 appointments after filtering, keep only the 5 closest to today
+        if len(filtered) > 5:
+            today = date.today()
+            # Sort by absolute difference from today's date to get closest appointments
+            filtered.sort(key=lambda x: abs((datetime.strptime(x.get('date', ''), '%Y-%m-%d').date() - today).days))
+            filtered = filtered[:5]
+        print("Num appointments after 5 filter: " + str(len(filtered)))
             
         return filtered
     
