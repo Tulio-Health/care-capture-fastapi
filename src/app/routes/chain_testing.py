@@ -232,8 +232,110 @@ def run_medical_inquiry_tests():
     print("[Medical Inquiry Tests] Not implemented yet.")
 
 def run_upcoming_visits_tests():
-    # Placeholder for future upcoming visits chain tests
-    print("[Upcoming Visits Tests] Not implemented yet.")
+    """
+    Test cases for upcoming visits intent - similar to past visits but for future appointments
+    user_id = "58ae6e54-c712-4900-bc02-f80a2f2d9e85"
+    """
+    TEST_CASES = [
+        {"userQuery": "Tell me about my upcoming visits with Dr David Levy.", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "What future appointments do I have with David?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Show me all my scheduled visits with Dr. Levy.", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Do I have any upcoming check-ups with Dave?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "List my future appointments with the emergency medicine doctor.", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Which upcoming visits do I have with Dr. David Levy in 2025?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Tell me about my scheduled visits with Dr David Levy. Only the ones in Summer.", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Do I have an appointment with Dr. Levy in June 2025?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Show me my upcoming appointments with Dr. Levy at Main Clinic.", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "When is my next routine check-up with Dr. David Levy?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Do I have any future visits with Dr. David Levy?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "What upcoming appointments do I have with Dr. Levy?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Am I scheduled to see Levy on July 15, 2025?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "List all my future appointments with my cardiologist in 2025.", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Show me all my scheduled annual physicals with Dr. David Levy.", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Do I have any morning appointments scheduled with Dr. Levy?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "When is my next appointment with Dr. David Levy?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "When am I scheduled to see Dr. Levy at Cardiology Dept?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Show me my upcoming visits with the ER doctor.", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "When is my next follow-up with Dr. Levy?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "List all scheduled annual physicals with Dr. David Levy in 2025.", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Show me my future appointments with Dr. Levy at Downtown Clinic.", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Any upcoming visits with lev?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        # New test cases for Jeffrey Schwartz - upcoming visits
+        {"userQuery": "Tell me about my upcoming visits with Jeffrey Schwartz.", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "What future appointments do I have with Schwartz in summer 2025?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Show me my scheduled visits with Jef. in August 2025?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Do I have any upcoming consultations with Dr. Schwartz?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "List my future appointments with the general surgery doctor.", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "List my upcoming appointments with the surgeon in 2025.", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Which future visits do I have with Dr. J.S. in 2025?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Am I scheduled to see Jeffry in late 2025?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        # Additional upcoming-specific test cases
+        {"userQuery": "What's my next appointment?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Do I have any appointments this week?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Show me my schedule for next month.", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "When is my next doctor's appointment?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Do I have any appointments scheduled for this Friday?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "What appointments do I have coming up?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Show me all my future medical appointments.", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "When is my next scheduled visit?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Do I need to prepare for any upcoming appointments?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "What's on my medical calendar for the rest of the year?", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+    ]
+    
+    ENDPOINT = "http://localhost:3000/chatbot-messages"
+    
+    # Prepare data structure for JSON output
+    test_results = []
+    
+    for idx, test in enumerate(TEST_CASES, 1):
+        try:
+            print(f"\n[Upcoming Visits Test {idx}] {test['userQuery']}")
+            response = requests.post(ENDPOINT, json=test)
+            print(f"Response: {response.status_code}")
+            
+            resp_json = response.json()
+            
+            # Extract AI responses
+            ai_responses = []
+            if 'data' in resp_json and 'aiResponses' in resp_json['data']:
+                for ai_response in resp_json['data']['aiResponses']:
+                    ai_responses.append(ai_response['content'])
+            
+            # Store test result with query and AI responses
+            test_result = {
+                "test_number": idx,
+                "query": test['userQuery'],
+                "user_id": test['userId'],
+                "ai_responses": ai_responses,
+                "full_response": resp_json
+            }
+            print("Test result: ", test_result['ai_responses'])
+            test_results.append(test_result)
+            
+        except Exception as e:
+            print(f"Error processing response: {e}")
+            test_result = {
+                "test_number": idx,
+                "query": test['userQuery'],
+                "user_id": test['userId'],
+                "ai_responses": [],
+                "error": str(e),
+                "raw_response": response.text
+            }
+            test_results.append(test_result)
+        
+
+    # Save results to JSON file
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"upcoming_visits_test_results_{timestamp}.json"
+    
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(test_results, f, indent=2, ensure_ascii=False)
+    
+    print(f"\n--- TEST RESULTS SAVED TO {filename} ---")
+    print(f"Total tests run: {len(test_results)}")
+    print(f"Successful responses: {len([r for r in test_results if 'error' not in r])}")
+    print(f"Errors: {len([r for r in test_results if 'error' in r])}")
 
 def run_intent_regression_tests():
     """
@@ -267,20 +369,20 @@ def run_intent_regression_tests():
         # Upcoming visits
         {"userQuery": "When is my next appointment?", "expected_intent": "upcoming_visits", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
         # -- Past / Upcoming visits – Dr. David Levy (userId: 58ae6e54-…) --
-        {"userQuery": "Hey, did I ever swing by to see Dr Levy during that freak snow-storm on 14 Feb ’24?", "expected_intent": "past_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
-        {"userQuery": "Did Dr. David squeeze me in late on New Year’s Eve 2024 for a quick BP check-up?", "expected_intent": "past_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Hey, did I ever swing by to see Dr Levy during that freak snow-storm on 14 Feb '24?", "expected_intent": "past_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Did Dr. David squeeze me in late on New Year's Eve 2024 for a quick BP check-up?", "expected_intent": "past_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
         {"userQuery": "🤔 Did I ever no-show a 7 a.m. slot with Dr D. Levy?", "expected_intent": "past_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
         {"userQuery": "When exactly is that follow-up with Levy that got bumped twice? It lives somewhere mid-June, right?", "expected_intent": "upcoming_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
-        {"userQuery": "Got anything in the books with ‘Levee’ next fortnight?", "expected_intent": "upcoming_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Got anything in the books with 'Levee' next fortnight?", "expected_intent": "upcoming_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
         {"userQuery": "Show all my cardio check-ins—but skip anything not at Main Campus.", "expected_intent": "past_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
         {"userQuery": "Did Schwartz stitch me up after that skateboard spill last December, or was that someone else?", "expected_intent": "past_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
-        {"userQuery": "Are there *future* appointments tagged “annual review” that clash with public holidays?", "expected_intent": "upcoming_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
+        {"userQuery": "Are there *future* appointments tagged \"annual review\" that clash with public holidays?", "expected_intent": "upcoming_visits", "conversationId": None, "userId": "58ae6e54-c712-4900-bc02-f80a2f2d9e85"},
 
-        {"userQuery": "Remind me what’s up with my “wonky knee” — any legit diagnosis in the notes?", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
-        {"userQuery": "Can you see if I logged “elevated temps” between the summer and winter solstice last year?", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
-        {"userQuery": "List every med I’m supposed to pop at bedtime — typos welcome 😅", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Remind me what's up with my \"wonky knee\" — any legit diagnosis in the notes?", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Can you see if I logged \"elevated temps\" between the summer and winter solstice last year?", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "List every med I'm supposed to pop at bedtime — typos welcome 😅", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
         {"userQuery": "Can you provide details on any C-reactive protein (CRP) labs that were ordered or are pending over the past 18 months?", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
-        {"userQuery": "Did any note ever flag a “drug fever” even though my temp was normal?", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
+        {"userQuery": "Did any note ever flag a \"drug fever\" even though my temp was normal?", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
         {"userQuery": "Check if my left-knee flare-up matched the marathon weekend on 21 Apr 2024.", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
         {"userQuery": "Any mention of me upping ibuprofen to 600 mg tabs instead of 400s?", "expected_intent": "health_insights", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
         {"userQuery": "¿Cuándo fue la última vez que vi al Dr. Levy para un examen físico?", "expected_intent": "past_visits", "conversationId": None, "userId": "0ca4bb1b-6233-48fd-9998-99f556cdc22a"},
