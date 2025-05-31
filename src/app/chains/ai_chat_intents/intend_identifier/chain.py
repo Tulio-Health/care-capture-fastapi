@@ -65,12 +65,13 @@ class IntendIdentifierChain:
         
         self.chain = self.prompt | model | StrOutputParser()
 
-    def identify_intent(self, conversation_messages: Sequence[HumanMessage], text: str) -> str:
+    def identify_intent(self, conversation_messages: Sequence, text: str) -> str:
         """
         Identifies the intent of a sequence of messages using advanced conversation analysis.
         
         Args:
-            messages: A sequence of HumanMessage objects representing the conversation
+            conversation_messages: A sequence of message objects (can be strings, dicts, or HumanMessage objects)
+            text: The current user message text
             
         Returns:
             str: The identified intent (one of RouterOptions values)
@@ -123,12 +124,12 @@ class IntendIdentifierChain:
             logger.error(f"Error in intent identification: {str(e)}")
             return RouterOptions.NOT_A_VALID_OPTION.value
 
-    def _format_conversation_history(self, messages: Sequence[HumanMessage]) -> str:
+    def _format_conversation_history(self, messages: Sequence) -> str:
         """
         Formats conversation history for optimal context analysis with concise bullet list.
         
         Args:
-            messages: Sequence of HumanMessage objects
+            messages: Sequence of message objects (can be strings, dicts, or HumanMessage objects)
             
         Returns:
             str: Formatted conversation history with clear structure
@@ -140,7 +141,9 @@ class IntendIdentifierChain:
         
         # Format each message as a concise bullet point
         for i, message in enumerate(messages, 1):
-            content = message.content.strip()
+            # Handle different message types
+            content = self._extract_content_from_message(message)
+            
             if content:
                 # Determine if this is likely a user message or AI response
                 if self._is_likely_ai_response(content):
@@ -149,6 +152,46 @@ class IntendIdentifierChain:
                     formatted_lines.append(f"• User: {content}")
         
         return "\n".join(formatted_lines) if formatted_lines else "No conversation history available."
+
+    def _extract_content_from_message(self, message) -> str:
+        """
+        Extracts content from different types of message objects.
+        
+        Args:
+            message: Can be a string, dict, or HumanMessage object
+            
+        Returns:
+            str: The extracted content or empty string if extraction fails
+        """
+        try:
+            # If it's a HumanMessage object
+            if hasattr(message, 'content'):
+                return message.content.strip()
+            
+            # If it's a dictionary (parsed JSON from Redis)
+            elif isinstance(message, dict):
+                # Try different possible keys for content
+                if 'content' in message:
+                    return str(message['content']).strip()
+                elif 'message' in message:
+                    return str(message['message']).strip()
+                elif 'text' in message:
+                    return str(message['text']).strip()
+                else:
+                    # If it's a dict but no recognizable content key, convert to string
+                    return str(message).strip()
+            
+            # If it's a plain string
+            elif isinstance(message, str):
+                return message.strip()
+            
+            # For any other type, convert to string
+            else:
+                return str(message).strip()
+                
+        except Exception as e:
+            logger.warning(f"Failed to extract content from message: {e}")
+            return ""
 
     def _is_likely_ai_response(self, content: str) -> bool:
         """
