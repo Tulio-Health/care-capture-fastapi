@@ -65,7 +65,10 @@ class MedicalInquiryIntentChain:
                 "user_profile": user_profile_str,
                 "health_insights": health_insights_str,
                 "conversation_history": json.dumps(chat_history, default=str)
-            },config={"callbacks": [tracer]})
+            }, config={"callbacks": [tracer]})
+            
+            # Add disclaimer
+            ai_content_string += "\n*This information is for educational purposes and not a substitute for professional medical advice. Consult a healthcare provider for guidance."
             
             # Return the response in the expected format
             return IntentResponse[None](
