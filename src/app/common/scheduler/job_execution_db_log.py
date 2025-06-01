@@ -90,3 +90,11 @@ class JobExecutionLogger:
         except Exception as e:
             logger.error(f"Error logging job execution: {str(e)}", exc_info=e)
             raise 
+        
+    async def get_last_execution_time(self , schedule_name: str) -> Optional[datetime]:
+        """Get the last execution time for a job."""
+        try:
+            return await self.logs_repo.get_last_execution_time(schedule_name=schedule_name)
+        except Exception as e:
+            logger.error(f"Error fetching last execution time: {str(e)}", exc_info=e)
+            raise
