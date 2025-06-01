@@ -32,7 +32,7 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
         conversation_id = chat_request.conversation_id
         # To ensure it's being received properly, and add validation:
         user_id = chat_request.user_id
-        # user_id = "58ae6e54-c712-4900-bc02-f80a2f2d9e85" # HARDCODED (I don't know how user id is fetched). TODO: Remove this.
+        user_id = "58ae6e54-c712-4900-bc02-f80a2f2d9e85" # HARDCODED (I don't know how user id is fetched). TODO: Remove this.
         # user_id = "2a14bdf4-a39c-45fa-b76e-5972860603ec" # HARDCODED (I don't know how user id is fetched). TODO: Remove this.
 
         # user_id = "0ca4bb1b-6233-48fd-9998-99f556cdc22a" # HARDCODED (I don't know how user id is fetched). TODO: Remove this.
