@@ -21,7 +21,7 @@ class PastVisitQuery(BaseModel):
     A structured query model for filtering and retrieving past visit information.
     """
     provider_name: Optional[str] = Field(None, description="Name of the healthcare provider to filter by")
-    provider_id: Optional[str] = Field(None, description="ID of the healthcare provider to filter by")
+    npi: Optional[str] = Field(None, description="NPI of the healthcare provider to filter by")
     timeframe: VisitTimeframe = Field(VisitTimeframe.ALL, description="Timeframe to filter visits by")
     start_date: Optional[date] = Field(None, description="Start date for date range queries")
     end_date: Optional[date] = Field(None, description="End date for date range queries")

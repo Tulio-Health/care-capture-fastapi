@@ -7,7 +7,7 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
 from src.app.core.langsmith_trace import LangSmithTrace
@@ -68,8 +68,24 @@ class UpcomingVisitIntentChain:
         filtered = appointments
         
         # Apply filters based on query parameters
-        if query.provider_id:
-            filtered = [appt for appt in filtered if appt.get('provider_id') == query.provider_id]
+        if query.npi:
+            # First find the provider name from the appointments data
+            provider_name = None
+            for appt in appointments:
+                if appt.get('npi') == query.npi:
+                    first_name = appt.get('provider_first_name', '')
+                    last_name = appt.get('provider_last_name', '')
+                    if first_name and last_name:
+                        provider_name = f"{first_name} {last_name}"
+                        break
+            
+            # If we found the provider name, filter by name to catch all appointments for this provider
+            if provider_name:
+                filtered = [appt for appt in filtered if 
+                          f"{appt.get('provider_first_name', '')} {appt.get('provider_last_name', '')}" == provider_name]
+            else:
+                # Fallback to npi filtering if no name found
+                filtered = [appt for appt in filtered if appt.get('npi') == query.npi]
         
         if query.provider_name and providers:
             # Find provider_id matching the name
@@ -79,7 +95,7 @@ class UpcomingVisitIntentChain:
         
         if query.purpose:
             filtered = [appt for appt in filtered if query.purpose.lower() in appt.get('purpose', '').lower()]
-            
+        
         if query.location and providers:
             # First find providers that match the location
             matching_provider_ids = []
@@ -98,7 +114,7 @@ class UpcomingVisitIntentChain:
         
         # Apply date filters
         today = date.today()
-        today_iso = today.isoformat()  # Get today's date in ISO format
+        today_iso = today.isoformat()  # Use today's date instead of yesterday
         
         # Define how we'll filter based on timeframe
         if query.timeframe == 'specific_date' and query.start_date:
@@ -113,7 +129,7 @@ class UpcomingVisitIntentChain:
             filtered = [appt for appt in filtered if 
                        query.start_date.isoformat() <= appt.get('date', '') <= end_date]
         else:
-            # Default case (including when timeframe is 'all'): only pick appointments from the future
+            # Default case (including when timeframe is 'all'): include appointments from today onwards
             filtered = [appt for appt in filtered if appt.get('date', '') >= today_iso]
         
         # Sort the results
@@ -125,6 +141,13 @@ class UpcomingVisitIntentChain:
         # Apply limit if specified
         if query.limit and len(filtered) > query.limit:
             filtered = filtered[:query.limit]
+        
+        # If more than 5 appointments after filtering, keep only the 5 closest to today
+        if len(filtered) > 5:
+            today = date.today()
+            # Sort by absolute difference from today's date to get closest appointments
+            filtered.sort(key=lambda x: abs((datetime.strptime(x.get('date', ''), '%Y-%m-%d').date() - today).days))
+            filtered = filtered[:5]
             
         return filtered
     
@@ -173,6 +196,7 @@ class UpcomingVisitIntentChain:
             print(f"Extracted queryy parameters: {query_params}")
 
             # Step 2: Filter appointments based on query
+            print(f"All appointments: {appointments}")
             filtered_appointments = self.filter_appointments(query_params, appointments, [])
             print(f"Found {len(filtered_appointments)} relevant appointments")
 

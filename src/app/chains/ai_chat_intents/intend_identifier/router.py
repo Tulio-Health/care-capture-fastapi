@@ -94,6 +94,6 @@ class IntentRouter:
     
     async def handle_medical_inquiry(self, **kwargs) -> IntentResponse:
         """Handle medical inquiry related queries."""
-        # return await self.medical_inquiry_chain.handle_intent(**kwargs) 
-        return await self.not_valid_intent_chain.handle_intent(**kwargs) # TEMPORAL FIX. NEED TO ADD CITATIONS AND REFERENCES FOR APPSTORE.
+        return await self.medical_inquiry_chain.handle_intent(**kwargs) 
+        # return await self.not_valid_intent_chain.handle_intent(**kwargs) # TEMPORAL FIX. NEED TO ADD CITATIONS AND REFERENCES FOR APPSTORE.
     

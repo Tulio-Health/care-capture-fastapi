@@ -47,7 +47,6 @@ class NoDataFoundIntentChain:
             user_name = user_profile.get('name', 'there')
             chat_history = context.get('conversation_messages', [])
             
-            # Generate natural response explaining what wasn't found
             ai_content_string = await self.chain.ainvoke({
                 "text": text,
                 "user_name": user_name,

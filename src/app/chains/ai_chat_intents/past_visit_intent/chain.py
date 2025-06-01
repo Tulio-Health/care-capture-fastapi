@@ -74,8 +74,24 @@ class PastVisitIntentChain:
         filtered = appointments
         
         # Apply filters based on query parameters
-        if query.provider_id:
-            filtered = [appt for appt in filtered if appt.get('provider_id') == query.provider_id]
+        if query.npi:
+            # First find the provider name from the appointments data
+            provider_name = None
+            for appt in appointments:
+                if appt.get('npi') == query.npi:
+                    first_name = appt.get('provider_first_name', '')
+                    last_name = appt.get('provider_last_name', '')
+                    if first_name and last_name:
+                        provider_name = f"{first_name} {last_name}"
+                        break
+            
+            # If we found the provider name, filter by name to catch all appointments for this provider
+            if provider_name:
+                filtered = [appt for appt in filtered if 
+                          f"{appt.get('provider_first_name', '')} {appt.get('provider_last_name', '')}" == provider_name]
+            else:
+                # Fallback to npi filtering if no name found
+                filtered = [appt for appt in filtered if appt.get('npi') == query.npi]
         
         if query.provider_name and providers:
             # Find provider_id matching the name
@@ -131,6 +147,15 @@ class PastVisitIntentChain:
         # Apply limit if specified
         if query.limit and len(filtered) > query.limit:
             filtered = filtered[:query.limit]
+        
+        print("Num appointments before 5 filter: " + str(len(filtered)))
+        # If more than 5 appointments after filtering, keep only the 5 closest to today
+        if len(filtered) > 5:
+            today = date.today()
+            # Sort by absolute difference from today's date to get closest appointments
+            filtered.sort(key=lambda x: abs((datetime.strptime(x.get('date', ''), '%Y-%m-%d').date() - today).days))
+            filtered = filtered[:5]
+        print("Num appointments after 5 filter: " + str(len(filtered)))
             
         return filtered
     
