@@ -21,7 +21,10 @@ class PatientHealthInsightsRepository:
             user_id=user_id,
             insight_data=health_insights,
             month=month,
-            year=year
+            year=year,
+            created_by=user_id,
+            updated_by=user_id,
+            
         )
         self.db_session.add(insight)
         await self.db_session.commit()

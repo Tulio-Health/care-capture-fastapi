@@ -45,7 +45,7 @@ class HealthInsightGenerator:
         self.health_insights_chain = GenerateHealthInsightsChain()
         self.health_insights_repo = PatientHealthInsightsRepository(session)
     
-    async def _fetch_patient_visit_summaries(self, job_start_time: datetime) -> Dict[UUID, GroupedConversationSummaries]:
+    async def _fetch_patient_visit_summaries(self, last_job_exec_time: datetime) -> Dict[UUID, GroupedConversationSummaries]:
         """
         Fetch visit summaries for all patients from conversation_summaries table
         that were created after the job start time and group them by user_id.
@@ -57,16 +57,13 @@ class HealthInsightGenerator:
             Dict[UUID, GroupedConversationSummaries]: Dictionary mapping user IDs to their grouped summaries
         """
         try:
-            self.logger.info(f"Starting to fetch patient visit summaries created after {job_start_time}...")
+            self.logger.info(f"Starting to fetch patient visit summaries created after {last_job_exec_time}...")
             
             # Fetch conversation summaries created after job start time
-            # query = select(ConversationSummaries).where(
-            #     ConversationSummaries.created_at >= job_start_time
-            # ).order_by(ConversationSummaries.created_at.desc())
-            
-            # For testing, we will fetch all the summaries... otherwise we will fetch the summaries created after the job start time
-            query = select(ConversationSummaries).order_by(ConversationSummaries.created_at.desc())
-            
+            query = select(ConversationSummaries).where(
+                ConversationSummaries.created_at >= last_job_exec_time
+            ).order_by(ConversationSummaries.created_at.desc())
+                        
             self.logger.debug(f"Executing query: {query}")
             conversation_summaries_result = await self.session.execute(query)
             
@@ -112,7 +109,7 @@ class HealthInsightGenerator:
             self.logger.error(f"Error fetching patient visit summaries: {str(e)}", exc_info=e)
             raise
     
-    async def _generate_health_insights(self, grouped_summaries: Dict[UUID, GroupedConversationSummaries] , prev_health_insights: Optional[List[PatientHealthInsights]] = None) -> Dict[UUID, HealthInsightsResponse]:
+    async def _generate_health_insights(self, grouped_summaries: Dict[UUID, GroupedConversationSummaries]) -> Dict[UUID, HealthInsightsResponse]:
         """
         Generate health insights for each user based on their conversation summaries.
         
@@ -142,8 +139,7 @@ class HealthInsightGenerator:
                     ])
                     
                     # Generate health insights using the chain
-                    prev_health_insight_user = next((insights for insights in prev_health_insights if insights.user_id == user_id), None)                    
-                    health_insights = self.health_insights_chain.generate_health_insights(combined_text , prev_health_insight_user)                                   
+                    health_insights = self.health_insights_chain.generate_health_insights(combined_text)                                   
                     health_insights_by_user[user_id] = jsonable_encoder(health_insights)
                     self.logger.info(f"Successfully generated health insights for user {user_id}")
                     
@@ -178,10 +174,11 @@ class HealthInsightGenerator:
                     
                     # TODO: Add your database save logic here
                     # Example:
-                    await self.health_insights_repo.upsert(
+                    await self.health_insights_repo.create(
                         user_id=user_id,
                         health_insights=insights,
-                       # generated_at=datetime.utcnow()
+                        month=datetime.now().month,
+                        year=datetime.now().year,
                     )
                     
                     self.logger.info(f"Successfully saved health insights for user {user_id}")
@@ -241,6 +238,7 @@ class HealthInsightGenerator:
             async with self.session.begin():
                 # Log job start
                 self.logger.info("Logging job start...")
+                last_job_exec_time = await self.job_logger.get_last_execution_time(schedule_name=HEALTH_INSIGHT_JOB_ID)
                 await self.job_logger.log_execution(
                     job_id=job_id,
                     status='STARTED',
@@ -249,15 +247,10 @@ class HealthInsightGenerator:
     
                 # Fetch patient visit summaries created after job start
                 self.logger.info("Fetching patient visit summaries...")
-                grouped_patient_summaries = await self._fetch_patient_visit_summaries(job_start_time)
-                
-                user_ids = list(grouped_patient_summaries.keys())
-                
-                health_insights = await self._fetch_patient_health_insights(user_ids)
-    
+                grouped_patient_summaries = await self._fetch_patient_visit_summaries(last_job_exec_time)
                 ## Lets call LLM to generate the Health Insights by iterating the user id and summaries... 
                 self.logger.info("Generating health insights...")
-                health_insights = await self._generate_health_insights(grouped_patient_summaries , health_insights)
+                health_insights = await self._generate_health_insights(grouped_patient_summaries)
     
                 ## Lets save the health insights to the database... 
             self.logger.info("Saving health insights to the database...")

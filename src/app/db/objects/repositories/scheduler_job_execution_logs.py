@@ -1,3 +1,4 @@
+from operator import and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime
@@ -25,15 +26,19 @@ class SchedulerJobExecutionLogsRepository:
         Returns:
             SchedulerJobExecutionLogs: The created log entry
         """
-        log_entry = SchedulerJobExecutionLogs(
-            job_id=job_id,
-            schedule_name=schedule_name,
-            start_time=datetime.utcnow(),
-            status='RUNNING'
-        )
-        self.session.add(log_entry)
-        await self.session.flush()
-        return log_entry
+        try:
+            log_entry = SchedulerJobExecutionLogs(
+                job_id=job_id,
+                schedule_name=schedule_name,
+                start_time=datetime.now(),
+                status='RUNNING'
+            )
+            self.session.add(log_entry)
+            await self.session.flush()
+            return log_entry
+        except Exception as e:
+            logger.error(f"Error creating job execution log: {str(e)}", exc_info=e)
+            raise
     
     async def update_job_end(self, job_id: str, status: str) -> None:
         """
@@ -43,17 +48,21 @@ class SchedulerJobExecutionLogsRepository:
             job_id (str): The job ID
             status (str): The final status of the job
         """
-        query = select(SchedulerJobExecutionLogs).where(
+        try:
+            query = select(SchedulerJobExecutionLogs).where(
             SchedulerJobExecutionLogs.job_id == job_id,
             SchedulerJobExecutionLogs.end_time.is_(None)
-        )
-        result = await self.session.execute(query)
-        log_entry = result.scalar_one_or_none()
-        
-        if log_entry:
-            log_entry.end_time = datetime.utcnow()
-            log_entry.status = status
-            await self.session.flush()
+            )
+            result = await self.session.execute(query)
+            log_entry = result.scalar_one_or_none()
+            
+            if log_entry:
+                log_entry.end_time = datetime.now()  # using now() instead of utcnow()
+                log_entry.status = status
+                await self.session.commit()  # using commit() instead of flush()
+        except Exception as e:
+            logger.error(f"Error updating job execution log: {str(e)}", exc_info=e)
+            raise
 
     async def get_job_log(self, job_id: str) -> Optional[SchedulerJobExecutionLogs]:
         """Get the latest log entry for a job."""
@@ -67,4 +76,27 @@ class SchedulerJobExecutionLogsRepository:
             return result.scalar_one_or_none()
         except Exception as e:
             logger.error(f"Error fetching job log: {str(e)}", exc_info=e)
-            raise 
+            raise
+        
+    async def get_last_execution_time(self, schedule_name: str) -> Optional[datetime]:
+        """Get the last execution time for a job."""
+        try:
+            result = await self.session.execute(
+                select(SchedulerJobExecutionLogs)
+                .where(
+                    and_(
+                        SchedulerJobExecutionLogs.schedule_name == schedule_name,
+                        SchedulerJobExecutionLogs.status == 'COMPLETED'
+                    )
+                )
+                .order_by(SchedulerJobExecutionLogs.start_time.desc())
+                .limit(1)
+            )
+            log_entry = result.scalar_one_or_none()
+            if log_entry:
+                return log_entry.start_time
+            else:
+                return None
+        except Exception as e:
+            logger.error(f"Error fetching last execution time: {str(e)}", exc_info=e)
+            raise
