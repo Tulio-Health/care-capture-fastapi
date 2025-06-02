@@ -54,10 +54,14 @@ INTENT_IDENTIFIER_SYSTEM_PROMPT = """You are an expert medical conversation anal
 - "What are the side effects of [medication]?"
 - General medical knowledge questions NOT asking about their personal health data
 
-**"not_a_valid_option"** - Off-topic, system-related, or truly unclear queries
+**"not_a_valid_option"** - Off-topic, system-related, random non-medical questions, or truly unclear queries
 - "I don't understand how this works"
 - "What can you help me with?"
 - "This app is confusing"
+- "What day is it?"
+- "Tell me something about yourself"
+- "What's the weather like?"
+- Any question not specifically related to medical care, health, or appointments
 
 **"end_conversation"** - Conversation termination requests
 - "Thanks, that's all I needed"
