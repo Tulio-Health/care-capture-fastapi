@@ -73,7 +73,7 @@ INTENT_IDENTIFIER_SYSTEM_PROMPT = """You are an expert medical conversation anal
 - If user asks in the present tense or future tense about when they have an appointment, classify as **upcoming_visits**.
 - If user asks about a specific date, use TODAY'S DATE to determine if they're asking about past_visits (dates before today) or upcoming_visits (dates after today).
 - If user asks about a date in the past or in past tense, classify as **past_visits**.
-- Example: "When is my last appointment?" -> upcoming_visits
+- Example: "When is my next appointment?" -> upcoming_visits
 - Example: "When was my last appointment?" -> past_visits
 - Example: "When is my appointment with Jon?" -> upcoming_visits
 - Example: "When was my appointment with Jon?" -> past_visits
