@@ -105,3 +105,16 @@ class ConversationSummariesRepository:
         except Exception as e:
             logger.error(f"Error upserting summary with ID: {appointment_id}", exc_info=e)
             raise e
+        
+    async def get_by_user_id_and_appointment_id(self, appointment_id: UUID , user_id: UUID) -> Optional[ConversationSummaries]:
+        try:
+            result = await self.session.execute(
+                select(ConversationSummaries).where(
+                    ConversationSummaries.appointment_id == appointment_id and
+                    ConversationSummaries.user_id == user_id
+                )
+            )
+            return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(f"Error fetching summary for transcript ID: {appointment_id}", exc_info=e)
+            raise e

@@ -1,12 +1,14 @@
 from typing import List
+from datetime import datetime
 from fastapi import APIRouter, HTTPException , Depends
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.app.chains.health_insights.chain import GenerateHealthInsightsChain
 from src.app.chains.transcript_summarization.chain import TranscriptSummarizationChain
 
 from ..models.transcript_summarization import TranscriptSummarizationRequest, TranscriptSummarizationResponse
-from ..models.health_insights_extraction import HealthInsightsResponse , HealthInsights
+from ..models.health_insights_extraction import GenerateHealthInsightsRequest, HealthInsightsResponse , HealthInsights
 from ..db.config.database import get_db
 from ..db.objects.repositories.conversation_summaries import ConversationSummariesRepository
 from ..db.objects.repositories.patient_health_insights import PatientHealthInsightsRepository
@@ -200,3 +202,41 @@ async def transcript_summarize_text(
 #         raise he
 #     except Exception as e:
 #         raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.post("/generate-health-insight")
+async def generate_health_insight(
+    request: GenerateHealthInsightsRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        # Get the appointment transcripts
+        user_id = request.user_id
+        appointment_id = request.appointment_id
+        
+        # Initialize the repository for conversation summaries
+        conversation_summaries_repository = ConversationSummariesRepository(db)
+        
+        conversation_summary = await conversation_summaries_repository.get_by_user_id_and_appointment_id(
+            appointment_id=appointment_id , user_id=user_id
+        )
+        
+        if conversation_summary is None:
+            raise HTTPException(status_code=404, detail="Conversation summary not found")
+                
+        # generate health insights
+        health_insights_chain = GenerateHealthInsightsChain()
+        health_insights = health_insights_chain.generate_health_insights(conversation_summary.summary_text)
+        
+        # Initialize the repository for patient health insights
+        patient_health_insights_repository = PatientHealthInsightsRepository(db)
+        patient_health_insights_repository.create(
+            user_id=user_id,
+            month=datetime.now().month,
+            year=datetime.now().year,
+            health_insights=health_insights
+        )
+        
+        return health_insights
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

@@ -67,3 +67,7 @@ class HealthInsightsResponse(BaseModel):
     surgeriesAndProcedures: List[SurgeryProcedure] = []
     medications: List[Medication] = []
     priorTesting: List[PriorTest] = []
+    
+class GenerateHealthInsightsRequest(BaseModel):
+    appointment_id: UUID
+    user_id: UUID

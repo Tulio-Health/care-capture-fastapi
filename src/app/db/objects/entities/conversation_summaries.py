@@ -24,5 +24,5 @@ class ConversationSummaries(Base):
     created_by = Column(UUID(as_uuid=True), nullable=False)
     updated_by = Column(UUID(as_uuid=True), nullable=False)
 
-    def __repr__(self):
-        return f"<ConversationSummaries(id={self.id}, transcript_id={self.transcript_id})>"
+    # def __repr__(self):
+    #     return f"<ConversationSummaries(id={self.id}, transcript_id={self.transcript_id})>"
