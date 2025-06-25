@@ -13,11 +13,12 @@ from src.app.db.models.chatbot_messages import ChatbotMessage
 from src.app.db.models.user_profiles import UserProfile
 from src.app.db.models.appointments import Appointment
 from src.app.models.ai_chat import AiChatRequest
-from src.app.models.intent_identify import IntentResponse
+from src.app.models.intent_identify import IntentResponse, MedicalIntentResponse
 from sqlalchemy import select
 import json
 from src.app.core import get_settings
 from src.app.routes.pull_db_context import cache_all_user_data
+from typing import Union
 
 router = APIRouter(
     prefix="/care-capture/ai-chat",
@@ -25,7 +26,7 @@ router = APIRouter(
 )
 
 @router.post('/',
-             response_model=IntentResponse,
+             response_model=Union[IntentResponse, MedicalIntentResponse],
              status_code=200)
 async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db)):
     try:

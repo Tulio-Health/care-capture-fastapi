@@ -57,7 +57,7 @@ class NotValidIntentChain:
             ai_content_string = "Hi, I'm Tulio Care Capture Assistant!\n\nI can assist you with past and upcoming doctor visits, provide summaries of your discussions, and give you access to important health records which were provided by your doctor during visits and captured by the Care Capture AI platform.\n\n How can I assist you today on this regard?"
             
             return IntentResponse[None](
-                intent=RouterOptions.NOT_A_VALID_OPTION.value,
+                intent=RouterOptions.NOT_A_VALID_OPTION, 
                 responses=[IntentAiResponse(
                     type="text", 
                     content=ai_content_string, 
@@ -66,11 +66,11 @@ class NotValidIntentChain:
             )
             
         except Exception as e:
-            logger.error(f"Error processing invalid option: {str(e)}")
+            logger.error(f"Error processing not valid intent response: {str(e)}")
             # Fallback to simple message if LLM fails
-            fallback_message = "Hi, I'm Tulio Care Capture Assistant!\n\nI can assist you with past and upcoming doctor visits, provide summaries of your discussions, and give you access to important health records which were provided by your doctor during visits and captured by the Care Capture AI platform.\n\n How can I assist you today on this regard?"
+            fallback_message = "I'm not sure how to help with that. You can ask me about your past visits, upcoming appointments, health insights, or general medical questions."
             return IntentResponse[None](
-                intent=RouterOptions.NOT_A_VALID_OPTION.value, 
+                intent=RouterOptions.NOT_A_VALID_OPTION, 
                 responses=[IntentAiResponse(
                     type="text", 
                     content=fallback_message, 

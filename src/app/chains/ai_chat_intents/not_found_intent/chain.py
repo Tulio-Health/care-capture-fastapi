@@ -56,7 +56,7 @@ class NoDataFoundIntentChain:
             }, config={"callbacks": [tracer]})
             
             return IntentResponse[None](
-                intent=intent,  # Keep the original intent
+                intent=kwargs.get('intent', 'unknown'), 
                 responses=[IntentAiResponse(
                     type="text", 
                     content=ai_content_string, 
