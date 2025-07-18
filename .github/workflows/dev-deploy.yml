@@ -1,5 +1,5 @@
 name: Deploy FastAPI to AWS App Runner
-
+ 
 on:
   push:
     branches:
@@ -7,24 +7,25 @@ on:
   pull_request:
     branches:
       - develop
-
+ 
 permissions:
   id-token: write
   contents: read
-
+ 
 jobs:
   build_and_push:
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/develop')
     runs-on: ubuntu-latest
+    environment: develop
     outputs:
       registry: ${{ steps.login-ecr.outputs.registry }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
-      - name: Create production env file
+ 
+      - name: Create develop env file
         run: |
-          cat << EOF > .env.production
+          cat << 'EOF' > .env.develop
           APP_ENV=${{ secrets.APP_ENV }}
           DB_HOST=${{ secrets.DB_HOST }}
           DB_NAME=${{ secrets.DB_NAME }}
@@ -41,17 +42,17 @@ jobs:
           LANGSMITH_ENDPOINT=${{ secrets.LANGSMITH_ENDPOINT }}
           LANGSMITH_PROJECT=${{ secrets.LANGSMITH_PROJECT }}
           EOF
-
+ 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: ${{ secrets.FASTAPI_AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
-
+ 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
-
+ 
       - name: Build, tag, and push image to Amazon ECR
         id: build-image
         env:
@@ -59,23 +60,24 @@ jobs:
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build --build-arg ENV_FILE=.env.production -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker build --build-arg ENV_FILE=.env.develop -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
           echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-
+ 
   deploy:
     needs: build_and_push
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
+    environment: develop
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
-      - name: Create production env file
+ 
+      - name: Create develop env file
         run: |
-          cat << EOF > .env.production
+          cat << 'EOF' > .env.develop
           APP_ENV=${{ secrets.APP_ENV }}
           DB_HOST=${{ secrets.DB_HOST }}
           DB_NAME=${{ secrets.DB_NAME }}
@@ -92,17 +94,17 @@ jobs:
           LANGSMITH_ENDPOINT=${{ secrets.LANGSMITH_ENDPOINT }}
           LANGSMITH_PROJECT=${{ secrets.LANGSMITH_PROJECT }}
           EOF
-
+ 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: ${{ secrets.FASTAPI_AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
-
+ 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
-
+ 
       - name: Build, tag, and push image to Amazon ECR
         id: build-image
         env:
@@ -110,10 +112,10 @@ jobs:
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build --build-arg ENV_FILE=.env.production -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker build --build-arg ENV_FILE=.env.develop -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-
+ 
       - name: Deploy to App Runner
         id: deploy-apprunner
         uses: awslabs/amazon-app-runner-deploy@main
@@ -126,6 +128,6 @@ jobs:
           memory: 2
           port: 8000
           wait-for-service-stability: true
-
+ 
       - name: App Runner ID
         run: echo "App runner ID ${{ steps.deploy-apprunner.outputs.service-id }}"
