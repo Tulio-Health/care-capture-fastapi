@@ -1,13 +1,20 @@
-FROM python:3.9-slim
+FROM python:3.12
+
+# Build argument for environment file
+ARG ENV_FILE
 
 WORKDIR /app
+
+# Copy environment file
+COPY ${ENV_FILE} .env
 
 COPY poetry.lock pyproject.toml ./
 
 RUN pip install poetry && poetry install --no-root
 
-COPY fastapi_example ./fastapi_example
+# COPY fastapi_example ./fastapi_example
+COPY src ./src
 
 EXPOSE 8000
 
-CMD ["poetry", "run", "uvicorn", "fastapi_example.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["poetry", "run", "uvicorn", "src.app.main:app", "--host", "0.0.0.0", "--port", "8000"]

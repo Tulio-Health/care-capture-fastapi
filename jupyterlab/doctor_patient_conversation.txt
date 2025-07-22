@@ -1,0 +1,173 @@
+{
+  "conversation": [
+    {
+      "speaker": "Dr. Wilson",
+      "text": "Good morning, Mrs. Johnson. How are you feeling today?"
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "Not very well, Doctor. I've been having these terrible headaches for the past two weeks. They seem to be getting worse."
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "I'm sorry to hear that. Can you describe the headaches in more detail? Where exactly is the pain located?"
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "It usually starts at the back of my head and then moves to the right side. Sometimes it feels like a throbbing sensation, and other times it's more of a constant pressure."
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "And on a scale of 1 to 10, with 10 being the worst pain you've ever felt, how would you rate these headaches?"
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "When they're at their worst, probably around an 8. It's bad enough that I can't focus on anything else."
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "Do you notice any particular triggers? Certain foods, activities, or times of day when they tend to occur?"
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "Well, they seem worse in the mornings. And bright lights and loud noises definitely make them worse. I've had to wear sunglasses indoors sometimes."
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "Have you experienced any other symptoms along with the headaches? Any nausea, vomiting, visual changes, or dizziness?"
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "Yes, actually. I do feel nauseated sometimes, especially when the headache is really bad. And occasionally I see these zigzag lines in my vision before the headache starts."
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "That's important information. Have you taken anything for the pain?"
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "Just over-the-counter Tylenol, but it barely takes the edge off. I've been taking 500mg every 6 hours when it gets bad."
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "And you mentioned this has been going on for two weeks. Have you ever experienced similar headaches in the past?"
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "Not like this. I get regular headaches sometimes when I'm stressed, but nothing this severe or persistent."
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "I see. And any family history of migraines or other neurological conditions?"
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "My mother used to get migraines, yes."
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "Based on your symptoms - the location and nature of the pain, the sensitivity to light and sound, the nausea, and especially those visual disturbances you mentioned - I believe you're experiencing migraine headaches."
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "Is that serious? Should I be worried?"
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "Migraines are certainly serious in terms of how they affect your quality of life, but they're not usually dangerous. Given your family history and your specific symptoms, this diagnosis fits well. However, I'd like to rule out some other possibilities."
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "What kind of possibilities?"
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "It's standard practice to consider other causes of new or severe headaches. I'm going to order some blood work to check for inflammation or infection, and I think we should also get an MRI of your brain just to be thorough."
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "Okay, that sounds reasonable."
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "In the meantime, I'm going to prescribe two medications. First, Sumatriptan 50mg tablets. This is specifically for migraines. When you feel a headache starting, take one tablet. You can take a second dose after 2 hours if needed, but no more than 200mg in a 24-hour period."
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "And this will stop the headaches?"
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "It often helps abort a migraine attack if taken early enough. I'm also going to prescribe Propranolol 40mg, which you'll take twice daily. This is a preventative medication to help reduce the frequency and severity of migraines over time."
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "Are there side effects I should know about?"
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "With Sumatriptan, some people experience a tight feeling in their chest or throat, dizziness, or fatigue. Propranolol may cause fatigue, dizziness, or cold hands and feet. If you experience any troubling symptoms, call the office right away."
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "Is there anything else I should be doing?"
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "Yes, I'd recommend keeping a headache diary. Note when the headaches occur, what you were doing before they started, what you ate, your stress levels, sleep patterns, and so on. This can help identify triggers."
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "That makes sense."
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "Also, try to maintain regular sleep patterns, stay hydrated, and consider avoiding common migraine triggers like alcohol, aged cheeses, artificial sweeteners, and caffeine to see if that helps."
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "I do drink a lot of coffee. Maybe that's contributing?"
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "It could be. Caffeine withdrawal can trigger headaches, but too much caffeine can also be a trigger for some people. Try to gradually reduce your intake rather than stopping suddenly."
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "Alright, I'll do that."
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "I'd like to see you back in three weeks to check your progress. In the meantime, if the headaches worsen significantly, if you develop a sudden \"thunderclap\" headache, or if you experience any neurological symptoms like weakness, difficulty speaking, or confusion, go to the emergency room immediately."
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "That sounds scary, but I understand."
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "It's just a precaution. I don't expect that to happen, but it's important you know when to seek emergency care. Do you have any other questions?"
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "No, I think that covers everything. Thank you, Doctor."
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "You're welcome. The front desk will schedule your MRI and follow-up appointment. I'll also send these prescriptions electronically to your pharmacy. They should be ready within the hour."
+    },
+    {
+      "speaker": "Mrs. Johnson",
+      "text": "Great, thanks again."
+    },
+    {
+      "speaker": "Dr. Wilson",
+      "text": "Take care, Mrs. Johnson. I hope you start feeling better soon."
+    }
+  ],
+  "metadata": {
+    "patient_name": "Mrs. Johnson",
+    "doctor_name": "Dr. Wilson",
+    "conversation_date": "2025-04-10"
+  }
+}

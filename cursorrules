@@ -1,0 +1,154 @@
+# Cursor Rules for GenAI Project with LangChain, LangGraph, and OpenAI
+
+# Project Structure
+- app/
+  - api/           # FastAPI routes and endpoints
+  - core/          # Core application logic
+  - db/            # Database models and migrations
+  - services/      # Business logic and services
+  - schemas/       # Pydantic models
+  - utils/         # Utility functions
+  - config/        # Configuration management
+  - ai/            # AI-related components
+    - chains/      # LangChain chains
+    - graphs/      # LangGraph components
+    - prompts/     # Prompt templates
+    - agents/      # AI agents
+    - embeddings/  # Embedding related code
+  - tests/         # Test files
+
+# Code Style and Quality
+- Use type hints for all function parameters and return values
+- Maximum line length: 88 characters (Black formatter default)
+- Use docstrings for all modules, classes, and functions
+- Follow PEP 8 style guide
+- Use meaningful variable and function names
+- Keep functions small and focused (max 50 lines)
+- Maximum file length: 500 lines
+- Use async/await for I/O operations
+- Implement proper error handling and logging
+
+# AI Components
+- Separate prompt templates into dedicated files
+- Use environment variables for API keys
+- Implement proper rate limiting for API calls
+- Cache embeddings and model responses when appropriate
+- Use structured output parsing
+- Implement proper error handling for API failures
+- Document model parameters and configurations
+
+# Database
+- Use SQLAlchemy models with proper type annotations
+- Implement database migrations using Alembic
+- Use connection pooling
+- Implement proper indexing
+- Use transactions where appropriate
+- Implement proper error handling for database operations
+- Use async database operations with SQLAlchemy 2.0
+
+# API Design
+- Use FastAPI dependency injection
+- Implement proper request validation
+- Use proper HTTP status codes
+- Implement rate limiting
+- Use proper authentication and authorization
+- Document all endpoints with OpenAPI
+- Implement proper error responses
+
+# Testing
+- Write unit tests for all components
+- Use pytest for testing
+- Implement integration tests
+- Use proper test fixtures
+- Mock external services
+- Test error cases
+- Maintain good test coverage
+
+# Security
+- Never commit API keys or secrets
+- Use environment variables for sensitive data
+- Implement proper input validation
+- Use proper authentication
+- Implement rate limiting
+- Use HTTPS
+- Follow security best practices
+
+# Documentation
+- Maintain up-to-date README
+- Document all major components
+- Use proper docstrings
+- Document API endpoints
+- Document database schema
+- Document AI components
+- Document deployment process
+
+# Dependencies
+- Use Poetry for dependency management
+- Pin dependency versions
+- Keep dependencies up to date
+- Document dependency requirements
+- Use virtual environments
+- Implement proper dependency injection
+
+# Performance
+- Implement proper caching
+- Use async operations where appropriate
+- Optimize database queries
+- Monitor performance
+- Implement proper logging
+- Use proper error handling
+- Optimize AI model usage
+
+# Deployment
+- Use Docker for containerization
+- Implement proper CI/CD
+- Use environment variables
+- Implement proper logging
+- Use proper monitoring
+- Implement proper backup strategy
+- Document deployment process
+
+# Version Control
+- Use meaningful commit messages
+- Follow Git flow
+- Use feature branches
+- Implement proper code review
+- Use proper merge strategies
+- Document changes
+- Use proper tagging
+
+# Monitoring and Logging
+- Implement proper logging
+- Use structured logging
+- Monitor application performance
+- Monitor AI model usage
+- Monitor database performance
+- Implement proper error tracking
+- Use proper metrics
+
+# Error Handling
+- Implement proper error handling
+- Use custom exceptions
+- Log errors properly
+- Handle API errors
+- Handle database errors
+- Handle AI model errors
+- Implement proper recovery
+
+# Code Organization
+- Use proper module structure
+- Implement proper separation of concerns
+- Use proper design patterns
+- Keep code DRY
+- Use proper abstraction
+- Implement proper interfaces
+- Use proper inheritance
+
+# Best Practices
+- Follow SOLID principles
+- Use proper design patterns
+- Implement proper testing
+- Use proper documentation
+- Follow security best practices
+- Use proper error handling
+- Implement proper logging 

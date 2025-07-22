@@ -1,21 +1,60 @@
-# fastapi-example/pyproject.toml
 [tool.poetry]
-name = "fastapi-example"
+name = "care-capture-ai"
 version = "0.1.0"
-description = "FastAPI example with health and hello endpoints"
-authors = ["Email ID"]
+description = "API for Care Capture AI - Making healthcare patient data more meaningful for patients and caregivers"
+authors = ["Vishwanath Sinha <vsinhaa@tuliohealth.com>"]
+readme = "README.md"
+packages = [{include = "src"}]
 
 [tool.poetry.dependencies]
-python = "^3.8"
-fastapi = "^0.100.0"
-uvicorn = {extras = ["standard"], version = "^0.23.0"}
+python = "^3.12"
+fastapi = "^0.115.2"
+uvicorn = {extras = ["standard"], version = "^0.27.0"}
+sqlalchemy = "^2.0.23"
+psycopg2-binary = "^2.9.9"
+python-dotenv = "^1.0.0"
+langchain = "^0.3.3"
+langchain-openai = "^0.2.2"
+email-validator = "^2.1.0.post1"  # Required for Pydantic EmailStr validation
+httpx = "^0.26.0"
+alembic = "^1.13.1"
+fastapi-limiter = "^0.1.6"
+redis = "^5.0.1"  # Required for rate limiting storage
 
-[tool.poetry.dev-dependencies]
-pytest = "^7.4.0"
-requests = "^2.31.0"
+openai = "^1.51.2"
+greenlet = "^3.0.3"  # Required for SQLAlchemy async operations
+asyncpg = "^0.30.0"
+langgraph = "^0.3.31"
+langchain-community = "^0.3.22"
+apscheduler = "^3.11.0"
+langsmith = "^0.3.42"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+pytest-asyncio = "^0.23.5"
+pytest-cov = "^4.1.0"
+black = "^24.1.1"
+isort = "^5.13.2"
+flake8 = "^7.0.0"
+mypy = "^1.8.0"
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
+requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-packages = [{ include = "fastapi_example" }]
+[tool.black]
+line-length = 88
+target-version = ['py38']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+ 
