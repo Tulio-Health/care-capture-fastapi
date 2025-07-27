@@ -1,4 +1,4 @@
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import logging
 from ..services.health_insights.health_insight_generator import HealthInsightGenerator
@@ -34,11 +34,11 @@ async def generate_health_insight():
 
 def init_scheduler():
     """Initialize and start the scheduler."""
-    scheduler = BackgroundScheduler()
+    scheduler = AsyncIOScheduler()
     
     # Add the health insight generation job
     scheduler.add_job(
-        func=lambda: asyncio.run(generate_health_insight()),
+        func=generate_health_insight,
         trigger=IntervalTrigger(seconds=HEALTH_INSIGHT_SCHEDULE_SECONDS),
         id='generate_health_insight',
         name='Generate health insights every ' + str(HEALTH_INSIGHT_SCHEDULE_SECONDS) + ' seconds',
