@@ -3,7 +3,7 @@
 API for Care Capture AI - Making healthcare patient data more meaningful for patients and caregivers!!!
 This API is based on the Python FastAPI
 
-This API is based on Python Fast API
+This API is based on Python Fast API!
 
 ## Setup
 
