@@ -23,13 +23,13 @@ if is_app_runner:
         "poolclass": AsyncAdaptedQueuePool,
         "pool_size": 5,
         "max_overflow": 10,
-        "pool_timeout": 30,
+        "pool_timeout": 120,  # Increased from 30 to 120 seconds for App Runner
         "connect_args": {
             "server_settings": {
                 "application_name": "care-capture-fastapi"
             },
-            "command_timeout": 60,
-            "timeout": 30
+            "command_timeout": 120,  # Increased from 60 to 120 seconds
+            "timeout": 120  # Increased from 30 to 120 seconds
         }
     })
 else:
