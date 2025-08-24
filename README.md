@@ -1,4 +1,4 @@
-# Care Capture AI
+# Care Capture GenAI API
 
 API for Care Capture AI - Making healthcare patient data more meaningful for patients and caregivers!!!
 
