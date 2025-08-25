@@ -21,7 +21,6 @@ router = APIRouter(
 
 @router.post("/transcript-summarization",
     response_model=dict,
-    
     summary="Provider Visit Summarization",
     description="Summarize the given text with specified length constraints",
     responses={
@@ -78,18 +77,24 @@ async def transcript_summarize_text(
         
         # Prepare the summary dictionary for database insertion
         summary_dict = dict()
-        summary_dict["summary_text"] = summary_model.provider_patient_discussion_summary_text
-        summary_dict["user_id"] = request.user_id
-        summary_dict["created_by"] = request.user_id
-        summary_dict["updated_by"] = request.user_id
-        summary_dict['key_points'] = summary_model.provider_patient_discussion_key_points
+        summary_dict["summaryText"] = summary_model.provider_patient_discussion_summary_text
+        summary_dict["userId"] = request.user_id
+        summary_dict["createdBy"] = request.user_id
+        summary_dict["updatedBy"] = request.user_id
+        summary_dict['keyPoints'] = summary_model.provider_patient_discussion_key_points
         summary_dict['medications'] = summary_model.medications_prescribed_by_provider
         summary_dict['diagnoses'] = summary_model.medical_diagnoses_discussed
         summary_dict['instructions'] = summary_model.instructions_provided_by_provider
         summary_dict['recommendations'] = summary_model.recommendations_provided_by_provider
            
         # Create a new summary entry in the database
-        await conversation_summaries_repository.upsert(appointment_id=request.appointment_id ,summary_data=summary_dict)
+        summary = await conversation_summaries_repository.upsert(appointment_id=request.appointment_id, summary_data=summary_dict)
+        print("SUMMARY", summary)
+        
+        # Add the summary ID and appointment ID to the response
+        summary_dict["id"] = str(summary.id) if summary else None
+        summary_dict["appointmentId"] = str(request.appointment_id)
+        
         return summary_dict
     
     except ValueError as e:

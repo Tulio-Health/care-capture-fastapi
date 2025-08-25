@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # API Configuration
     APP_ENV: str = "development"
     DEBUG: bool = True
-    PORT: int = 8000
+    PORT: int = 8001
     
     # Database Configuration
     DB_HOST: str = "localhost"
@@ -54,11 +54,10 @@ class Settings(BaseSettings):
             # url_str = f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:5432/{self.DB_NAME}"
             url_str = f"postgresql+asyncpg://{self.DB_USER}:{encoded_password}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
             
-            logger.error(f"Constructed DATABASE_URL: {url_str}")
             # Validate the URL
             url = PostgresDsn(url_str)
             
-            logger.info(f"Constructed DATABASE_URL: {url}")
+            logger.info("Database URL constructed successfully")
             return url
             
         except ValidationError as e:
