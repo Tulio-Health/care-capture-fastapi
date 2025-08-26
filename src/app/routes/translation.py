@@ -1,11 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from typing import Dict, Any, List
 
 from src.app.db.config.database import get_db
 from src.app.services.translation.translation_service import TranslationService
-from src.app.models.translation import TranslationRequest, TranslationResponse
+from src.app.models.translation import TranslationRequest, TranslationResponse, PlaygroundTranslationRequest
+from src.app.models.conversation_summaries import ConversationSummary
+from src.app.chains.translation.chain import TranslationChain
 from src.app.common.constants.languages import LanguageCode
 from src.app.common.logging import get_logger
 
@@ -127,3 +130,109 @@ async def translate_conversation_summary(
     except Exception as e:
         logger.error(f"Unexpected error during translation of summary {summary_id}: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Translation failed: {str(e)}")
+
+
+@router.post(
+    "/translate/playground",
+    response_model=TranslationResponse,
+    summary="Translation Playground",
+    description="Translate conversation summaries without database dependencies. Auto-generates UUIDs and timestamps for simplified testing.",
+    responses={
+        200: {
+            "description": "Successfully translated conversation summary",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "summaryText": "El paciente presentó dolor en el pecho...",
+                        "keyPoints": ["Dolor en el pecho", "Presión arterial elevada"],
+                        "medications": [{"name": "Aspirina", "dosage": "81mg", "frequency": "diario"}],
+                        "diagnoses": ["Hipertensión"],
+                        "originalLanguage": "en",
+                        "translatedLanguage": "es"
+                    }
+                }
+            }
+        },
+        400: {"description": "Translation failed"},
+        422: {"description": "Invalid request format"}
+    }
+)
+async def translate_playground(
+    request: PlaygroundTranslationRequest
+) -> TranslationResponse:
+    """
+    Simplified translation playground for easy testing.
+    
+    Only requires medical content - all metadata (UUIDs, timestamps) is auto-generated.
+    Uses the same core translation engine as production for identical quality.
+    
+    Benefits:
+    - Zero logic duplication (reuses TranslationChain)
+    - User-friendly: no complex IDs or timestamps required
+    - Database-independent testing
+    - Identical translation semantics to production
+    """
+    try:
+        logger.info(f"Playground translation initiated for language: {request.language_code}")
+        
+        # Transform domain object to chain-compatible format
+        summary_dict = _serialize_conversation_summary(request.conversation_summary)
+        
+        # Leverage existing translation abstraction
+        translation_chain = TranslationChain()
+        translated_data = await translation_chain.translate_conversation_summary(
+            summary_dict, request.language_code
+        )
+        
+        # Enrich with translation metadata
+        translated_data.update({
+            "original_language": "en",
+            "translated_language": request.language_code
+        })
+        
+        # Apply response transformation pipeline
+        return _build_translation_response(translated_data)
+        
+    except Exception as e:
+        logger.error(f"Playground translation failure: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Translation failed: {str(e)}")
+
+
+def _serialize_conversation_summary(summary) -> Dict[str, Any]:
+    """Convert domain object to translation chain input format."""
+    return {
+        "id": str(summary.id),
+        "appointment_id": str(summary.appointment_id),
+        "user_id": str(summary.user_id),
+        "summary_text": summary.summary_text,
+        "key_points": summary.key_points,
+        "medications": summary.medications,
+        "diagnoses": summary.diagnoses,
+        "instructions": summary.instructions,
+        "recommendations": summary.recommendations,
+        "created_at": summary.created_at.isoformat(),
+        "updated_at": summary.updated_at.isoformat(),
+        "created_by": str(summary.created_by),
+        "updated_by": str(summary.updated_by) if summary.updated_by else None
+    }
+
+
+def _build_translation_response(translated_data: Dict[str, Any]) -> TranslationResponse:
+    """Transform translation output to API response format."""
+    # Normalize temporal data for Pydantic
+    for temporal_field in ["created_at", "updated_at"]:
+        if isinstance(translated_data.get(temporal_field), str):
+            translated_data[temporal_field] = datetime.fromisoformat(
+                translated_data[temporal_field].replace("Z", "+00:00")
+            )
+    
+    # Normalize identifier fields to proper types
+    for uuid_field in ["id", "appointment_id", "user_id", "created_by", "updated_by"]:
+        field_value = translated_data.get(uuid_field)
+        if isinstance(field_value, str):
+            translated_data[uuid_field] = UUID(field_value)
+        elif field_value is None and uuid_field == "updated_by":
+            # updated_by is Optional[UUID], so None is valid
+            translated_data[uuid_field] = None
+    
+    return TranslationResponse(**translated_data)

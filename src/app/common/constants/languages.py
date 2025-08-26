@@ -13,6 +13,7 @@ class LanguageCode(str, Enum):
     PORTUGUESE = "pt"
     MANDARIN = "zh"
     BENGALI = "bn"
+    HINDI = "hi"
 
 
 class LanguageName(str, Enum):
@@ -21,7 +22,7 @@ class LanguageName(str, Enum):
     PORTUGUESE = "Portuguese"
     MANDARIN = "Mandarin"
     BENGALI = "Bengali"
-
+    HINDI = "Hindi"
 
 class LanguageInfo:
     """Language information and metadata."""
