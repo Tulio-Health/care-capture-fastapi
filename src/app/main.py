@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
-from .routes import health_router, root_router, care_capture_router, ai_chat_router ,users_router , schedule_visit_router
+from .routes import health_router, root_router, care_capture_router, ai_chat_router ,users_router , schedule_visit_router, translation_router
 from .common.exception import (
     HealthCheckError,
     CareCaptureError,
@@ -81,6 +81,7 @@ def get_application() -> FastAPI:
     app.include_router(users_router)
     app.include_router(ai_chat_router)
     app.include_router(schedule_visit_router)
+    app.include_router(translation_router)
     logger.debug("Routers included")
 
     return app
@@ -92,11 +93,13 @@ if __name__ == "__main__":
     import uvicorn
     
     port = settings.PORT
+    
+    print("PORT", port)
     logger.info(f"Starting application on port {port}")
     
     uvicorn.run(
         "src.app.main:app",
         host="0.0.0.0",
-        port=port,
+        port=8000,
         reload=True
     )
