@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # API Configuration
     APP_ENV: str = "development"
     DEBUG: bool = True
-    PORT: int = 8001
+    PORT: int = 8000
     
     # Database Configuration
     DB_HOST: str = "localhost"
