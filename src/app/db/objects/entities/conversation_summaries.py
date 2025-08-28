@@ -2,6 +2,7 @@ from sqlalchemy import Column, String, JSON, Text , text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import DateTime, func
+from pydantic import ConfigDict
 
 Base = declarative_base()
 
@@ -23,6 +24,14 @@ class ConversationSummaries(Base):
     updated_at = Column(DateTime(timezone=True), server_default=text("TIMEZONE('utc', NOW())"), onupdate=text("TIMEZONE('utc', NOW())"))
     created_by = Column(UUID(as_uuid=True), nullable=False)
     updated_by = Column(UUID(as_uuid=True), nullable=False)
+
+    model_config = ConfigDict(
+        from_attributes=True, 
+        populate_by_name=True,
+        json_encoders={
+            UUID: str
+        }
+    )
 
     def __repr__(self):
         return f"<ConversationSummaries(id={self.id}, appointment_id={self.appointment_id})>"
