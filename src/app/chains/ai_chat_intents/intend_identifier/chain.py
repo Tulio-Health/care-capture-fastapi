@@ -9,31 +9,25 @@ The module provides:
 
 from typing import Sequence
 from langchain.prompts import ChatPromptTemplate
-from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 import logging
 from datetime import datetime
 
-from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
+from src.app.common.llm_factory import get_default_chat_model
 from src.app.core.langsmith_trace import LangSmithTrace
-from src.app.core.settings import get_settings
 from src.app.common.logging import get_logger
 from .models import RouterOptions
 from .constants import INTENT_IDENTIFIER_SYSTEM_PROMPT
 
-# Initialize model with settings
-settings = get_settings()
-model = init_chat_model(
-    model=LLM_MODEL.GPT_4O_MINI,
-    model_provider=LLM_PROVIDER.OPENAI,
-    openai_api_key=settings.OPENAI_API_KEY,
-    temperature=0.1,  # Lower temperature for more consistent classification
-)
-
 logger = get_logger(__name__)
+_tracer = None
 
-tracer = LangSmithTrace().trace(tags=[__name__])
+def get_tracer():
+    global _tracer
+    if _tracer is None:
+        _tracer = LangSmithTrace().trace(tags=[__name__])
+    return _tracer
 
 class IntendIdentifierChain:
     """
@@ -58,12 +52,13 @@ class IntendIdentifierChain:
         - Few-shot examples for contextual classification
         - Clear decision framework for edge cases
         """
+        self._model = None
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", INTENT_IDENTIFIER_SYSTEM_PROMPT),
             ("human", "Conversation history:\n{messages}\nLast user message:\n{text}\n\nRespond ONLY with the correct intent label.")
         ])
         
-        self.chain = self.prompt | model | StrOutputParser()
+        self._chain = None
 
     def identify_intent(self, conversation_messages: Sequence, text: str) -> str:
         """
@@ -95,7 +90,7 @@ class IntendIdentifierChain:
                 ("system", formatted_system_prompt),
                 ("human", "Conversation history:\n{messages}\nLast user message:\n{text}\n\nRespond ONLY with the correct intent label.")
             ])
-            chain_with_date = prompt_with_date | model | StrOutputParser()
+            chain_with_date = prompt_with_date | self.model | StrOutputParser()
             
             # Process through the chain
             result = chain_with_date.invoke({
@@ -209,5 +204,19 @@ class IntendIdentifierChain:
             "your appointments", "your visits", "your health", "i apologize"
         ]
         
+    @property
+    def model(self):
+        """Lazy load the model on first access"""
+        if self._model is None:
+            self._model = get_default_chat_model()
+        return self._model
+    
+    @property
+    def chain(self):
+        """Lazy load the chain on first access"""
+        if self._chain is None:
+            self._chain = self.prompt | self.model | StrOutputParser()
+        return self._chain
+
         content_lower = content.lower()
         return any(indicator in content_lower for indicator in ai_indicators) or len(content) > 200 

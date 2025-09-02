@@ -1,28 +1,24 @@
 from langchain.prompts import ChatPromptTemplate
-from langchain.chat_models import init_chat_model
 from langchain_core.output_parsers import JsonOutputParser
 from langsmith import traceable
 from typing import Dict, Any
 import json
 
-from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
-from src.app.core.settings import get_settings
+from src.app.common.llm_factory import get_default_chat_model
 from src.app.core.langsmith_trace import LangSmithTrace
 from src.app.common.logging import get_logger
 from src.app.services.translation.medical_terminology import medical_terminology_service
 from src.app.common.constants.languages import LanguageInfo
 
-settings = get_settings()
 logger = get_logger(__name__)
 
-model = init_chat_model(
-    model=LLM_MODEL.GPT_4O_MINI,
-    model_provider=LLM_PROVIDER.OPENAI,
-    openai_api_key=settings.OPENAI_API_KEY,
-    temperature=0.1,  # Low temperature for consistent translation
-)
+_tracer = None
 
-tracer = LangSmithTrace().trace(tags=[__name__])
+def get_tracer():
+    global _tracer
+    if _tracer is None:
+        _tracer = LangSmithTrace().trace(tags=[__name__])
+    return _tracer
 
 class TranslationChain:
     """
@@ -36,7 +32,7 @@ class TranslationChain:
     """
     
     def __init__(self):
-        self.model = model
+        self._model = None
         self.parser = JsonOutputParser()
         
     @traceable(name="translate_conversation_summary")
@@ -90,7 +86,7 @@ class TranslationChain:
             result = await chain.ainvoke({
                 "target_language": target_language,
                 "summary_data": json.dumps(summary_data, ensure_ascii=False, indent=2)
-            }, config={"callbacks": [tracer]})
+            }, config={"callbacks": [get_tracer()]})
             
             logger.info(f"Successfully translated summary to {target_language}")
             return result
@@ -98,6 +94,13 @@ class TranslationChain:
         except Exception as e:
             logger.error(f"Translation failed for language {target_language}: {str(e)}")
             raise ValueError(f"Translation failed: {str(e)}")
+    
+    @property
+    def model(self):
+        """Lazy load the model on first access"""
+        if self._model is None:
+            self._model = get_default_chat_model()
+        return self._model
     
     def get_supported_languages(self) -> list[str]:
         """Get list of supported language codes."""

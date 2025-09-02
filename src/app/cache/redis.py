@@ -5,7 +5,6 @@ from typing import Optional, List
 
 from src.app.core import get_settings
 
-settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
@@ -21,6 +20,8 @@ class RedisClient:
     def __init__(self):
         if self._client is None:
             try:
+                # Get settings dynamically to ensure SSM parameters are loaded
+                settings = get_settings()
                 self._client = Redis(
                     host=settings.REDIS_HOST,
                     port=settings.REDIS_PORT,
@@ -28,7 +29,7 @@ class RedisClient:
                     decode_responses=True
                 )
                 self._client.ping()
-                logger.info("Redis client initialized")
+                logger.info(f"Redis client initialized at {settings.REDIS_HOST}:{settings.REDIS_PORT}")
             except ConnectionError as e:
                 logger.info(f"Redis connection error: {e}")
                 raise

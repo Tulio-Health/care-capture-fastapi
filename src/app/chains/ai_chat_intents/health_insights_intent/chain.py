@@ -1,9 +1,8 @@
 import logging
 from langchain.prompts import ChatPromptTemplate
-from langchain.chat_models import init_chat_model
 from langchain_core.output_parsers import PydanticOutputParser
 from src.app.common.constants.cache_keys import CACHE_KEY
-from src.app.common.constants.llm import LLM_MODEL , LLM_PROVIDER
+from src.app.common.llm_factory import get_default_chat_model
 from src.app.core.langsmith_trace import LangSmithTrace
 from src.app.db.config.database import get_db
 from src.app.db.objects.entities.patient_health_insights import PatientHealthInsights
@@ -14,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.encoders import jsonable_encoder
 
 
-from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
 from src.app.models.intent_identify import IntentResponse, IntentAiResponse
 from src.app.chains.ai_chat_intents.intend_identifier.models import RouterOptions
 from src.app.chains.ai_chat_intents.not_found_intent.chain import NoDataFoundIntentChain
@@ -22,16 +20,13 @@ from src.app.chains.ai_chat_intents.health_insights_intent.constants import (
     HEALTH_INSIGHTS_SYSTEM_PROMPT,
     HEALTH_INSIGHTS_USER_PROMPT
 )
-from src.app.core import get_settings
+_tracer = None
 
-settings = get_settings()
-model = init_chat_model(
-    model=LLM_MODEL.GPT_4O_MINI,
-    model_provider=LLM_PROVIDER.OPENAI,
-    openai_api_key=settings.OPENAI_API_KEY,
-    temperature=0.2,
-)
-tracer = LangSmithTrace().trace(tags=[__name__])
+def get_tracer():
+    global _tracer
+    if _tracer is None:
+        _tracer = LangSmithTrace().trace(tags=[__name__])
+    return _tracer
 
 
 logger = logging.getLogger(__name__)
@@ -42,13 +37,14 @@ class HealthInsightsIntentChain:
     def __init__(self):
         # Initialize the no data found chain
         self.no_data_found_chain = NoDataFoundIntentChain()
+        self._model = None
         
         self.parser = PydanticOutputParser(pydantic_object=HealthInsightsExtractionResponse)
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", HEALTH_INSIGHTS_SYSTEM_PROMPT),
             ("user", HEALTH_INSIGHTS_USER_PROMPT)
         ])
-        self.chain = self.prompt | model | self.parser
+        self._chain = None
 
     async def handle_intent(self, **kwargs) -> HealthInsightsExtractionResponse:
         try:
@@ -190,5 +186,19 @@ class HealthInsightsIntentChain:
             health_insights = await repo.get_by_user_id(user_id)
             return jsonable_encoder(health_insights)
     
+    @property
+    def model(self):
+        """Lazy load the model on first access"""
+        if self._model is None:
+            self._model = get_default_chat_model()
+        return self._model
+    
+    @property
+    def chain(self):
+        """Lazy load the chain on first access"""
+        if self._chain is None:
+            self._chain = self.prompt | self.model | self.parser
+        return self._chain
+    
     def invoke(self, text: str, context: str) -> HealthInsightsExtractionResponse:
-        return self.chain.invoke({"text": text ,"context":context , "output_format": self.parser.get_format_instructions()}, config={"callbacks": [tracer]})
+        return self.chain.invoke({"text": text ,"context":context , "output_format": self.parser.get_format_instructions()}, config={"callbacks": [get_tracer()]})

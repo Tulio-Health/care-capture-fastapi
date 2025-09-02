@@ -4,6 +4,7 @@ from pydantic import PostgresDsn, ValidationError
 from functools import lru_cache
 import os
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -16,22 +17,25 @@ class Settings(BaseSettings):
     
     # Database Configuration
     DB_HOST: str = "localhost"
-    DB_PORT: int = 5432  # Hardcoded port number
-    DB_USER: str
-    DB_PASSWORD: str
+    DB_PORT: int = 5432
+    DB_USER: str = ""
+    DB_PASSWORD: str = ""
     DB_NAME: str = "care-capture-app"
     DB_SSL: bool = False
     
     # Redis Configuration
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
-    REDIS_PASSWORD: str = ''
+    REDIS_PASSWORD: str = ""
     
-    # LANGSMITH 
-    LANGSMITH_TRACING: str
-    LANGSMITH_ENDPOINT: str
-    LANGSMITH_PROJECT: str
-    LANGSMITH_API_KEY: str
+    # External Services
+    OPENAI_API_KEY: str = ""
+    
+    # LangSmith (optional)
+    LANGSMITH_TRACING: str = ""
+    LANGSMITH_ENDPOINT: str = ""
+    LANGSMITH_PROJECT: str = ""
+    LANGSMITH_API_KEY: str = ""
     
     @property
     def DATABASE_URL(self) -> PostgresDsn:
@@ -67,12 +71,6 @@ class Settings(BaseSettings):
             logger.error(f"Unexpected error constructing database URL: {str(e)}")
             raise
     
-    # API Keys
-    OPENAI_API_KEY: str
-    LANGSMITH_TRACING: str
-    LANGSMITH_ENDPOINT:str
-    LANGSMITH_PROJECT: str
-    LANGSMITH_API_KEY: str
     
     class Config:
         env_file = ".env"

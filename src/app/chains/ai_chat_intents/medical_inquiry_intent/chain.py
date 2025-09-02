@@ -1,42 +1,52 @@
 import logging
 from langchain.prompts import ChatPromptTemplate
-from langchain.chat_models import init_chat_model
 from langchain_core.output_parsers import StrOutputParser
 import json
 
-from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
+from src.app.common.llm_factory import get_default_chat_model
 from src.app.core.langsmith_trace import LangSmithTrace
 from src.app.models.intent_identify import MedicalIntentResponse, MedicalIntentAiResponse
-from src.app.core import get_settings
 from src.app.chains.ai_chat_intents.intend_identifier.models import RouterOptions
 from src.app.chains.ai_chat_intents.medical_inquiry_intent.constants import (
     MEDICAL_INQUIRY_SYSTEM_PROMPT,
     MEDICAL_INQUIRY_USER_PROMPT
 )
 
-settings = get_settings()
+_tracer = None
 
-tracer = LangSmithTrace().trace(tags=[__name__])
-
-model =init_chat_model(
-    model=LLM_MODEL.GPT_4O_MINI,
-    model_provider=LLM_PROVIDER.OPENAI,
-    openai_api_key=settings.OPENAI_API_KEY,
-    temperature=0.2,
-)
+def get_tracer():
+    global _tracer
+    if _tracer is None:
+        _tracer = LangSmithTrace().trace(tags=[__name__])
+    return _tracer
 
 logger = logging.getLogger(__name__)
 
 
 class MedicalInquiryIntentChain:
     def __init__(self):
+        # Initialize components except model
+        self._model = None
         # Use StrOutputParser for natural text responses like past visit chain
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", MEDICAL_INQUIRY_SYSTEM_PROMPT),
             ("user", MEDICAL_INQUIRY_USER_PROMPT)
         ])
-        # Chain for generating natural text content
-        self.chain = self.prompt | model | StrOutputParser()
+        self._chain = None
+    
+    @property
+    def model(self):
+        """Lazy load the model on first access"""
+        if self._model is None:
+            self._model = get_default_chat_model()
+        return self._model
+    
+    @property
+    def chain(self):
+        """Lazy load the chain on first access"""
+        if self._chain is None:
+            self._chain = self.prompt | self.model | StrOutputParser()
+        return self._chain
 
     async def handle_intent(self, **kwargs) -> MedicalIntentResponse[None]:
         try:
@@ -65,7 +75,7 @@ class MedicalInquiryIntentChain:
                 "user_profile": user_profile_str,
                 "health_insights": health_insights_str,
                 "conversation_history": json.dumps(chat_history, default=str)
-            }, config={"callbacks": [tracer]})
+            }, config={"callbacks": [get_tracer()]})
             
             # Parse the response to extract content and citations
             content, citations = self._parse_medical_response(ai_content_string)

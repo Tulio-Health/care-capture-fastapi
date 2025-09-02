@@ -1,28 +1,25 @@
 from langchain.prompts import ChatPromptTemplate
-from langchain.chat_models import init_chat_model
 from langsmith import traceable
 from langchain_core.output_parsers import PydanticOutputParser
 
-from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
+from src.app.common.llm_factory import get_default_chat_model
 from src.app.core.langsmith_trace import LangSmithTrace
-from src.app.core.settings import get_settings
 from src.app.models.transcript_summarization import TranscriptSummarizationResponse
 
-settings = get_settings()
-model = init_chat_model(
-    model=LLM_MODEL.GPT_4O_MINI,
-    model_provider=LLM_PROVIDER.OPENAI,
-    openai_api_key=settings.OPENAI_API_KEY,
-    temperature=0.2,
-)
+_tracer = None
 
-tracer = LangSmithTrace().trace(tags=[__name__])
+def get_tracer():
+    global _tracer
+    if _tracer is None:
+        _tracer = LangSmithTrace().trace(tags=[__name__])
+    return _tracer
 
 
 
 class TranscriptSummarizationChain:
     def __init__(self):
-        #self.llm = model.invoke(temperature=0.2, input="summarize")
+        # Initialize components except model
+        self._model = None
         self.parser = PydanticOutputParser(pydantic_object=TranscriptSummarizationResponse)
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", """You are a medical information extraction assistant. Your task is to analyze medical conversations and extract key information in a structured format.
@@ -40,9 +37,23 @@ class TranscriptSummarizationChain:
             ("user", 
              'Conversation: {text}')
         ])
-        self.chain = self.prompt | model | self.parser
+        self._chain = None
+    
+    @property
+    def model(self):
+        """Lazy load the model on first access"""
+        if self._model is None:
+            self._model = get_default_chat_model()
+        return self._model
+    
+    @property
+    def chain(self):
+        """Lazy load the chain on first access"""
+        if self._chain is None:
+            self._chain = self.prompt | self.model | self.parser
+        return self._chain
 
     @traceable(name="summarize")
     def summarize(self, text) -> TranscriptSummarizationResponse:
-        result = self.chain.invoke({"text": text, "output_format": self.parser.get_format_instructions()}, config={"callbacks": [tracer]})
+        result = self.chain.invoke({"text": text, "output_format": self.parser.get_format_instructions()}, config={"callbacks": [get_tracer()]})
         return result

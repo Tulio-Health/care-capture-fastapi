@@ -1,19 +1,9 @@
 from langchain.prompts import ChatPromptTemplate
-from langchain.chat_models import init_chat_model
 from langchain_core.output_parsers import StrOutputParser
 from langchain.memory import RedisChatMessageHistory
 from pydantic import BaseModel
 
-from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
-from src.app.core.settings import get_settings
-
-settings = get_settings()
-model = init_chat_model(
-    model=LLM_MODEL.GPT_4O_MINI,
-    model_provider=LLM_PROVIDER.OPENAI,
-    openai_api_key=settings.OPENAI_API_KEY,
-    temperature=0.2,
-)
+from src.app.common.llm_factory import get_default_chat_model
 
 class MedicalChatChain:
     def __init__(self):
@@ -32,15 +22,23 @@ class MedicalChatChain:
             ("human", "{input}"),
         ])
 
-        # Simple LCEL chain
-        self.chain = (
+        # Get model lazily to ensure SSM parameters are loaded
+        self.model = None
+        
+    def _get_chain(self):
+        """Get or create the chain with lazy model initialization"""
+        if self.model is None:
+            self.model = get_default_chat_model()
+        
+        return (
             self.prompt 
-            | model 
+            | self.model 
             | StrOutputParser()
         )
 
     def chat(self, input_text: str, context: dict) -> str:
-        return self.chain.invoke({
+        chain = self._get_chain()
+        return chain.invoke({
             "input": input_text,
             "user_profile": context["user_profile"],
             "visit_summary": context["visit_summary"],
