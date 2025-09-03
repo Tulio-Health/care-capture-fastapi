@@ -26,6 +26,12 @@ def get_tracer():
     return _tracer
 
 
+def get_callbacks():
+    """Get callbacks list, handling disabled tracing"""
+    tracer = get_tracer()
+    return [tracer] if tracer is not None else []
+
+
 NO_PAST_VISIT_INFORMATION_AVAILABLE = "I am sorry, but I don't have any past Provider visit information available for you, please try with a different query."
 
 class PastVisitIntentChain:
@@ -194,7 +200,7 @@ class PastVisitIntentChain:
                 "appointments_data": json.dumps(appointments, default=str),
                 "conversation_history": json.dumps(chat_history, default=str),
                 "query_format": self.query_parser.get_format_instructions()
-            } , config={"callbacks": [get_tracer()]})
+            } , config={"callbacks": get_callbacks()})
 
             print(f"Extracted queryy parameters: {query_params}")
 
@@ -231,7 +237,7 @@ class PastVisitIntentChain:
                 "providers_info": json.dumps([], default=str),
                 "conversation_summaries": json.dumps(relevant_summaries, default=str),
                 "today_date": date.today().isoformat()
-            },config={"callbacks": [get_tracer()]})
+            },config={"callbacks": get_callbacks()})
 
             return IntentResponse[None](
                 intent="past_visits",

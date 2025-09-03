@@ -70,11 +70,11 @@ class SSMParameterLoader:
             # External Services
             SSMParameterMapping('openai/api_key', 'OPENAI_API_KEY', is_secure=True),
             
-            # Note: LangSmith parameters are not in SSM yet - they should be loaded from .env
-            # If needed in SSM later, add:
-            # SSMParameterMapping('langsmith/api_key', 'LANGSMITH_API_KEY', is_secure=True),
-            # SSMParameterMapping('langsmith/endpoint', 'LANGSMITH_ENDPOINT'),
-            # SSMParameterMapping('langsmith/project', 'LANGSMITH_PROJECT'),
+            # LangSmith Configuration (optional - will use defaults if not in SSM)
+            SSMParameterMapping('langsmith/tracing', 'LANGSMITH_TRACING'),
+            SSMParameterMapping('langsmith/api_key', 'LANGSMITH_API_KEY', is_secure=True),
+            SSMParameterMapping('langsmith/endpoint', 'LANGSMITH_ENDPOINT'),
+            SSMParameterMapping('langsmith/project', 'LANGSMITH_PROJECT'),
         ]
     
     def should_load_ssm(self) -> bool:
@@ -92,6 +92,70 @@ class SSMParameterLoader:
         
         return is_app_runner or force_ssm_local
     
+    def load_parameters_sync(self) -> Dict[str, str]:
+        """
+        Load all parameters from SSM Parameter Store synchronously
+        
+        Returns:
+            Dictionary of parameter values keyed by environment variable names
+            
+        Raises:
+            Exception: If SSM parameter loading fails
+        """
+        if not self.should_load_ssm():
+            logger.info("SSM parameter loading disabled - using existing environment variables")
+            return {}
+        
+        logger.info(f"Loading SSM parameters from prefix: {self.parameter_prefix}")
+        
+        try:
+            # Get all parameters by path (AWS SSM limits MaxResults to 10)
+            all_parameters = []
+            next_token = None
+            
+            while True:
+                params = {
+                    'Path': self.parameter_prefix,
+                    'Recursive': True,
+                    'WithDecryption': True,
+                    'MaxResults': 10
+                }
+                
+                if next_token:
+                    params['NextToken'] = next_token
+                
+                response = self.ssm_client.get_parameters_by_path(**params)
+                all_parameters.extend(response.get('Parameters', []))
+                
+                next_token = response.get('NextToken')
+                if not next_token:
+                    break
+            
+            parameter_dict = {}
+            
+            # Convert SSM parameters to environment variables
+            mappings = self.get_parameter_mappings()
+            mapping_dict = {f"{self.parameter_prefix}/{mapping.ssm_path}": mapping for mapping in mappings}
+            
+            for param in all_parameters:
+                param_name = param['Name']
+                param_value = param['Value']
+                
+                if param_name in mapping_dict:
+                    mapping = mapping_dict[param_name]
+                    parameter_dict[mapping.env_var] = param_value
+                    logger.debug(f"Loaded parameter: {mapping.env_var}")
+            
+            logger.info(f"Successfully loaded {len(parameter_dict)} SSM parameters")
+            return parameter_dict
+            
+        except ClientError as e:
+            logger.error(f"AWS SSM ClientError: {e}")
+            raise Exception(f"Failed to load SSM parameters: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error loading SSM parameters: {e}")
+            raise
+
     async def load_parameters(self) -> Dict[str, str]:
         """
         Load all parameters from SSM Parameter Store
@@ -168,6 +232,47 @@ class SSMParameterLoader:
             logger.debug(f"Set environment variable: {env_var}")
         
         logger.info(f"Set {len(parameters)} environment variables from SSM")
+
+
+def load_ssm_configuration_sync() -> None:
+    """
+    Main function to load SSM configuration into environment variables synchronously
+    Call this early in application startup
+    """
+    try:
+        loader = SSMParameterLoader()
+        
+        # Only load if we should use SSM
+        if not loader.should_load_ssm():
+            logger.info("SSM loading skipped - using existing environment configuration")
+            return
+        
+        logger.info("🔧 Loading configuration from AWS SSM Parameter Store...")
+        
+        # Load parameters from SSM synchronously
+        parameters = loader.load_parameters_sync()
+        
+        if parameters:
+            # Set environment variables
+            loader.set_environment_variables(parameters)
+            
+            # Override Redis configuration for local development (similar to NodeAPI)
+            force_ssm_local = os.getenv('USE_SSM_LOCALLY', 'false').lower() == 'true'
+            if force_ssm_local:
+                logger.info("🔧 Overriding Redis configuration for local development")
+                os.environ['REDIS_HOST'] = '127.0.0.1'
+                os.environ['REDIS_PORT'] = '6379'
+                os.environ['REDIS_PASSWORD'] = ''
+                logger.info("Redis configuration set to local instance")
+            
+            logger.info("✅ SSM configuration loaded successfully")
+        else:
+            logger.warning("No SSM parameters loaded")
+            
+    except Exception as e:
+        logger.error(f"❌ Failed to load SSM configuration: {e}")
+        # Don't raise - allow app to start with existing env vars
+        logger.info("Continuing with existing environment variables")
 
 
 async def load_ssm_configuration() -> None:

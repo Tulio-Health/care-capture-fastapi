@@ -20,6 +20,12 @@ def get_tracer():
         _tracer = LangSmithTrace().trace(tags=[__name__])
     return _tracer
 
+
+def get_callbacks():
+    """Get callbacks list, handling disabled tracing"""
+    tracer = get_tracer()
+    return [tracer] if tracer is not None else []
+
 class TranslationChain:
     """
     A specialized translation chain for medical conversation summaries.
@@ -86,7 +92,7 @@ class TranslationChain:
             result = await chain.ainvoke({
                 "target_language": target_language,
                 "summary_data": json.dumps(summary_data, ensure_ascii=False, indent=2)
-            }, config={"callbacks": [get_tracer()]})
+            }, config={"callbacks": get_callbacks()})
             
             logger.info(f"Successfully translated summary to {target_language}")
             return result

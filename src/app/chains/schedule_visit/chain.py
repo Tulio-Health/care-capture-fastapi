@@ -15,6 +15,12 @@ def get_tracer():
     return _tracer
 
 
+def get_callbacks():
+    """Get callbacks list, handling disabled tracing"""
+    tracer = get_tracer()
+    return [tracer] if tracer is not None else []
+
+
 
 class ScheduleVisitChain:
     def __init__(self):
@@ -51,4 +57,4 @@ class ScheduleVisitChain:
     def schedule_visit(self, **kwargs) -> str:
         text = kwargs['text']
         providers = kwargs['providers']
-        return self.chain.invoke({"text": text, "providers": providers, "output_format": self.parser.get_format_instructions() , "current_timestamp": datetime.now()}, config={"callbacks": [get_tracer()]})
+        return self.chain.invoke({"text": text, "providers": providers, "output_format": self.parser.get_format_instructions() , "current_timestamp": datetime.now()}, config={"callbacks": get_callbacks()})

@@ -29,6 +29,12 @@ def get_tracer():
     return _tracer
 
 
+def get_callbacks():
+    """Get callbacks list, handling disabled tracing"""
+    tracer = get_tracer()
+    return [tracer] if tracer is not None else []
+
+
 logger = logging.getLogger(__name__)
 
 HealthInsightsExtractionResponse = IntentResponse[None]
@@ -201,4 +207,4 @@ class HealthInsightsIntentChain:
         return self._chain
     
     def invoke(self, text: str, context: str) -> HealthInsightsExtractionResponse:
-        return self.chain.invoke({"text": text ,"context":context , "output_format": self.parser.get_format_instructions()}, config={"callbacks": [get_tracer()]})
+        return self.chain.invoke({"text": text ,"context":context , "output_format": self.parser.get_format_instructions()}, config={"callbacks": get_callbacks()})

@@ -19,6 +19,12 @@ def get_tracer():
     return _tracer
 
 
+def get_callbacks():
+    """Get callbacks list, handling disabled tracing"""
+    tracer = get_tracer()
+    return [tracer] if tracer is not None else []
+
+
 
 class GenerateHealthInsightsChain:
     def __init__(self):
@@ -46,5 +52,5 @@ class GenerateHealthInsightsChain:
 
     @traceable(name="generate_health_insights")
     def generate_health_insights(self, summary_text: str) -> HealthInsightsResponse:
-        result = self.chain.invoke({"summary_text": summary_text, "output_format": self.parser.get_format_instructions()}, config={"callbacks": [get_tracer()]})
+        result = self.chain.invoke({"summary_text": summary_text, "output_format": self.parser.get_format_instructions()}, config={"callbacks": get_callbacks()})
         return result

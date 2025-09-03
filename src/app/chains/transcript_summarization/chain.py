@@ -15,6 +15,12 @@ def get_tracer():
     return _tracer
 
 
+def get_callbacks():
+    """Get callbacks list, handling disabled tracing"""
+    tracer = get_tracer()
+    return [tracer] if tracer is not None else []
+
+
 
 class TranscriptSummarizationChain:
     def __init__(self):
@@ -55,5 +61,5 @@ class TranscriptSummarizationChain:
 
     @traceable(name="summarize")
     def summarize(self, text) -> TranscriptSummarizationResponse:
-        result = self.chain.invoke({"text": text, "output_format": self.parser.get_format_instructions()}, config={"callbacks": [get_tracer()]})
+        result = self.chain.invoke({"text": text, "output_format": self.parser.get_format_instructions()}, config={"callbacks": get_callbacks()})
         return result

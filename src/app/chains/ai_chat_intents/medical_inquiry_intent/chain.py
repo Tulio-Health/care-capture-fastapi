@@ -20,6 +20,12 @@ def get_tracer():
         _tracer = LangSmithTrace().trace(tags=[__name__])
     return _tracer
 
+
+def get_callbacks():
+    """Get callbacks list, handling disabled tracing"""
+    tracer = get_tracer()
+    return [tracer] if tracer is not None else []
+
 logger = logging.getLogger(__name__)
 
 
@@ -75,7 +81,7 @@ class MedicalInquiryIntentChain:
                 "user_profile": user_profile_str,
                 "health_insights": health_insights_str,
                 "conversation_history": json.dumps(chat_history, default=str)
-            }, config={"callbacks": [get_tracer()]})
+            }, config={"callbacks": get_callbacks()})
             
             # Parse the response to extract content and citations
             content, citations = self._parse_medical_response(ai_content_string)

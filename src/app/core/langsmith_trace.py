@@ -25,8 +25,20 @@ class LangSmithTrace:
                 api_url=self.settings.LANGSMITH_ENDPOINT,
             )
         return self._client
+    
+    def is_enabled(self) -> bool:
+        """Check if LangSmith tracing is enabled"""
+        return (
+            self.settings.LANGSMITH_TRACING.lower() == 'true' and
+            bool(self.settings.LANGSMITH_API_KEY) and
+            bool(self.settings.LANGSMITH_PROJECT)
+        )
         
     def trace(self, tags: list[str] = None):
+        """Return LangChain tracer if enabled, otherwise None"""
+        if not self.is_enabled():
+            return None
+            
         return LangChainTracer(
             project_name=self.settings.LANGSMITH_PROJECT,
             client=self.client,

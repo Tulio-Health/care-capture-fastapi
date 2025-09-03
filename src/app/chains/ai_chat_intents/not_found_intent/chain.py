@@ -19,6 +19,12 @@ def get_tracer():
     if _tracer is None:
         _tracer = LangSmithTrace().trace(tags=[__name__])
     return _tracer
+
+
+def get_callbacks():
+    """Get callbacks list, handling disabled tracing"""
+    tracer = get_tracer()
+    return [tracer] if tracer is not None else []
 logger = logging.getLogger(__name__)
 
 
@@ -63,7 +69,7 @@ class NoDataFoundIntentChain:
                 "conversation_history": json.dumps(chat_history, default=str),
                 "intent": intent,
                 "search_details": search_details
-            }, config={"callbacks": [get_tracer()]})
+            }, config={"callbacks": get_callbacks()})
             
             return IntentResponse[None](
                 intent=kwargs.get('intent', 'unknown'), 

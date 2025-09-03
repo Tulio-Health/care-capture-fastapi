@@ -32,10 +32,8 @@ from .config.environment import initialize_environment
 async def lifespan(app: FastAPI):
     # Startup
     try:
-        # Load SSM parameters asynchronously
-        await initialize_environment()
-        
-        # Get settings after SSM parameters are loaded
+        # SSM parameters already loaded synchronously during imports
+        # Get settings (SSM parameters already available)
         settings = get_settings()
         
         # Initialize Redis client
