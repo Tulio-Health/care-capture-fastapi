@@ -85,15 +85,16 @@ class SSMParameterLoader:
         Determine if SSM parameters should be loaded
         
         Returns:
-            True if running in AWS App Runner or USE_SSM_LOCALLY=true
+            True if AWS credentials are available and SSM is accessible
         """
-        # Check if running in AWS App Runner
-        is_app_runner = os.getenv('AWS_EXECUTION_ENV', '').startswith('AWS_App_Runner')
-        
-        # Check for local SSM override
-        force_ssm_local = os.getenv('USE_SSM_LOCALLY', 'false').lower() == 'true'
-        
-        return is_app_runner or force_ssm_local
+        try:
+            # Test if we can access SSM (indicates AWS credentials are available)
+            self.ssm_client.describe_parameters(MaxResults=1)
+            logger.info("AWS credentials detected - will load from SSM Parameter Store")
+            return True
+        except Exception as e:
+            logger.info(f"No AWS credentials or SSM access - using environment variables: {str(e)}")
+            return False
     
     def load_parameters_sync(self) -> Dict[str, str]:
         """
@@ -260,8 +261,9 @@ def load_ssm_configuration_sync() -> None:
             loader.set_environment_variables(parameters)
             
             # Override Redis configuration for local development (similar to NodeAPI)
-            force_ssm_local = os.getenv('USE_SSM_LOCALLY', 'false').lower() == 'true'
-            if force_ssm_local:
+            # Check if running locally (not in AWS App Runner)
+            is_local_dev = not os.getenv('AWS_EXECUTION_ENV', '').startswith('AWS_App_Runner')
+            if is_local_dev:
                 logger.info("🔧 Overriding Redis configuration for local development")
                 os.environ['REDIS_HOST'] = '127.0.0.1'
                 os.environ['REDIS_PORT'] = '6379'
@@ -301,8 +303,9 @@ async def load_ssm_configuration() -> None:
             loader.set_environment_variables(parameters)
             
             # Override Redis configuration for local development (similar to NodeAPI)
-            force_ssm_local = os.getenv('USE_SSM_LOCALLY', 'false').lower() == 'true'
-            if force_ssm_local:
+            # Check if running locally (not in AWS App Runner)
+            is_local_dev = not os.getenv('AWS_EXECUTION_ENV', '').startswith('AWS_App_Runner')
+            if is_local_dev:
                 logger.info("🔧 Overriding Redis configuration for local development")
                 os.environ['REDIS_HOST'] = '127.0.0.1'
                 os.environ['REDIS_PORT'] = '6379'

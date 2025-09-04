@@ -28,7 +28,6 @@ jobs:
         run: |
           cat << 'EOF' > .env.develop
           AWS_REGION=${{ secrets.AWS_REGION }}
-          USE_SSM_LOCALLY=false
           PORT=8000
           DEBUG=false
           EOF

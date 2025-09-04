@@ -4,7 +4,7 @@ Environment configuration and SSM parameter loading for FastAPI application
 import os
 import logging
 import asyncio
-from .ssm_loader import load_ssm_configuration, load_ssm_configuration_sync
+from .ssm_loader import load_ssm_configuration, load_ssm_configuration_sync, SSMParameterLoader
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +28,13 @@ def initialize_environment_sync() -> None:
     
     # Log environment detection  
     is_app_runner = os.getenv('AWS_EXECUTION_ENV', '').startswith('AWS_App_Runner')
-    use_ssm_locally = os.getenv('USE_SSM_LOCALLY', 'false').lower() == 'true'
+    ssm_loader = SSMParameterLoader()
+    using_ssm = ssm_loader.should_load_ssm()
     
     if is_app_runner:
         logger.info("🏃 Running in AWS App Runner - SSM parameters loaded")
-    elif use_ssm_locally:
-        logger.info("🔧 Local development with SSM parameters enabled - loaded from SSM")
+    elif using_ssm:
+        logger.info("🔧 AWS credentials available - SSM parameters loaded")
     else:
         logger.info("💻 Local development mode - using environment variables")
     
@@ -59,12 +60,13 @@ async def initialize_environment() -> None:
     
     # Log environment detection
     is_app_runner = os.getenv('AWS_EXECUTION_ENV', '').startswith('AWS_App_Runner')
-    use_ssm_locally = os.getenv('USE_SSM_LOCALLY', 'false').lower() == 'true'
+    ssm_loader = SSMParameterLoader()
+    using_ssm = ssm_loader.should_load_ssm()
     
     if is_app_runner:
         logger.info("🏃 Running in AWS App Runner - SSM parameters loaded")
-    elif use_ssm_locally:
-        logger.info("🔧 Local development with SSM parameters enabled")
+    elif using_ssm:
+        logger.info("🔧 AWS credentials available - SSM parameters loaded")
     else:
         logger.info("💻 Local development mode - using environment variables")
     
@@ -78,4 +80,7 @@ def is_aws_environment() -> bool:
 
 def should_use_ssm() -> bool:
     """Determine if SSM parameters should be used"""
-    return is_aws_environment() or os.getenv('USE_SSM_LOCALLY', 'false').lower() == 'true'
+    # Create SSM loader to test credential availability
+    from .ssm_loader import SSMParameterLoader
+    loader = SSMParameterLoader()
+    return loader.should_load_ssm()

@@ -17,7 +17,6 @@ class Settings(BaseSettings):
     
     # Environment Detection
     AWS_REGION: str = "us-east-2"
-    USE_SSM_LOCALLY: bool = False
     
     # Database Configuration
     DB_HOST: str = "localhost"
