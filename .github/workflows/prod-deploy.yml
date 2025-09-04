@@ -76,11 +76,20 @@ jobs:
           SERVICE_NAME=$(aws ssm get-parameter --name "/tuliohealth/prod/infrastructure/fastapi_app_runner_service" --query 'Parameter.Value' --output text)
           echo "APP_RUNNER_SERVICE=$SERVICE_NAME" >> $GITHUB_OUTPUT
 
+      - name: Get ECR Repository from SSM
+        id: get-ecr-repo-deploy
+        run: |
+          ECR_REPO=$(aws ssm get-parameter --name "/tuliohealth/prod/infrastructure/fastapi_ecr_repository" --query 'Parameter.Value' --output text)
+          echo "ECR_REPOSITORY=$ECR_REPO" >> $GITHUB_OUTPUT
+
       - name: Deploy to App Runner
         id: deploy-apprunner
         run: |
           SERVICE_NAME="${{ steps.get-app-runner-service.outputs.APP_RUNNER_SERVICE }}"
-          IMAGE_URI="${{ needs.build_and_push.outputs.image }}"
+          ECR_REGISTRY="${{ needs.build_and_push.outputs.registry }}"
+          ECR_REPOSITORY="${{ steps.get-ecr-repo-deploy.outputs.ECR_REPOSITORY }}"
+          IMAGE_TAG="${{ github.sha }}"
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           
           echo "Deploying image $IMAGE_URI to App Runner service $SERVICE_NAME"
           
