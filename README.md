@@ -4,6 +4,31 @@ API for Care Capture AI - Making healthcare patient data more meaningful for pat
 
 This API is based on Python Fast API
 
+## Configuration
+
+This application uses **AWS Systems Manager (SSM) Parameter Store** for centralized configuration management, eliminating the need for numerous GitHub secrets.
+
+### GitHub Secrets Required (Only 2!)
+- `FASTAPI_AWS_ROLE_ARN` - IAM role for AWS access
+- `AWS_REGION` - AWS region (us-east-2)
+
+### SSM Parameters Used
+All sensitive configuration is stored in AWS SSM:
+```
+/tuliohealth/{env}/infrastructure/
+├── fastapi_ecr_repository      → ECR repository name
+└── fastapi_app_runner_service  → App Runner service name
+
+/tuliohealth/{env}/database/
+├── host, port, username, password, name, ssl
+
+/tuliohealth/{env}/redis/
+├── host, port, password
+
+/tuliohealth/{env}/openai/
+└── api_key
+```
+
 ## Setup
 
 1. Install Poetry if you haven't already:
