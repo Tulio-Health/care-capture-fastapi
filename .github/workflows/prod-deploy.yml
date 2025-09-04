@@ -118,7 +118,19 @@ jobs:
           
           # Wait for deployment to complete
           echo "Waiting for service to become ready..."
-          aws apprunner wait service-status-updated --service-arn $SERVICE_ARN
+          while true; do
+            STATUS=$(aws apprunner describe-service --service-arn $SERVICE_ARN --query 'Service.Status' --output text)
+            echo "Current status: $STATUS"
+            if [ "$STATUS" = "RUNNING" ]; then
+              echo "Service is now running!"
+              break
+            elif [ "$STATUS" = "CREATE_FAILED" ] || [ "$STATUS" = "DELETE_FAILED" ]; then
+              echo "Service deployment failed with status: $STATUS"
+              exit 1
+            fi
+            echo "Waiting 30 seconds..."
+            sleep 30
+          done
 
       - name: App Runner ID
         run: echo "App runner ID ${{ steps.deploy-apprunner.outputs.service-id }}"
