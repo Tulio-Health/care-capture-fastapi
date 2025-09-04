@@ -262,7 +262,11 @@ def load_ssm_configuration_sync() -> None:
             
             # Override Redis configuration for local development (similar to NodeAPI)
             # Check if running locally (not in AWS App Runner)
-            is_local_dev = not os.getenv('AWS_EXECUTION_ENV', '').startswith('AWS_App_Runner')
+            aws_execution_env = os.getenv('AWS_EXECUTION_ENV', '')
+            logger.info(f"AWS_EXECUTION_ENV detected: '{aws_execution_env}'")
+            is_local_dev = not (aws_execution_env.startswith('AWS_App_Runner') or 
+                               'AWS' in aws_execution_env or 
+                               os.path.exists('/opt/aws'))
             if is_local_dev:
                 logger.info("🔧 Overriding Redis configuration for local development")
                 os.environ['REDIS_HOST'] = '127.0.0.1'
@@ -304,7 +308,11 @@ async def load_ssm_configuration() -> None:
             
             # Override Redis configuration for local development (similar to NodeAPI)
             # Check if running locally (not in AWS App Runner)
-            is_local_dev = not os.getenv('AWS_EXECUTION_ENV', '').startswith('AWS_App_Runner')
+            aws_execution_env = os.getenv('AWS_EXECUTION_ENV', '')
+            logger.info(f"AWS_EXECUTION_ENV detected: '{aws_execution_env}'")
+            is_local_dev = not (aws_execution_env.startswith('AWS_App_Runner') or 
+                               'AWS' in aws_execution_env or 
+                               os.path.exists('/opt/aws'))
             if is_local_dev:
                 logger.info("🔧 Overriding Redis configuration for local development")
                 os.environ['REDIS_HOST'] = '127.0.0.1'
