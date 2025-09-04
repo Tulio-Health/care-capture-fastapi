@@ -70,6 +70,10 @@ jobs:
           role-to-assume: ${{ secrets.FASTAPI_AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      - name: Login to Amazon ECR
+        id: login-ecr-deploy
+        uses: aws-actions/amazon-ecr-login@v1
+
       - name: Get App Runner Service from SSM
         id: get-app-runner-service
         run: |
@@ -86,7 +90,7 @@ jobs:
         id: deploy-apprunner
         run: |
           SERVICE_NAME="${{ steps.get-app-runner-service.outputs.APP_RUNNER_SERVICE }}"
-          ECR_REGISTRY="${{ needs.build_and_push.outputs.registry }}"
+          ECR_REGISTRY="${{ steps.login-ecr-deploy.outputs.registry }}"
           ECR_REPOSITORY="${{ steps.get-ecr-repo-deploy.outputs.ECR_REPOSITORY }}"
           IMAGE_TAG="${{ github.sha }}"
           IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
