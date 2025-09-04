@@ -17,7 +17,7 @@ def initialize_environment_sync() -> None:
     logger.info("🚀 Initializing FastAPI environment configuration (sync)...")
     
     # Load environment file if it exists
-    env_file = f".env.{os.getenv('NODE_ENV', 'development')}"
+    env_file = f".env.{os.getenv('APP_ENV', 'development')}"
     if os.path.exists(env_file):
         logger.info(f"Loading environment file: {env_file}")
         from dotenv import load_dotenv
@@ -48,7 +48,7 @@ async def initialize_environment() -> None:
     logger.info("🚀 Initializing FastAPI environment configuration...")
     
     # Load environment file if it exists
-    env_file = f".env.{os.getenv('NODE_ENV', 'development')}"
+    env_file = f".env.{os.getenv('APP_ENV', 'development')}"
     if os.path.exists(env_file):
         logger.info(f"Loading environment file: {env_file}")
         from dotenv import load_dotenv

@@ -27,7 +27,6 @@ jobs:
       - name: Create develop env file
         run: |
           cat << 'EOF' > .env.develop
-          NODE_ENV=development
           AWS_REGION=${{ secrets.AWS_REGION }}
           USE_SSM_LOCALLY=false
           PORT=8000

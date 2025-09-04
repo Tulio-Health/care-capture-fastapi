@@ -23,7 +23,6 @@ jobs:
       - name: Create production env file
         run: |
           cat << 'EOF' > .env.production
-          NODE_ENV=production
           AWS_REGION=${{ secrets.AWS_REGION }}
           USE_SSM_LOCALLY=false
           PORT=8000

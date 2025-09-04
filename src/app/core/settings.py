@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     PORT: int = 8000
     
+    # Environment Detection
+    AWS_REGION: str = "us-east-2"
+    USE_SSM_LOCALLY: bool = False
+    
     # Database Configuration
     DB_HOST: str = "localhost"
     DB_PORT: int = 5432

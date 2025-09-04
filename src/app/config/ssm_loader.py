@@ -40,8 +40,8 @@ class SSMParameterLoader:
             logger.error(f"Failed to initialize SSM client: {e}")
             raise
         
-        # Determine environment from NODE_ENV or default to dev
-        environment = 'prod' if os.getenv('NODE_ENV') == 'production' else 'dev'
+        # Determine environment from APP_ENV or default to dev
+        environment = 'prod' if os.getenv('APP_ENV') == 'production' else 'dev'
         self.parameter_prefix = os.getenv('SSM_PARAMETER_PREFIX', f'/tuliohealth/{environment}')
         
         logger.info(f"SSM Parameter Loader initialized for environment: {environment}")
@@ -54,6 +54,9 @@ class SSMParameterLoader:
         Only include parameters that FastAPI actually needs
         """
         return [
+            # Infrastructure Configuration
+            SSMParameterMapping('infrastructure/app_env', 'APP_ENV'),
+            
             # Database Configuration
             SSMParameterMapping('database/host', 'DB_HOST'),
             SSMParameterMapping('database/port', 'DB_PORT'),
