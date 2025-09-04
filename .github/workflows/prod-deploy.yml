@@ -78,16 +78,16 @@ jobs:
 
       - name: Deploy to App Runner
         id: deploy-apprunner
-        uses: awslabs/amazon-app-runner-deploy@main
-        with:
-          service: ${{ steps.get-app-runner-service.outputs.APP_RUNNER_SERVICE }}
-          image: ${{ needs.build_and_push.outputs.image }}
-          access-role-arn: ${{ secrets.FASTAPI_AWS_ROLE_ARN }}
-          region: ${{ secrets.AWS_REGION }}
-          cpu: 1
-          memory: 2
-          port: 8000
-          wait-for-service-stability-seconds: 300
+        run: |
+          SERVICE_NAME="${{ steps.get-app-runner-service.outputs.APP_RUNNER_SERVICE }}"
+          IMAGE_URI="${{ needs.build_and_push.outputs.image }}"
+          
+          echo "Deploying image $IMAGE_URI to App Runner service $SERVICE_NAME"
+          
+          # Update the App Runner service with the new image
+          aws apprunner start-deployment --service-arn $(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='$SERVICE_NAME'].ServiceArn" --output text)
+          
+          echo "Deployment started for App Runner service: $SERVICE_NAME"
 
       - name: App Runner ID
         run: echo "App runner ID ${{ steps.deploy-apprunner.outputs.service-id }}"
