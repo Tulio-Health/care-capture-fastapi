@@ -84,10 +84,28 @@ jobs:
           
           echo "Deploying image $IMAGE_URI to App Runner service $SERVICE_NAME"
           
-          # Update the App Runner service with the new image
-          aws apprunner start-deployment --service-arn $(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='$SERVICE_NAME'].ServiceArn" --output text)
+          # Get the service ARN
+          SERVICE_ARN=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='$SERVICE_NAME'].ServiceArn" --output text)
           
-          echo "Deployment started for App Runner service: $SERVICE_NAME"
+          # Update the App Runner service with the new image
+          aws apprunner update-service \
+            --service-arn $SERVICE_ARN \
+            --source-configuration '{
+              "ImageRepository": {
+                "ImageIdentifier": "'$IMAGE_URI'",
+                "ImageConfiguration": {
+                  "Port": "8000"
+                },
+                "ImageRepositoryType": "ECR"
+              },
+              "AutoDeploymentsEnabled": false
+            }'
+          
+          echo "Service update initiated for $SERVICE_NAME with image $IMAGE_URI"
+          
+          # Wait for deployment to complete
+          echo "Waiting for service to become ready..."
+          aws apprunner wait service-status-updated --service-arn $SERVICE_ARN
 
       - name: App Runner ID
         run: echo "App runner ID ${{ steps.deploy-apprunner.outputs.service-id }}"
