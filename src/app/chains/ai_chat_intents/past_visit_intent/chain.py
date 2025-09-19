@@ -1,5 +1,4 @@
 from langchain.prompts import ChatPromptTemplate
-from langchain.chat_models import init_chat_model
 from langsmith import traceable
 from langchain_core.output_parsers import PydanticOutputParser, StrOutputParser
 import json
@@ -9,25 +8,28 @@ from sqlalchemy import select
 import uuid
 from datetime import date, datetime
 
-from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
+from src.app.common.llm_factory import get_default_chat_model
 from src.app.core.langsmith_trace import LangSmithTrace
 from src.app.models.intent_identify import IntentResponse, IntentAiResponse
 from src.app.models.past_visit_query import PastVisitQuery
 from src.app.models.conversation_summaries import ConversationSummary as PydanticConversationSummary
 from src.app.db.objects.entities.conversation_summaries import ConversationSummaries as ORMConversationSummaries
-from src.app.core import get_settings
 from src.app.chains.ai_chat_intents.not_found_intent.chain import NoDataFoundIntentChain
 from .constants import QUERY_PROMPT, RESPONSE_PROMPT
 
-settings = get_settings()
-model = init_chat_model(
-    model=LLM_MODEL.GPT_4O_MINI,
-    model_provider=LLM_PROVIDER.OPENAI,
-    openai_api_key=settings.OPENAI_API_KEY,
-    temperature=0.2,
-)
+_tracer = None
 
-tracer = LangSmithTrace().trace(tags=[__name__])
+def get_tracer():
+    global _tracer
+    if _tracer is None:
+        _tracer = LangSmithTrace().trace(tags=[__name__])
+    return _tracer
+
+
+def get_callbacks():
+    """Get callbacks list, handling disabled tracing"""
+    tracer = get_tracer()
+    return [tracer] if tracer is not None else []
 
 
 NO_PAST_VISIT_INFORMATION_AVAILABLE = "I am sorry, but I don't have any past Provider visit information available for you, please try with a different query."
@@ -37,6 +39,7 @@ class PastVisitIntentChain:
         self.db = db
         # Initialize the no data found chain
         self.no_data_found_chain = NoDataFoundIntentChain()
+        self._model = None
         
         # Initialize output parser for query parameters
         self.query_parser = PydanticOutputParser(pydantic_object=PastVisitQuery)
@@ -60,11 +63,9 @@ class PastVisitIntentChain:
             ("user", "User Original Question: {text}\nConversation History: {conversation_history}\nFiltered Appointments: {filtered_appointments}\nHealthcare Provider Details: {providers_info}\nConversation Summaries: {conversation_summaries}\nToday's Date: {today_date}")
         ])
         
-        # Chain for query extraction
-        self.query_chain = self.query_prompt | model | self.query_parser
-        
-        # Chain for final response content generation
-        self.response_content_chain = self.response_prompt | model | StrOutputParser()
+        # Lazy load chains
+        self._query_chain = None
+        self._response_content_chain = None
 
     def filter_appointments(self, query: PastVisitQuery, appointments: List[Dict[str, Any]], providers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
@@ -199,7 +200,7 @@ class PastVisitIntentChain:
                 "appointments_data": json.dumps(appointments, default=str),
                 "conversation_history": json.dumps(chat_history, default=str),
                 "query_format": self.query_parser.get_format_instructions()
-            } , config={"callbacks": [tracer]})
+            } , config={"callbacks": get_callbacks()})
 
             print(f"Extracted queryy parameters: {query_params}")
 
@@ -236,7 +237,7 @@ class PastVisitIntentChain:
                 "providers_info": json.dumps([], default=str),
                 "conversation_summaries": json.dumps(relevant_summaries, default=str),
                 "today_date": date.today().isoformat()
-            },config={"callbacks": [tracer]})
+            },config={"callbacks": get_callbacks()})
 
             return IntentResponse[None](
                 intent="past_visits",
@@ -275,4 +276,25 @@ class PastVisitIntentChain:
             else:
                 details.append(f"past visits from {query_params.start_date}")
         
+    @property
+    def model(self):
+        """Lazy load the model on first access"""
+        if self._model is None:
+            self._model = get_default_chat_model()
+        return self._model
+    
+    @property
+    def query_chain(self):
+        """Lazy load the query chain on first access"""
+        if self._query_chain is None:
+            self._query_chain = self.query_prompt | self.model | self.query_parser
+        return self._query_chain
+    
+    @property
+    def response_content_chain(self):
+        """Lazy load the response content chain on first access"""
+        if self._response_content_chain is None:
+            self._response_content_chain = self.response_prompt | self.model | StrOutputParser()
+        return self._response_content_chain
+
         return " ".join(details) if details else "past visits matching your criteria"

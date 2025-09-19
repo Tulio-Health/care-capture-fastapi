@@ -1,5 +1,5 @@
 name: Deploy FastAPI to AWS App Runner
- 
+
 on:
   push:
     branches:
@@ -7,11 +7,11 @@ on:
   pull_request:
     branches:
       - develop
- 
+
 permissions:
   id-token: write
   contents: read
- 
+
 jobs:
   build_and_push:
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/develop')
@@ -19,115 +19,121 @@ jobs:
     environment: develop
     outputs:
       registry: ${{ steps.login-ecr.outputs.registry }}
+      image: ${{ steps.build-image.outputs.image }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
- 
+
       - name: Create develop env file
         run: |
           cat << 'EOF' > .env.develop
-          APP_ENV=${{ secrets.APP_ENV }}
-          DB_HOST=${{ secrets.DB_HOST }}
-          DB_NAME=${{ secrets.DB_NAME }}
-          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-          DB_PORT=${{ secrets.DB_PORT }}
-          DB_SSL=${{ secrets.DB_SSL }}
-          DB_USER=${{ secrets.DB_USER }}
-          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-          PORT=${{ secrets.PORT }}
-          REDIS_HOST=${{ secrets.REDIS_HOST }}
-          REDIS_PORT=${{ secrets.REDIS_PORT }}
-          LANGSMITH_TRACING=${{ secrets.LANGSMITH_TRACING }}
-          LANGSMITH_API_KEY=${{ secrets.LANGSMITH_API_KEY }}
-          LANGSMITH_ENDPOINT=${{ secrets.LANGSMITH_ENDPOINT }}
-          LANGSMITH_PROJECT=${{ secrets.LANGSMITH_PROJECT }}
+          AWS_REGION=${{ secrets.AWS_REGION }}
+          PORT=8000
+          DEBUG=false
           EOF
- 
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: ${{ secrets.FASTAPI_AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
- 
+
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
- 
+
+      - name: Get ECR Repository from SSM
+        id: get-ecr-repo
+        run: |
+          ECR_REPO=$(aws ssm get-parameter --name "/tuliohealth/dev/infrastructure/fastapi_ecr_repository" --query 'Parameter.Value' --output text)
+          echo "ECR_REPOSITORY=$ECR_REPO" >> $GITHUB_OUTPUT
+
       - name: Build, tag, and push image to Amazon ECR
         id: build-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+          ECR_REPOSITORY: ${{ steps.get-ecr-repo.outputs.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build --build-arg ENV_FILE=.env.develop -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
- 
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
   deploy:
     needs: build_and_push
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     environment: develop
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
- 
-      - name: Create develop env file
-        run: |
-          cat << 'EOF' > .env.develop
-          APP_ENV=${{ secrets.APP_ENV }}
-          DB_HOST=${{ secrets.DB_HOST }}
-          DB_NAME=${{ secrets.DB_NAME }}
-          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-          DB_PORT=${{ secrets.DB_PORT }}
-          DB_SSL=${{ secrets.DB_SSL }}
-          DB_USER=${{ secrets.DB_USER }}
-          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-          PORT=${{ secrets.PORT }}
-          REDIS_HOST=${{ secrets.REDIS_HOST }}
-          REDIS_PORT=${{ secrets.REDIS_PORT }}
-          LANGSMITH_TRACING=${{ secrets.LANGSMITH_TRACING }}
-          LANGSMITH_API_KEY=${{ secrets.LANGSMITH_API_KEY }}
-          LANGSMITH_ENDPOINT=${{ secrets.LANGSMITH_ENDPOINT }}
-          LANGSMITH_PROJECT=${{ secrets.LANGSMITH_PROJECT }}
-          EOF
- 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: ${{ secrets.FASTAPI_AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
- 
+
       - name: Login to Amazon ECR
-        id: login-ecr
+        id: login-ecr-deploy
         uses: aws-actions/amazon-ecr-login@v1
- 
-      - name: Build, tag, and push image to Amazon ECR
-        id: build-image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
-          IMAGE_TAG: ${{ github.sha }}
+
+      - name: Get App Runner Service from SSM
+        id: get-app-runner-service
         run: |
-          docker build --build-arg ENV_FILE=.env.develop -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
- 
+          SERVICE_NAME=$(aws ssm get-parameter --name "/tuliohealth/dev/infrastructure/fastapi_app_runner_service" --query 'Parameter.Value' --output text)
+          echo "APP_RUNNER_SERVICE=$SERVICE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Get ECR Repository from SSM
+        id: get-ecr-repo-deploy
+        run: |
+          ECR_REPO=$(aws ssm get-parameter --name "/tuliohealth/dev/infrastructure/fastapi_ecr_repository" --query 'Parameter.Value' --output text)
+          echo "ECR_REPOSITORY=$ECR_REPO" >> $GITHUB_OUTPUT
+
       - name: Deploy to App Runner
         id: deploy-apprunner
-        uses: awslabs/amazon-app-runner-deploy@main
-        with:
-          service: ${{ secrets.APPRUNNER_SERVICE_NAME }}
-          image: ${{ steps.build-image.outputs.image }}
-          access-role-arn: ${{ secrets.FASTAPI_AWS_ROLE_ARN }}
-          region: ${{ secrets.AWS_REGION }}
-          cpu: 1
-          memory: 2
-          port: 8000
-          wait-for-service-stability: true
- 
+        run: |
+          SERVICE_NAME="${{ steps.get-app-runner-service.outputs.APP_RUNNER_SERVICE }}"
+          ECR_REGISTRY="${{ steps.login-ecr-deploy.outputs.registry }}"
+          ECR_REPOSITORY="${{ steps.get-ecr-repo-deploy.outputs.ECR_REPOSITORY }}"
+          IMAGE_TAG="${{ github.sha }}"
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          
+          echo "Deploying image $IMAGE_URI to App Runner service $SERVICE_NAME"
+          
+          # Get the service ARN
+          SERVICE_ARN=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='$SERVICE_NAME'].ServiceArn" --output text)
+          
+          # Update the App Runner service with the new image
+          aws apprunner update-service \
+            --service-arn $SERVICE_ARN \
+            --source-configuration '{
+              "ImageRepository": {
+                "ImageIdentifier": "'$IMAGE_URI'",
+                "ImageConfiguration": {
+                  "Port": "8000"
+                },
+                "ImageRepositoryType": "ECR"
+              },
+              "AutoDeploymentsEnabled": false
+            }'
+          
+          echo "Service update initiated for $SERVICE_NAME with image $IMAGE_URI"
+          
+          # Wait for deployment to complete
+          echo "Waiting for service to become ready..."
+          while true; do
+            STATUS=$(aws apprunner describe-service --service-arn $SERVICE_ARN --query 'Service.Status' --output text)
+            echo "Current status: $STATUS"
+            if [ "$STATUS" = "RUNNING" ]; then
+              echo "Service is now running!"
+              break
+            elif [ "$STATUS" = "CREATE_FAILED" ] || [ "$STATUS" = "DELETE_FAILED" ]; then
+              echo "Service deployment failed with status: $STATUS"
+              exit 1
+            fi
+            echo "Waiting 30 seconds..."
+            sleep 30
+          done
+
       - name: App Runner ID
         run: echo "App runner ID ${{ steps.deploy-apprunner.outputs.service-id }}"

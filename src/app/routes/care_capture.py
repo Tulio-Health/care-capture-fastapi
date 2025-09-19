@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.app.chains.transcript_summarization.chain import TranscriptSummarizationChain
 
 from ..models.transcript_summarization import TranscriptSummarizationRequest, TranscriptSummarizationResponse
+from ..models.conversation_summaries import ConversationSummary
 from ..models.health_insights_extraction import HealthInsightsResponse , HealthInsights
 from ..db.config.database import get_db
 from ..db.objects.repositories.conversation_summaries import ConversationSummariesRepository
@@ -20,8 +21,7 @@ router = APIRouter(
 )
 
 @router.post("/transcript-summarization",
-    response_model=dict,
-    
+    response_model=ConversationSummary,
     summary="Provider Visit Summarization",
     description="Summarize the given text with specified length constraints",
     responses={
@@ -51,7 +51,7 @@ router = APIRouter(
 async def transcript_summarize_text(
     request: TranscriptSummarizationRequest,
     db: AsyncSession = Depends(get_db)
-) -> dict:
+) -> ConversationSummary:
     """
     Summarize provider visit text and store in database.
     
@@ -76,21 +76,24 @@ async def transcript_summarize_text(
         # Validate the summary model
         summary_model = TranscriptSummarizationResponse.model_validate_json(summary.model_dump_json())
         
-        # Prepare the summary dictionary for database insertion
-        summary_dict = dict()
-        summary_dict["summary_text"] = summary_model.provider_patient_discussion_summary_text
-        summary_dict["user_id"] = request.user_id
-        summary_dict["created_by"] = request.user_id
-        summary_dict["updated_by"] = request.user_id
-        summary_dict['key_points'] = summary_model.provider_patient_discussion_key_points
-        summary_dict['medications'] = summary_model.medications_prescribed_by_provider
-        summary_dict['diagnoses'] = summary_model.medical_diagnoses_discussed
-        summary_dict['instructions'] = summary_model.instructions_provided_by_provider
-        summary_dict['recommendations'] = summary_model.recommendations_provided_by_provider
+        # Prepare the summary data for database insertion
+        summary_data = {
+            "summary_text": summary_model.provider_patient_discussion_summary_text,
+            "user_id": request.user_id,
+            "created_by": request.user_id,
+            "updated_by": request.user_id,
+            "key_points": summary_model.provider_patient_discussion_key_points,
+            "medications": summary_model.medications_prescribed_by_provider,
+            "diagnoses": summary_model.medical_diagnoses_discussed,
+            "instructions": summary_model.instructions_provided_by_provider,
+            "recommendations": summary_model.recommendations_provided_by_provider
+        }
            
         # Create a new summary entry in the database
-        await conversation_summaries_repository.upsert(appointment_id=request.appointment_id ,summary_data=summary_dict)
-        return summary_dict
+        db_summary = await conversation_summaries_repository.upsert(appointment_id=request.appointment_id, summary_data=summary_data)
+        
+        # Return the response using the proper Pydantic model
+        return ConversationSummary.model_validate(db_summary)
     
     except ValueError as e:
         # Raise a 400 error if input is invalid

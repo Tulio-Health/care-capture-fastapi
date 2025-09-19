@@ -20,6 +20,7 @@ httpx = "^0.26.0"
 alembic = "^1.13.1"
 fastapi-limiter = "^0.1.6"
 redis = "^5.0.1"  # Required for rate limiting storage
+boto3 = "^1.35.0"  # Required for AWS SSM Parameter Store
 
 openai = "^1.51.2"
 greenlet = "^3.0.3"  # Required for SQLAlchemy async operations
@@ -37,6 +38,9 @@ black = "^24.1.1"
 isort = "^5.13.2"
 flake8 = "^7.0.0"
 mypy = "^1.8.0"
+
+[tool.poetry.scripts]
+start-dev = "src.app.main:main"
 
 [build-system]
 requires = ["poetry-core"]

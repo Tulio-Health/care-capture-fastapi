@@ -2,7 +2,18 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
-from .routes import health_router, root_router, care_capture_router, ai_chat_router ,users_router , schedule_visit_router
+# Configure logging first before any other imports
+from .common.logging import configure_logging, get_logger
+configure_logging()
+logger = get_logger(__name__)
+
+# Initialize environment and load SSM parameters BEFORE importing routes
+from .config.environment import initialize_environment_sync
+logger.info("Loading environment configuration before route imports...")
+initialize_environment_sync()
+
+# Now import routes after SSM parameters are loaded
+from .routes import health_router, root_router, care_capture_router, ai_chat_router ,users_router , schedule_visit_router, translation_router
 from .common.exception import (
     HealthCheckError,
     CareCaptureError,
@@ -10,30 +21,36 @@ from .common.exception import (
     care_capture_exception_handler
 )
 from .common.middleware import setup_cors_middleware, setup_rate_limiter
-from .common.logging import configure_logging, get_logger
 from .core import get_settings
-from .db.config.database import engine
+from .db.config.database import get_engine
 from .db.objects.entities.users import Base
 from .cache.redis import RedisClient
 from .core.scheduler import init_scheduler
-
-settings = get_settings()
-
-# Configure logging
-configure_logging()
-logger = get_logger(__name__)
+from .config.environment import initialize_environment
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    redis_client = RedisClient()
-    app.state.redis = redis_client.client
-    logger.info("Redis client initialized and attached to app state")
-    
-    # Initialize scheduler
-    scheduler = init_scheduler()
-    app.state.scheduler = scheduler
-    logger.info("Scheduler initialized and attached to app state")
+    try:
+        # SSM parameters already loaded synchronously during imports
+        # Get settings (SSM parameters already available)
+        settings = get_settings()
+        
+        # Initialize Redis client
+        redis_client = RedisClient()
+        app.state.redis = redis_client.client
+        logger.info("Redis client initialized and attached to app state")
+        
+        # Initialize scheduler
+        scheduler = init_scheduler()
+        app.state.scheduler = scheduler
+        logger.info("Scheduler initialized and attached to app state")
+        
+        logger.info("🚀 FastAPI application startup complete")
+        
+    except Exception as e:
+        logger.error(f"❌ Error during application startup: {e}")
+        raise
     
     yield
     
@@ -81,6 +98,7 @@ def get_application() -> FastAPI:
     app.include_router(users_router)
     app.include_router(ai_chat_router)
     app.include_router(schedule_visit_router)
+    app.include_router(translation_router)
     logger.debug("Routers included")
 
     return app
@@ -88,15 +106,26 @@ def get_application() -> FastAPI:
 # Create the FastAPI app instance
 app = get_application()
 
-if __name__ == "__main__":
+
+def main():
+    """Main entry point for development server"""
     import uvicorn
+    import os
     
-    port = settings.PORT
-    logger.info(f"Starting application on port {port}")
+    # Default port configuration
+    port = int(os.getenv('PORT', 8000))
+    
+    logger.info(f"🚀 Starting FastAPI development server on port {port}")
+    logger.info("📚 API documentation available at: http://localhost:8000/api/docs")
     
     uvicorn.run(
         "src.app.main:app",
         host="0.0.0.0",
         port=port,
-        reload=True
+        reload=True,
+        log_level="info"
     )
+
+
+if __name__ == "__main__":
+    main()

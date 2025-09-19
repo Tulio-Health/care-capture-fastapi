@@ -1,39 +1,55 @@
 import logging
 from langchain.prompts import ChatPromptTemplate
-from langchain.chat_models import init_chat_model
 from langchain_core.output_parsers import StrOutputParser
 import json
 
-from src.app.common.constants.llm import LLM_MODEL, LLM_PROVIDER
+from src.app.common.llm_factory import get_default_chat_model
 from src.app.core.langsmith_trace import LangSmithTrace
 from src.app.models.intent_identify import IntentResponse, IntentAiResponse
-from src.app.core import get_settings
 from src.app.chains.ai_chat_intents.intend_identifier.models import RouterOptions
 from src.app.chains.ai_chat_intents.not_found_intent.constants import (
     NO_DATA_FOUND_SYSTEM_PROMPT,
     NO_DATA_FOUND_USER_PROMPT
 )
 
-settings = get_settings()
-tracer = LangSmithTrace().trace(tags=[__name__])
+_tracer = None
 
-model = init_chat_model(
-    model=LLM_MODEL.GPT_4O_MINI,
-    model_provider=LLM_PROVIDER.OPENAI,
-    openai_api_key=settings.OPENAI_API_KEY,
-    temperature=0.3,
-)
+def get_tracer():
+    global _tracer
+    if _tracer is None:
+        _tracer = LangSmithTrace().trace(tags=[__name__])
+    return _tracer
 
+
+def get_callbacks():
+    """Get callbacks list, handling disabled tracing"""
+    tracer = get_tracer()
+    return [tracer] if tracer is not None else []
 logger = logging.getLogger(__name__)
 
 
 class NoDataFoundIntentChain:
     def __init__(self):
+        self._model = None
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", NO_DATA_FOUND_SYSTEM_PROMPT),
             ("user", NO_DATA_FOUND_USER_PROMPT)
         ])
-        self.chain = self.prompt | model | StrOutputParser()
+        self._chain = None
+    
+    @property
+    def model(self):
+        """Lazy load the model on first access"""
+        if self._model is None:
+            self._model = get_default_chat_model()
+        return self._model
+    
+    @property
+    def chain(self):
+        """Lazy load the chain on first access"""
+        if self._chain is None:
+            self._chain = self.prompt | self.model | StrOutputParser()
+        return self._chain
 
     async def handle_intent(self, **kwargs) -> IntentResponse[None]:
         try:
@@ -53,7 +69,7 @@ class NoDataFoundIntentChain:
                 "conversation_history": json.dumps(chat_history, default=str),
                 "intent": intent,
                 "search_details": search_details
-            }, config={"callbacks": [tracer]})
+            }, config={"callbacks": get_callbacks()})
             
             return IntentResponse[None](
                 intent=kwargs.get('intent', 'unknown'), 

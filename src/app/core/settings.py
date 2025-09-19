@@ -4,6 +4,7 @@ from pydantic import PostgresDsn, ValidationError
 from functools import lru_cache
 import os
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -14,24 +15,30 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     PORT: int = 8000
     
+    # Environment Detection
+    AWS_REGION: str = "us-east-2"
+    
     # Database Configuration
     DB_HOST: str = "localhost"
-    DB_PORT: int = 5432  # Hardcoded port number
-    DB_USER: str
-    DB_PASSWORD: str
+    DB_PORT: int = 5432
+    DB_USER: str = ""
+    DB_PASSWORD: str = ""
     DB_NAME: str = "care-capture-app"
     DB_SSL: bool = False
     
     # Redis Configuration
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
-    REDIS_PASSWORD: str = ''
+    REDIS_PASSWORD: str = ""
     
-    # LANGSMITH 
-    LANGSMITH_TRACING: str
-    LANGSMITH_ENDPOINT: str
-    LANGSMITH_PROJECT: str
-    LANGSMITH_API_KEY: str
+    # External Services
+    OPENAI_API_KEY: str = ""
+    
+    # LangSmith (optional)
+    LANGSMITH_TRACING: str = ""
+    LANGSMITH_ENDPOINT: str = ""
+    LANGSMITH_PROJECT: str = ""
+    LANGSMITH_API_KEY: str = ""
     
     @property
     def DATABASE_URL(self) -> PostgresDsn:
@@ -54,11 +61,10 @@ class Settings(BaseSettings):
             # url_str = f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:5432/{self.DB_NAME}"
             url_str = f"postgresql+asyncpg://{self.DB_USER}:{encoded_password}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
             
-            logger.error(f"Constructed DATABASE_URL: {url_str}")
             # Validate the URL
             url = PostgresDsn(url_str)
             
-            logger.info(f"Constructed DATABASE_URL: {url}")
+            logger.info("Database URL constructed successfully")
             return url
             
         except ValidationError as e:
@@ -68,12 +74,6 @@ class Settings(BaseSettings):
             logger.error(f"Unexpected error constructing database URL: {str(e)}")
             raise
     
-    # API Keys
-    OPENAI_API_KEY: str
-    LANGSMITH_TRACING: str
-    LANGSMITH_ENDPOINT:str
-    LANGSMITH_PROJECT: str
-    LANGSMITH_API_KEY: str
     
     class Config:
         env_file = ".env"
