@@ -32,9 +32,23 @@ from .config.environment import initialize_environment
 async def lifespan(app: FastAPI):
     # Startup
     try:
+        # Log configuration summary for debugging
+        from .config.configuration_summary import log_configuration_summary, log_redis_configuration, log_database_configuration
+        log_configuration_summary()
+        
         # SSM parameters already loaded synchronously during imports
         # Get settings (SSM parameters already available)
         settings = get_settings()
+        
+        # Run startup validation checks
+        from .health.startup_checks import run_all_startup_checks
+        validation_passed = await run_all_startup_checks()
+        if not validation_passed:
+            logger.warning("⚠️ Some startup validation checks failed, but continuing startup")
+        
+        # Log service configurations
+        log_database_configuration()
+        log_redis_configuration()
         
         # Initialize Redis client
         redis_client = RedisClient()

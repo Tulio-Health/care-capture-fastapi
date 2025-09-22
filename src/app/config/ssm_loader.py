@@ -135,11 +135,23 @@ class SSMParameterLoader:
                 if not next_token:
                     break
             
+            # Check if we got any parameters
+            if not all_parameters:
+                logger.error(f"❌ No SSM parameters found at path: {self.parameter_prefix}")
+                if os.getenv('APP_ENV') == 'production':
+                    raise ValueError(f"No SSM parameters found at path: {self.parameter_prefix}")
+                logger.warning("⚠️ Continuing with existing environment variables")
+                return {}
+            
             parameter_dict = {}
             
             # Convert SSM parameters to environment variables
             mappings = self.get_parameter_mappings()
             mapping_dict = {f"{self.parameter_prefix}/{mapping.ssm_path}": mapping for mapping in mappings}
+            
+            # Log which parameters were found
+            loaded_params = [p['Name'] for p in all_parameters]
+            logger.info(f"✅ Found SSM parameters: {loaded_params}")
             
             for param in all_parameters:
                 param_name = param['Name']
@@ -148,17 +160,30 @@ class SSMParameterLoader:
                 if param_name in mapping_dict:
                     mapping = mapping_dict[param_name]
                     parameter_dict[mapping.env_var] = param_value
-                    logger.debug(f"Loaded parameter: {mapping.env_var}")
+                    # Log with security considerations
+                    if mapping.is_secure:
+                        logger.debug(f"Loaded secure parameter: {mapping.env_var}")
+                    else:
+                        logger.debug(f"Loaded parameter: {mapping.env_var} = {param_value}")
             
             logger.info(f"Successfully loaded {len(parameter_dict)} SSM parameters")
+            logger.info(f"Set {len(parameter_dict)} environment variables from SSM")
             return parameter_dict
             
         except ClientError as e:
             logger.error(f"AWS SSM ClientError: {e}")
-            raise Exception(f"Failed to load SSM parameters: {e}")
+            # In production, fail fast for SSM issues
+            if os.getenv('APP_ENV') == 'production':
+                raise Exception(f"Failed to load SSM parameters: {e}")
+            logger.warning("⚠️ Continuing with existing environment variables")
+            return {}
         except Exception as e:
             logger.error(f"Unexpected error loading SSM parameters: {e}")
-            raise
+            # In production, fail fast for SSM issues
+            if os.getenv('APP_ENV') == 'production':
+                raise
+            logger.warning("⚠️ Continuing with existing environment variables")
+            return {}
 
     async def load_parameters(self) -> Dict[str, str]:
         """
@@ -199,11 +224,23 @@ class SSMParameterLoader:
                 if not next_token:
                     break
             
+            # Check if we got any parameters
+            if not all_parameters:
+                logger.error(f"❌ No SSM parameters found at path: {self.parameter_prefix}")
+                if os.getenv('APP_ENV') == 'production':
+                    raise ValueError(f"No SSM parameters found at path: {self.parameter_prefix}")
+                logger.warning("⚠️ Continuing with existing environment variables")
+                return {}
+            
             parameter_dict = {}
             
             # Convert SSM parameters to environment variables
             mappings = self.get_parameter_mappings()
             mapping_dict = {f"{self.parameter_prefix}/{mapping.ssm_path}": mapping for mapping in mappings}
+            
+            # Log which parameters were found
+            loaded_params = [p['Name'] for p in all_parameters]
+            logger.info(f"✅ Found SSM parameters: {loaded_params}")
             
             for param in all_parameters:
                 param_name = param['Name']
@@ -212,17 +249,30 @@ class SSMParameterLoader:
                 if param_name in mapping_dict:
                     mapping = mapping_dict[param_name]
                     parameter_dict[mapping.env_var] = param_value
-                    logger.debug(f"Loaded parameter: {mapping.env_var}")
+                    # Log with security considerations
+                    if mapping.is_secure:
+                        logger.debug(f"Loaded secure parameter: {mapping.env_var}")
+                    else:
+                        logger.debug(f"Loaded parameter: {mapping.env_var} = {param_value}")
             
             logger.info(f"Successfully loaded {len(parameter_dict)} SSM parameters")
+            logger.info(f"Set {len(parameter_dict)} environment variables from SSM")
             return parameter_dict
             
         except ClientError as e:
             logger.error(f"AWS SSM ClientError: {e}")
-            raise Exception(f"Failed to load SSM parameters: {e}")
+            # In production, fail fast for SSM issues
+            if os.getenv('APP_ENV') == 'production':
+                raise Exception(f"Failed to load SSM parameters: {e}")
+            logger.warning("⚠️ Continuing with existing environment variables")
+            return {}
         except Exception as e:
             logger.error(f"Unexpected error loading SSM parameters: {e}")
-            raise
+            # In production, fail fast for SSM issues
+            if os.getenv('APP_ENV') == 'production':
+                raise
+            logger.warning("⚠️ Continuing with existing environment variables")
+            return {}
     
     def set_environment_variables(self, parameters: Dict[str, str]) -> None:
         """
@@ -274,6 +324,11 @@ def load_ssm_configuration_sync() -> None:
                 os.environ['REDIS_PASSWORD'] = ''
                 logger.info("Redis configuration set to local instance")
             
+            # Log Redis service details
+            redis_host = os.getenv('REDIS_HOST', 'NOT_SET')
+            redis_port = os.getenv('REDIS_PORT', 'NOT_SET')
+            logger.info(f"📡 Redis Service Configuration: {redis_host}:{redis_port}")
+            
             logger.info("✅ SSM configuration loaded successfully")
         else:
             logger.warning("No SSM parameters loaded")
@@ -319,6 +374,11 @@ async def load_ssm_configuration() -> None:
                 os.environ['REDIS_PORT'] = '6379'
                 os.environ['REDIS_PASSWORD'] = ''
                 logger.info("Redis configuration set to local instance")
+            
+            # Log Redis service details
+            redis_host = os.getenv('REDIS_HOST', 'NOT_SET')
+            redis_port = os.getenv('REDIS_PORT', 'NOT_SET')
+            logger.info(f"📡 Redis Service Configuration: {redis_host}:{redis_port}")
             
             logger.info("✅ SSM configuration loaded successfully")
         else:
