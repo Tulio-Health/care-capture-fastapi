@@ -1,4 +1,4 @@
-# Care Capture GenAI API
+# Tulio - Care Capture GenAI API
 
 API for Care Capture AI - Making healthcare patient data more meaningful for patients and caregivers!!!
 This API is based on the Python FastAPI
