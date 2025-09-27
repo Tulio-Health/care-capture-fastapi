@@ -3,11 +3,32 @@ Startup validation checks for FastAPI application
 """
 import os
 import logging
-from typing import bool
+from typing import List
 from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
+async def validate_clerk_key() -> bool:
+    # lets validate all the clerks # Clerk Authentication
+    # CLERK_PUBLIC_JWT_KEY: str = ""
+    #CLERK_SECRET_KEY: str = ""
+    # CLERK_PUBLISHABLE_KEY: str = ""
+    
+    """Validate Clerk API key at startup"""
+    try: 
+        clerk_key = os.getenv('CLERK_PUBLIC_JWT_KEY')
+        if not clerk_key:
+            logger.error("❌ Clerk API key not found in environment variables")
+            return False
+        
+        if not clerk_key.startswith('-----BEGIN PUBLIC KEY-----'):
+            logger.error("❌ Clerk API key format is invalid (should start with 'sk-')")
+            return False
+        
+        return True
+    except Exception as e:
+        logger.error(f"❌ Clerk API key validation error: {e}")
+        return False
 
 async def validate_openai_key() -> bool:
     """Validate OpenAI API key at startup"""
@@ -50,10 +71,10 @@ async def validate_database_connection() -> bool:
     """Validate database connection at startup"""
     try:
         # Import database session
-        from src.app.db.config.database import get_db_session
+        from src.app.db.config.database import get_db
         
         # Test database connection
-        async with get_db_session() as db:
+        async for db in get_db():
             result = await db.execute(text("SELECT 1"))
             row = result.fetchone()
             if row and row[0] == 1:
@@ -62,6 +83,7 @@ async def validate_database_connection() -> bool:
             else:
                 logger.error("❌ Database connection validation failed - unexpected result")
                 return False
+            break  # Exit after first iteration
                 
     except ImportError as e:
         logger.error(f"❌ Database module import failed: {e}")

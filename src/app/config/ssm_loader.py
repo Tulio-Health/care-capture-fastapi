@@ -73,6 +73,11 @@ class SSMParameterLoader:
             # External Services
             SSMParameterMapping('openai/api_key', 'OPENAI_API_KEY', is_secure=True),
             
+            # Clerk Configuration
+            SSMParameterMapping('clerk/public_jwt_key', 'CLERK_PUBLIC_JWT_KEY'),
+            SSMParameterMapping('clerk/secret_key', 'CLERK_SECRET_KEY', is_secure=True),
+            SSMParameterMapping('clerk/publishable_key', 'CLERK_PUBLISHABLE_KEY'),
+            
             # LangSmith Configuration (optional - will use defaults if not in SSM)
             SSMParameterMapping('langsmith/tracing', 'LANGSMITH_TRACING'),
             SSMParameterMapping('langsmith/api_key', 'LANGSMITH_API_KEY', is_secure=True),
@@ -153,6 +158,8 @@ class SSMParameterLoader:
             loaded_params = [p['Name'] for p in all_parameters]
             logger.info(f"✅ Found SSM parameters: {loaded_params}")
             
+            # Track successfully mapped parameters
+            mapped_params = []
             for param in all_parameters:
                 param_name = param['Name']
                 param_value = param['Value']
@@ -160,6 +167,7 @@ class SSMParameterLoader:
                 if param_name in mapping_dict:
                     mapping = mapping_dict[param_name]
                     parameter_dict[mapping.env_var] = param_value
+                    mapped_params.append(mapping.env_var)
                     # Log with security considerations
                     if mapping.is_secure:
                         logger.debug(f"Loaded secure parameter: {mapping.env_var}")
@@ -167,6 +175,7 @@ class SSMParameterLoader:
                         logger.debug(f"Loaded parameter: {mapping.env_var} = {param_value}")
             
             logger.info(f"Successfully loaded {len(parameter_dict)} SSM parameters")
+            logger.info(f"Mapped parameters to environment variables: {mapped_params}")
             logger.info(f"Set {len(parameter_dict)} environment variables from SSM")
             return parameter_dict
             
@@ -242,6 +251,8 @@ class SSMParameterLoader:
             loaded_params = [p['Name'] for p in all_parameters]
             logger.info(f"✅ Found SSM parameters: {loaded_params}")
             
+            # Track successfully mapped parameters
+            mapped_params = []
             for param in all_parameters:
                 param_name = param['Name']
                 param_value = param['Value']
@@ -249,6 +260,7 @@ class SSMParameterLoader:
                 if param_name in mapping_dict:
                     mapping = mapping_dict[param_name]
                     parameter_dict[mapping.env_var] = param_value
+                    mapped_params.append(mapping.env_var)
                     # Log with security considerations
                     if mapping.is_secure:
                         logger.debug(f"Loaded secure parameter: {mapping.env_var}")
@@ -256,6 +268,7 @@ class SSMParameterLoader:
                         logger.debug(f"Loaded parameter: {mapping.env_var} = {param_value}")
             
             logger.info(f"Successfully loaded {len(parameter_dict)} SSM parameters")
+            logger.info(f"Mapped parameters to environment variables: {mapped_params}")
             logger.info(f"Set {len(parameter_dict)} environment variables from SSM")
             return parameter_dict
             

@@ -21,6 +21,8 @@ alembic = "^1.13.1"
 fastapi-limiter = "^0.1.6"
 redis = "^5.0.1"  # Required for rate limiting storage
 boto3 = "^1.35.0"  # Required for AWS SSM Parameter Store
+pyjwt = "^2.8.0"  # Required for JWT verification
+cryptography = "^41.0.7"  # Required for JWT key handling
 
 openai = "^1.51.2"
 greenlet = "^3.0.3"  # Required for SQLAlchemy async operations

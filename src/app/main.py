@@ -13,14 +13,14 @@ logger.info("Loading environment configuration before route imports...")
 initialize_environment_sync()
 
 # Now import routes after SSM parameters are loaded
-from .routes import health_router, root_router, care_capture_router, ai_chat_router ,users_router , schedule_visit_router, translation_router
+from .routes import health_router, root_router, care_capture_router, ai_chat_router, users_router, schedule_visit_router, translation_router, auth_test_router
 from .common.exception import (
     HealthCheckError,
     CareCaptureError,
     health_check_exception_handler,
     care_capture_exception_handler
 )
-from .common.middleware import setup_cors_middleware, setup_rate_limiter
+from .common.middleware import setup_cors_middleware, setup_rate_limiter, ClerkAuthMiddleware
 from .core import get_settings
 from .db.config.database import get_engine
 from .db.objects.entities.users import Base
@@ -99,6 +99,10 @@ def get_application() -> FastAPI:
     # Setup middleware
     setup_cors_middleware(app)
     logger.debug("CORS middleware configured")
+    
+    # Add Clerk authentication middleware
+    app.add_middleware(ClerkAuthMiddleware)
+    logger.info("Clerk authentication middleware configured")
 
     # Register exception handlers
     app.add_exception_handler(HealthCheckError, health_check_exception_handler)
@@ -113,6 +117,7 @@ def get_application() -> FastAPI:
     app.include_router(ai_chat_router)
     app.include_router(schedule_visit_router)
     app.include_router(translation_router)
+    app.include_router(auth_test_router)
     logger.debug("Routers included")
 
     return app

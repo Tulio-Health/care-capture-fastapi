@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class Settings(BaseSettings):
     
     # API Configuration
-    APP_ENV: str = Field(default="development", regex="^(development|production)$")
+    APP_ENV: str = Field(default="development", pattern="^(development|production)$")
     DEBUG: bool = True
     PORT: int = Field(default=8000, ge=1, le=65535)
     
@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     
     # External Services
     OPENAI_API_KEY: str = ""
+    
+    # Clerk Authentication
+    CLERK_PUBLIC_JWT_KEY: str = ""
+    CLERK_SECRET_KEY: str = ""
+    CLERK_PUBLISHABLE_KEY: str = ""
     
     @validator('OPENAI_API_KEY')
     def validate_openai_key(cls, v):
