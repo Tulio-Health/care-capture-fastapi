@@ -13,14 +13,14 @@ logger.info("Loading environment configuration before route imports...")
 initialize_environment_sync()
 
 # Now import routes after SSM parameters are loaded
-from .routes import health_router, root_router, care_capture_router, ai_chat_router ,users_router , schedule_visit_router, translation_router
+from .routes import health_router, root_router, care_capture_router, ai_chat_router, users_router, schedule_visit_router, translation_router, auth_test_router
 from .common.exception import (
     HealthCheckError,
     CareCaptureError,
     health_check_exception_handler,
     care_capture_exception_handler
 )
-from .common.middleware import setup_cors_middleware, setup_rate_limiter
+from .common.middleware import setup_cors_middleware, setup_rate_limiter, ClerkAuthMiddleware
 from .core import get_settings
 from .db.config.database import get_engine
 from .db.objects.entities.users import Base
@@ -32,9 +32,23 @@ from .config.environment import initialize_environment
 async def lifespan(app: FastAPI):
     # Startup
     try:
+        # Log configuration summary for debugging
+        from .config.configuration_summary import log_configuration_summary, log_redis_configuration, log_database_configuration
+        log_configuration_summary()
+        
         # SSM parameters already loaded synchronously during imports
         # Get settings (SSM parameters already available)
         settings = get_settings()
+        
+        # Run startup validation checks
+        from .health.startup_checks import run_all_startup_checks
+        validation_passed = await run_all_startup_checks()
+        if not validation_passed:
+            logger.warning("⚠️ Some startup validation checks failed, but continuing startup")
+        
+        # Log service configurations
+        log_database_configuration()
+        log_redis_configuration()
         
         # Initialize Redis client
         redis_client = RedisClient()
@@ -85,6 +99,10 @@ def get_application() -> FastAPI:
     # Setup middleware
     setup_cors_middleware(app)
     logger.debug("CORS middleware configured")
+    
+    # Add Clerk authentication middleware
+    app.add_middleware(ClerkAuthMiddleware)
+    logger.info("Clerk authentication middleware configured")
 
     # Register exception handlers
     app.add_exception_handler(HealthCheckError, health_check_exception_handler)
@@ -99,6 +117,7 @@ def get_application() -> FastAPI:
     app.include_router(ai_chat_router)
     app.include_router(schedule_visit_router)
     app.include_router(translation_router)
+    app.include_router(auth_test_router)
     logger.debug("Routers included")
 
     return app

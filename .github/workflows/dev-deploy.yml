@@ -104,17 +104,25 @@ jobs:
           SERVICE_ARN=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='$SERVICE_NAME'].ServiceArn" --output text)
           
           # Update the App Runner service with the new image
+          # IMPORTANT: These environment variables must match exactly what CDK sets
           aws apprunner update-service \
             --service-arn $SERVICE_ARN \
             --source-configuration '{
               "ImageRepository": {
                 "ImageIdentifier": "'$IMAGE_URI'",
                 "ImageConfiguration": {
-                  "Port": "8000"
+                  "Port": "8000",
+                  "RuntimeEnvironmentVariables": {
+                    "AWS_REGION": "'${{ secrets.AWS_REGION }}'",
+                    "APP_ENV": "development",
+                    "AWS_EXECUTION_ENV": "AWS_App_Runner",
+                    "SSM_PARAMETER_PREFIX": "/tuliohealth/dev",
+                    "WORKERS": "1"
+                  }
                 },
                 "ImageRepositoryType": "ECR"
               },
-              "AutoDeploymentsEnabled": false
+              "AutoDeploymentsEnabled": true
             }'
           
           echo "Service update initiated for $SERVICE_NAME with image $IMAGE_URI"

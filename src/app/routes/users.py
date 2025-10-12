@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..db.config.database import get_db
 from ..db.objects.repositories.users import UsersRepository
 from ..db.objects.schemas.users import UsersCreate, UsersUpdate, UsersInDB
-from typing import List
+from typing import List, Dict, Any
 from uuid import UUID
 from ..common.logging import get_logger
+from ..common.auth import get_authenticated_user, get_user_id, get_user_role
 
 logger = get_logger(__name__)
 

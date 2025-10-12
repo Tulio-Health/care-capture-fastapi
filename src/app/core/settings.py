@@ -1,6 +1,6 @@
 import urllib.parse
 from pydantic_settings import BaseSettings
-from pydantic import PostgresDsn, ValidationError
+from pydantic import PostgresDsn, ValidationError, Field, validator
 from functools import lru_cache
 import os
 import logging
@@ -11,28 +11,57 @@ logger = logging.getLogger(__name__)
 class Settings(BaseSettings):
     
     # API Configuration
-    APP_ENV: str = "development"
+    APP_ENV: str = Field(default="development", pattern="^(development|production)$")
     DEBUG: bool = True
-    PORT: int = 8000
+    PORT: int = Field(default=8000, ge=1, le=65535)
     
     # Environment Detection
-    AWS_REGION: str = "us-east-2"
+    AWS_REGION: str = Field(default="us-east-2", min_length=1)
     
     # Database Configuration
-    DB_HOST: str = "localhost"
-    DB_PORT: int = 5432
-    DB_USER: str = ""
-    DB_PASSWORD: str = ""
-    DB_NAME: str = "care-capture-app"
+    DB_HOST: str = Field(default="localhost", min_length=1)
+    DB_PORT: int = Field(default=5432, ge=1, le=65535)
+    DB_USER: str = Field(default="", min_length=0)
+    DB_PASSWORD: str = Field(default="", min_length=0)
+    DB_NAME: str = Field(default="care-capture-app", min_length=1)
     DB_SSL: bool = False
     
     # Redis Configuration
-    REDIS_HOST: str = "localhost"
-    REDIS_PORT: int = 6379
+    REDIS_HOST: str = Field(default="localhost", min_length=1)
+    REDIS_PORT: int = Field(default=6379, ge=1, le=65535)
     REDIS_PASSWORD: str = ""
     
     # External Services
     OPENAI_API_KEY: str = ""
+    
+    # Clerk Authentication
+    CLERK_PUBLIC_JWT_KEY: str = ""
+    CLERK_SECRET_KEY: str = ""
+    CLERK_PUBLISHABLE_KEY: str = ""
+    
+    @validator('OPENAI_API_KEY')
+    def validate_openai_key(cls, v):
+        if v and not v.startswith('sk-'):
+            logger.warning("⚠️ OpenAI API key format may be invalid (should start with 'sk-')")
+        return v
+    
+    @validator('DB_HOST')
+    def validate_db_host(cls, v):
+        if not v and os.getenv('APP_ENV') == 'production':
+            raise ValueError('DB_HOST is required in production')
+        return v
+    
+    @validator('DB_USER')
+    def validate_db_user(cls, v):
+        if not v and os.getenv('APP_ENV') == 'production':
+            raise ValueError('DB_USER is required in production')
+        return v
+    
+    @validator('DB_PASSWORD')
+    def validate_db_password(cls, v):
+        if not v and os.getenv('APP_ENV') == 'production':
+            raise ValueError('DB_PASSWORD is required in production')
+        return v
     
     # LangSmith (optional)
     LANGSMITH_TRACING: str = ""
