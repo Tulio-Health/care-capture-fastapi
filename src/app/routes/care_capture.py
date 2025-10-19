@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.app.chains.transcript_summarization.chain import TranscriptSummarizationChain
 
 from ..models.transcript_summarization import TranscriptSummarizationRequest, TranscriptSummarizationResponse
-from ..models.playground_summarization import PlaygroundSummarizationRequest, PlaygroundSummarizationResponse, PlaygroundSummarizationData
+from ..models.playground_summarization import PlaygroundSummarizationRequest, PlaygroundSummarizationResponse
 from ..models.conversation_summaries import ConversationSummary
 from ..models.health_insights_extraction import HealthInsightsResponse , HealthInsights
 from ..db.config.database import get_db
