@@ -41,11 +41,15 @@ class ClerkAuthMiddleware(BaseHTTPMiddleware):
         "/",
         "/health",
         "/api/health",
+        "/docs",
+        "/redoc",
+        "/openapi.json",
         "/api/docs",
         "/api/redoc",
         "/api/openapi.json",
         "/favicon.ico",
         "/robots.txt",
+        "/care-capture/playground-summarization",
     }
     
     # Paths patterns that should be excluded (prefix matching)

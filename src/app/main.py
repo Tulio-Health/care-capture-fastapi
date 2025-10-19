@@ -20,7 +20,8 @@ from .common.exception import (
     health_check_exception_handler,
     care_capture_exception_handler
 )
-from .common.middleware import setup_cors_middleware, setup_rate_limiter, ClerkAuthMiddleware
+from .common.middleware import setup_cors_middleware, setup_rate_limiter, ClerkAuthMiddleware, RequestLoggingMiddleware
+from .common.exception_handlers import register_exception_handlers
 from .core import get_settings
 from .db.config.database import get_engine
 from .db.objects.entities.users import Base
@@ -100,14 +101,21 @@ def get_application() -> FastAPI:
     setup_cors_middleware(app)
     logger.debug("CORS middleware configured")
     
+    # Add request logging middleware (should be early in the chain)
+    app.add_middleware(RequestLoggingMiddleware)
+    logger.info("Request logging middleware configured")
+    
     # Add Clerk authentication middleware
     app.add_middleware(ClerkAuthMiddleware)
     logger.info("Clerk authentication middleware configured")
 
-    # Register exception handlers
+    # Register new comprehensive exception handlers
+    register_exception_handlers(app)
+    
+    # Register legacy exception handlers (if still needed)
     app.add_exception_handler(HealthCheckError, health_check_exception_handler)
     app.add_exception_handler(CareCaptureError, care_capture_exception_handler)
-    logger.debug("Exception handlers registered")
+    logger.debug("All exception handlers registered")
 
     # Include routers
     app.include_router(root_router)
