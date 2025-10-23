@@ -55,7 +55,20 @@ jobs:
           ECR_REPOSITORY: ${{ steps.get-ecr-repo.outputs.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build --build-arg ENV_FILE=.env.develop -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          # Generate version number
+          VERSION="1.0.${{ github.run_number }}-dev"
+          BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          
+          # Build the image with version info
+          docker build \
+            --build-arg ENV_FILE=.env.develop \
+            --build-arg API_VERSION="$VERSION" \
+            --build-arg BUILD_NUMBER="${{ github.run_number }}" \
+            --build-arg BUILD_TIME="$BUILD_TIME" \
+            --build-arg GIT_COMMIT="${{ github.sha }}" \
+            --build-arg GIT_BRANCH="${{ github.ref_name }}" \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest

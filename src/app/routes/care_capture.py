@@ -275,7 +275,7 @@ async def playground_summarize_text(
                    f"medications: {medications_count}")
         
         # Create the data object first
-        data = PlaygroundSummarizationData(
+        data = TranscriptSummarizationResponse(
             provider_patient_discussion_summary_text=summary_model.provider_patient_discussion_summary_text,
             provider_patient_discussion_key_points=summary_model.provider_patient_discussion_key_points,
             medications_prescribed_by_provider=summary_model.medications_prescribed_by_provider,

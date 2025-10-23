@@ -14,6 +14,7 @@ initialize_environment_sync()
 
 # Now import routes after SSM parameters are loaded
 from .routes import health_router, root_router, care_capture_router, ai_chat_router, users_router, schedule_visit_router, translation_router, auth_test_router
+from .routes.version import router as version_router
 from .common.exception import (
     HealthCheckError,
     CareCaptureError,
@@ -120,6 +121,7 @@ def get_application() -> FastAPI:
     # Include routers
     app.include_router(root_router)
     app.include_router(health_router)
+    app.include_router(version_router)
     app.include_router(care_capture_router)
     app.include_router(users_router)
     app.include_router(ai_chat_router)
