@@ -51,7 +51,20 @@ jobs:
           ECR_REPOSITORY: ${{ steps.get-ecr-repo.outputs.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build --build-arg ENV_FILE=.env.production -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          # Generate version number for production (clean semver)
+          VERSION="1.0.${{ github.run_number }}"
+          BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          
+          # Build the image with version info
+          docker build \
+            --build-arg ENV_FILE=.env.production \
+            --build-arg API_VERSION="$VERSION" \
+            --build-arg BUILD_NUMBER="${{ github.run_number }}" \
+            --build-arg BUILD_TIME="$BUILD_TIME" \
+            --build-arg GIT_COMMIT="${{ github.sha }}" \
+            --build-arg GIT_BRANCH="${{ github.ref_name }}" \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
@@ -72,31 +85,56 @@ jobs:
         id: login-ecr-deploy
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Get App Runner Service from SSM
-        id: get-app-runner-service
+      - name: Get App Runner Service ARN from SSM
+        id: get-app-runner
         run: |
-          SERVICE_NAME=$(aws ssm get-parameter --name "/tuliohealth/prod/infrastructure/fastapi_app_runner_service" --query 'Parameter.Value' --output text)
-          echo "APP_RUNNER_SERVICE=$SERVICE_NAME" >> $GITHUB_OUTPUT
+          SERVICE_ARN=$(aws ssm get-parameter \
+            --name "/tuliohealth/prod/infrastructure/fastapi_app_runner_service_arn" \
+            --region ${{ secrets.AWS_REGION }} \
+            --query "Parameter.Value" \
+            --output text)
+          echo "APP_RUNNER_SERVICE_ARN=${SERVICE_ARN}" >> $GITHUB_OUTPUT
+          # Extract service name from ARN for display purposes
+          SERVICE_NAME=$(echo $SERVICE_ARN | cut -d'/' -f2)
+          echo "APP_RUNNER_SERVICE=${SERVICE_NAME}" >> $GITHUB_OUTPUT
 
       - name: Get ECR Repository from SSM
         id: get-ecr-repo-deploy
         run: |
-          ECR_REPO=$(aws ssm get-parameter --name "/tuliohealth/prod/infrastructure/fastapi_ecr_repository" --query 'Parameter.Value' --output text)
+          ECR_REPO=$(aws ssm get-parameter \
+            --name "/tuliohealth/prod/infrastructure/fastapi_ecr_repository" \
+            --region ${{ secrets.AWS_REGION }} \
+            --query "Parameter.Value" \
+            --output text)
           echo "ECR_REPOSITORY=$ECR_REPO" >> $GITHUB_OUTPUT
+
+      - name: Verify Image Exists
+        id: verify-image
+        run: |
+          ECR_REGISTRY="${{ steps.login-ecr-deploy.outputs.registry }}"
+          ECR_REPOSITORY="${{ steps.get-ecr-repo-deploy.outputs.ECR_REPOSITORY }}"
+          IMAGE_TAG="${{ github.sha }}"
+          
+          # Verify the image exists in ECR
+          if aws ecr describe-images --repository-name $ECR_REPOSITORY --image-ids imageTag=$IMAGE_TAG > /dev/null 2>&1; then
+            echo "✅ Image $ECR_REPOSITORY:$IMAGE_TAG verified in ECR"
+          else
+            echo "❌ Image $ECR_REPOSITORY:$IMAGE_TAG not found in ECR"
+            exit 1
+          fi
 
       - name: Deploy to App Runner
         id: deploy-apprunner
         run: |
-          SERVICE_NAME="${{ steps.get-app-runner-service.outputs.APP_RUNNER_SERVICE }}"
+          SERVICE_ARN="${{ steps.get-app-runner.outputs.APP_RUNNER_SERVICE_ARN }}"
+          SERVICE_NAME="${{ steps.get-app-runner.outputs.APP_RUNNER_SERVICE }}"
           ECR_REGISTRY="${{ steps.login-ecr-deploy.outputs.registry }}"
           ECR_REPOSITORY="${{ steps.get-ecr-repo-deploy.outputs.ECR_REPOSITORY }}"
           IMAGE_TAG="${{ github.sha }}"
           IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           
           echo "Deploying image $IMAGE_URI to App Runner service $SERVICE_NAME"
-          
-          # Get the service ARN
-          SERVICE_ARN=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='$SERVICE_NAME'].ServiceArn" --output text)
+          echo "Using service ARN: $SERVICE_ARN"
           
           # Update the App Runner service with the new image
           aws apprunner update-service \
@@ -105,30 +143,64 @@ jobs:
               "ImageRepository": {
                 "ImageIdentifier": "'$IMAGE_URI'",
                 "ImageConfiguration": {
-                  "Port": "8000"
+                  "Port": "8000",
+                  "RuntimeEnvironmentVariables": {
+                    "AWS_REGION": "'${{ secrets.AWS_REGION }}'",
+                    "APP_ENV": "production",
+                    "AWS_EXECUTION_ENV": "AWS_App_Runner",
+                    "SSM_PARAMETER_PREFIX": "/tuliohealth/prod",
+                    "WORKERS": "1"
+                  }
                 },
                 "ImageRepositoryType": "ECR"
               },
-              "AutoDeploymentsEnabled": false
+              "AutoDeploymentsEnabled": true
             }'
           
           echo "Service update initiated for $SERVICE_NAME with image $IMAGE_URI"
           
           # Wait for deployment to complete
           echo "Waiting for service to become ready..."
-          while true; do
+          max_attempts=20
+          attempt=0
+          while [ $attempt -lt $max_attempts ]; do
             STATUS=$(aws apprunner describe-service --service-arn $SERVICE_ARN --query 'Service.Status' --output text)
-            echo "Current status: $STATUS"
+            echo "Current status: $STATUS (attempt $((attempt+1))/$max_attempts)"
             if [ "$STATUS" = "RUNNING" ]; then
               echo "Service is now running!"
               break
-            elif [ "$STATUS" = "CREATE_FAILED" ] || [ "$STATUS" = "DELETE_FAILED" ]; then
+            elif [ "$STATUS" = "CREATE_FAILED" ] || [ "$STATUS" = "DELETE_FAILED" ] || [ "$STATUS" = "UPDATE_FAILED" ]; then
               echo "Service deployment failed with status: $STATUS"
               exit 1
             fi
             echo "Waiting 30 seconds..."
             sleep 30
+            attempt=$((attempt+1))
           done
+          
+          if [ $attempt -eq $max_attempts ]; then
+            echo "Service deployment timed out after $((max_attempts * 30)) seconds"
+            exit 1
+          fi
+
+      - name: Verify Deployment
+        run: |
+          SERVICE_ARN="${{ steps.get-app-runner.outputs.APP_RUNNER_SERVICE_ARN }}"
+          SERVICE_NAME="${{ steps.get-app-runner.outputs.APP_RUNNER_SERVICE }}"
+          EXPECTED_IMAGE="${{ steps.login-ecr-deploy.outputs.registry }}/${{ steps.get-ecr-repo-deploy.outputs.ECR_REPOSITORY }}:${{ github.sha }}"
+          
+          # Get currently deployed image
+          CURRENT_IMAGE=$(aws apprunner describe-service --service-arn $SERVICE_ARN --query 'Service.SourceConfiguration.ImageRepository.ImageIdentifier' --output text)
+          
+          echo "Expected image: $EXPECTED_IMAGE"
+          echo "Current image:  $CURRENT_IMAGE"
+          
+          if [ "$CURRENT_IMAGE" = "$EXPECTED_IMAGE" ]; then
+            echo "✅ Deployment verified! Correct image is deployed."
+          else
+            echo "❌ Deployment verification failed! Wrong image deployed."
+            exit 1
+          fi
 
       - name: App Runner ID
         run: echo "App runner ID ${{ steps.deploy-apprunner.outputs.service-id }}"
