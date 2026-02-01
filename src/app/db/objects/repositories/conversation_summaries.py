@@ -105,3 +105,34 @@ class ConversationSummariesRepository:
         except Exception as e:
             logger.error(f"Error upserting summary with ID: {appointment_id}", exc_info=e)
             raise e
+    
+    async def create_with_metadata(
+        self, 
+        summary_data: dict, 
+        source: str = "fhir_analysis"
+    ) -> ConversationSummaries:
+        """
+        Create a conversation summary with metadata indicating the source
+        
+        Args:
+            summary_data: Dictionary containing summary fields
+            source: Source of the summary (e.g., 'fhir_analysis', 'transcript_summarization')
+            
+        Returns:
+            Created ConversationSummaries object
+        """
+        try:
+            from datetime import datetime
+            
+            # Add metadata to the summary data
+            if "metadata" not in summary_data:
+                summary_data["metadata"] = {}
+            
+            summary_data["metadata"]["source"] = source
+            summary_data["metadata"]["created_at"] = datetime.utcnow().isoformat()
+            summary_data["metadata"]["analysis_version"] = "1.0"
+            
+            return await self.create(summary_data)
+        except Exception as e:
+            logger.error(f"Error creating summary with metadata: {e}", exc_info=e)
+            raise e
