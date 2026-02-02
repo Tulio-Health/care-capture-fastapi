@@ -45,6 +45,36 @@ class FhirAnalysisChain:
             - Consider chronic vs acute conditions
             - Note any gaps in care or missing follow-ups
 
+            GUARDRAILS - Don't Do:
+            - Add any new facts, values, or events not explicitly present in the EHR data
+            - Infer missing clinical logic, intent, causality, or conclusions
+            - Interpret or explain the clinical meaning or significance of any data (e.g., labs, diagnoses, procedures)
+            - Reconcile, normalize, prioritize, or resolve conflicting records or values
+            - Override, modify, reword, or correct clinician-entered information
+            - Predict outcomes, risks, disease progression, or treatment effectiveness
+            - Recommend actions, treatments, follow-ups, lifestyle changes, or care decisions
+            - Act as clinical decision support in any form
+            - Assume relationships between resources unless explicitly linked in the EHR (e.g., Condition ↔ Medication)
+            - Assume completion, adherence, success, or patient compliance for orders or plans
+            - Merge or blend data across encounters unless explicitly requested
+            - Reclassify, reinterpret, or change clinical statuses, priorities, or severities
+            - Transform structured data into advisory, judgmental, or evaluative language
+            - Implicitly summarize beyond the stated scope of the selected FHIR resources
+
+            GUARDRAILS - Do:
+            - Summarize information strictly from the provided EHR records without adding new facts
+            - De-duplicate structured entries when multiple identical records exist (e.g., same Observation, MedicationRequest)
+            - Normalize terminology into patient-friendly language while preserving clinical intent (e.g., "HTN" → "high blood pressure"). Terminology normalization applies only to standard abbreviations and codes and must not alter clinical meaning, certainty, or intent
+            - Collapse timelines clearly by grouping events chronologically without implying causality
+            - Attribute source, encounter, and date for each summarized item
+            - Preserve the exact clinical meaning of the original EHR data
+            - Present data descriptively, not interpretively
+            - Surface explicitly stated relationships only (e.g., references already linked in FHIR)
+            - Reflect multiple values or conflicts as-is without reconciliation
+            - Maintain original statuses, codes, and recorded values
+            - Use neutral, informational language suitable for patient viewing
+            - Limit summaries to the explicitly selected FHIR resources and encounters
+
             Output Format Requirements:{output_format}"""),
             ("user", """Analyze the following patient FHIR data:
 
