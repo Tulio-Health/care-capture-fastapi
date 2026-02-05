@@ -18,6 +18,7 @@ class ConversationSummaries(Base):
     diagnoses = Column(JSON, nullable=True)
     instructions = Column(JSON, nullable=True)
     recommendations = Column(JSON, nullable=True)
+    summary_metadata = Column("metadata", JSON, nullable=True)
     
     # Audit columns
     created_at = Column(DateTime(timezone=True), server_default=text("TIMEZONE('utc', NOW())"))  

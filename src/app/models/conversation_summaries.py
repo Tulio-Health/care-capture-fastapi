@@ -19,6 +19,7 @@ class ConversationSummary(BaseModel):
     diagnoses: Optional[List[str]] = Field(None, description="Diagnoses discussed in the conversation")
     instructions: Optional[List[str]] = Field(None, description="Instructions provided during the conversation")
     recommendations: Optional[List[Dict[str, Any]]] = Field(None, description="Recommendations made during the conversation")
+    metadata: Optional[Dict[str, Any]] = Field(None, alias="summaryMetadata", description="Additional metadata about the summary (e.g., source, analysis version)")
     created_at: datetime = Field(..., alias="createdAt", description="Timestamp when the summary was created")
     updated_at: datetime = Field(..., alias="updatedAt", description="Timestamp when the summary was last updated")
     created_by: UUID = Field(..., alias="createdBy", description="ID of the user who created the summary")

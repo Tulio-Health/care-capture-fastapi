@@ -114,3 +114,4 @@ dmypy.json
 cython_debug/ 
 
 .cursor
+.clerk_token

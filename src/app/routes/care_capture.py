@@ -1,33 +1,26 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from src.app.chains.fhir_analysis.chain import FhirAnalysisChain
-from src.app.chains.transcript_summarization.chain import TranscriptSummarizationChain
 
 from ..common.error_models import BusinessLogicError, ExternalServiceError
 from ..common.logging import get_logger
 from ..db.config.database import get_db
-from ..db.models.appointments import Appointment
-from ..db.models.ref_cms_provider_data import RefCmsProviderData
-from ..db.objects.repositories.conversation_summaries import (
-    ConversationSummariesRepository,
+from ..models.comprehensive_summarization import (
+    ComprehensiveSummarizationRequest,
+    ComprehensiveSummarizationResponse,
 )
-from ..db.objects.repositories.fhir_resources import FhirResourcesRepository
-from ..db.objects.repositories.patient_health_insights import (
-    PatientHealthInsightsRepository,
-)
-from ..db.objects.repositories.users import UsersRepository
 from ..models.conversation_summaries import ConversationSummary
-from ..models.fhir_analysis import FhirAnalysisRequest, FhirAnalysisResponse
-from ..models.health_insights_extraction import HealthInsights, HealthInsightsResponse
+from ..models.fhir_analysis import FhirAnalysisRequest
 from ..models.playground_summarization import (
     PlaygroundSummarizationRequest,
     PlaygroundSummarizationResponse,
 )
-from ..models.transcript_summarization import (
-    TranscriptSummarizationRequest,
-    TranscriptSummarizationResponse,
+from ..models.transcript_summarization import TranscriptSummarizationRequest
+from ..services.summarization import (
+    ComprehensiveSummarizationService,
+    FhirAnalysisService,
+    PlaygroundSummarizationService,
+    TranscriptSummarizationService,
 )
 
 logger = get_logger(__name__)
@@ -75,35 +68,9 @@ async def transcript_summarize_text(
         HTTPException: If summarization fails
     """
     try:
-        # Initialize the repository for conversation summaries
-        conversation_summaries_repository = ConversationSummariesRepository(db)
-        # Create an instance of the summarization chain
-        summarization_chain = TranscriptSummarizationChain()
-        # Summarize the provided text
-        summary = summarization_chain.summarize(request)
-        # Validate the summary model
-        summary_model = TranscriptSummarizationResponse.model_validate_json(summary.model_dump_json())
-
-        # Prepare the summary data for database insertion
-        summary_data = {
-            "summary_text": summary_model.provider_patient_discussion_summary_text,
-            "user_id": request.user_id,
-            "created_by": request.user_id,
-            "updated_by": request.user_id,
-            "key_points": summary_model.provider_patient_discussion_key_points,
-            "medications": summary_model.medications_prescribed_by_provider,
-            "diagnoses": summary_model.medical_diagnoses_discussed,
-            "instructions": summary_model.instructions_provided_by_provider,
-            "recommendations": summary_model.recommendations_provided_by_provider,
-        }
-
-        # Create a new summary entry in the database
-        db_summary = await conversation_summaries_repository.upsert(
-            appointment_id=request.appointment_id, summary_data=summary_data
-        )
-
-        # Return the response using the proper Pydantic model
-        return ConversationSummary.model_validate(db_summary)
+        # Initialize service and delegate business logic
+        service = TranscriptSummarizationService(db)
+        return await service.summarize_transcript(request)
 
     except ValueError as e:
         # Raise a 400 error if input is invalid
@@ -215,105 +182,9 @@ async def playground_summarize_text(request: PlaygroundSummarizationRequest) -> 
     )
 
     try:
-        # Validate input
-        if not request.plain_text or not request.plain_text.strip():
-            logger.warning(f"Empty or whitespace-only text provided - request_id: {request.request_id}")
-            raise BusinessLogicError(
-                message="Invalid input provided", details="Plain text cannot be empty or contain only whitespace"
-            )
-
-        text_length = len(request.plain_text.strip())
-        if text_length < 10:
-            logger.warning(
-                f"Text too short for summarization - request_id: {request.request_id}, length: {text_length}"
-            )
-            raise BusinessLogicError(
-                message="Text too short for summarization", details=f"Minimum 10 characters required, got {text_length}"
-            )
-
-        if text_length > 50000:  # Example limit
-            logger.warning(f"Text too long for summarization - request_id: {request.request_id}, length: {text_length}")
-            raise BusinessLogicError(
-                message="Text too long for summarization",
-                details=f"Maximum 50,000 characters allowed, got {text_length}",
-            )
-
-        logger.info(f"Processing text with {text_length} characters - request_id: {request.request_id}")
-
-        # Create an instance of the summarization chain
-        logger.debug(f"Initializing TranscriptSummarizationChain - request_id: {request.request_id}")
-        try:
-            summarization_chain = TranscriptSummarizationChain()
-        except Exception as e:
-            logger.error(
-                f"Failed to initialize summarization chain - request_id: {request.request_id}, error: {str(e)}"
-            )
-            raise ExternalServiceError(
-                service="TranscriptSummarizationChain",
-                message="Failed to initialize summarization service",
-                details=str(e),
-            )
-
-        # Summarize the provided plain text directly
-        logger.info(f"Starting summarization process - request_id: {request.request_id}")
-        try:
-            summary = summarization_chain.summarize(request.plain_text)
-            logger.debug(f"Raw summary generated - request_id: {request.request_id}")
-        except Exception as e:
-            logger.error(f"Summarization process failed - request_id: {request.request_id}, error: {str(e)}")
-            raise ExternalServiceError(
-                service="OpenAI/LLM",
-                message="Summarization process failed",
-                details=f"Error during text processing: {str(e)}",
-            )
-
-        # Validate the summary model
-        logger.debug(f"Validating summary model - request_id: {request.request_id}")
-        try:
-            summary_model = TranscriptSummarizationResponse.model_validate_json(summary.model_dump_json())
-        except ValidationError as e:
-            logger.error(f"Summary model validation failed - request_id: {request.request_id}, error: {str(e)}")
-            # Let ValidationError bubble up to be handled by the validation error handler
-            raise
-
-        # Log summary statistics
-        summary_text_length = (
-            len(summary_model.provider_patient_discussion_summary_text)
-            if summary_model.provider_patient_discussion_summary_text
-            else 0
-        )
-        key_points_count = (
-            len(summary_model.provider_patient_discussion_key_points)
-            if summary_model.provider_patient_discussion_key_points
-            else 0
-        )
-        medications_count = (
-            len(summary_model.medications_prescribed_by_provider)
-            if summary_model.medications_prescribed_by_provider
-            else 0
-        )
-
-        logger.info(
-            f"Summary generated successfully - request_id: {request.request_id}, "
-            f"summary_length: {summary_text_length}, key_points: {key_points_count}, "
-            f"medications: {medications_count}"
-        )
-
-        # Create the data object first
-        data = TranscriptSummarizationResponse(
-            provider_patient_discussion_summary_text=summary_model.provider_patient_discussion_summary_text,
-            provider_patient_discussion_key_points=summary_model.provider_patient_discussion_key_points,
-            medications_prescribed_by_provider=summary_model.medications_prescribed_by_provider,
-            medical_diagnoses_discussed=summary_model.medical_diagnoses_discussed,
-            instructions_provided_by_provider=summary_model.instructions_provided_by_provider,
-            recommendations_provided_by_provider=summary_model.recommendations_provided_by_provider,
-        )
-
-        # Return the response using the playground response model
-        response = PlaygroundSummarizationResponse(request_id=request.request_id, data=data)
-
-        logger.info(f"Playground summarization completed successfully - request_id: {request.request_id}")
-        return response
+        # Initialize service and delegate business logic
+        service = PlaygroundSummarizationService()
+        return await service.summarize_plain_text(request)
 
     except (BusinessLogicError, ExternalServiceError, ValidationError):
         # Let these be handled by the exception handlers
@@ -432,9 +303,9 @@ async def playground_summarize_text(request: PlaygroundSummarizationRequest) -> 
 
 @router.post(
     "/fhir-analysis",
-    response_model=FhirAnalysisResponse,
+    response_model=ConversationSummary,
     summary="FHIR Resource Analysis",
-    description="Analyze FHIR resources for a patient appointment and generate clinical insights",
+    description="Analyze FHIR resources for a patient appointment and generate clinical insights, storing results in conversation_summaries",
     responses={
         200: {
             "description": "Successful FHIR analysis",
@@ -460,158 +331,27 @@ async def playground_summarize_text(request: PlaygroundSummarizationRequest) -> 
 )
 async def analyze_fhir_resources(
     request: FhirAnalysisRequest, db: AsyncSession = Depends(get_db)
-) -> FhirAnalysisResponse:
+) -> ConversationSummary:
     """
     Analyze FHIR resources for a patient appointment and generate clinical insights.
+
+    Stores the analysis results in conversation_summaries table, following the same
+    pattern as transcript_summarize_text API.
 
     Args:
         request: Contains appointment_id, user_id, and optional filters
         db: Database session
 
     Returns:
-        FhirAnalysisResponse with clinical insights and recommendations
+        ConversationSummary with clinical insights stored in the database
 
     Raises:
         HTTPException: If appointment not found or analysis fails
     """
     try:
-        # Initialize repositories
-        fhir_repo = FhirResourcesRepository(db)
-        summaries_repo = ConversationSummariesRepository(db)
-
-        # 1. Fetch appointment details
-        appointment_stmt = select(Appointment).where(Appointment.id == request.appointment_id)
-        appointment_result = await db.execute(appointment_stmt)
-        appointment = appointment_result.scalar_one_or_none()
-
-        if not appointment:
-            raise HTTPException(status_code=404, detail=f"Appointment {request.appointment_id} not found")
-
-        # Fetch provider details if available
-        provider_name = "N/A"
-        if appointment.provider_id:
-            provider_stmt = select(RefCmsProviderData).where(RefCmsProviderData.id == appointment.provider_id)
-            provider_result = await db.execute(provider_stmt)
-            provider = provider_result.scalar_one_or_none()
-            if provider:
-                provider_name = f"{provider.provider_first_name} {provider.provider_last_name}"
-
-        # 2. Fetch FHIR resources for this specific appointment/encounter
-        # This includes the Encounter itself AND all resources that reference it
-        if not appointment.ehr_entity_id:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Appointment {request.appointment_id} has no EHR entity ID - cannot fetch FHIR resources",
-            )
-
-        # Use the comprehensive method that fetches:
-        # 1. The Encounter resource itself
-        # 2. All clinical resources (Observations, Conditions, etc.) that reference this encounter
-        fhir_resources = await fhir_repo.get_encounter_with_clinical_data(
-            user_id=str(request.user_id), encounter_id=appointment.ehr_entity_id, resource_types=request.resource_types
-        )
-
-        if not fhir_resources:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No FHIR resources found for appointment {request.appointment_id} (encounter: {appointment.ehr_entity_id})",
-            )
-
-        # 3. Get resource counts for this encounter
-        resource_counts = await fhir_repo.get_resource_counts_by_encounter(
-            user_id=str(request.user_id), encounter_id=appointment.ehr_entity_id
-        )
-
-        # 4. Build FHIR summary by grouping resources by type
-        fhir_summary_by_type = {}
-        for resource in fhir_resources:
-            resource_type = resource.resource_type  # Now a string, not enum
-            if resource_type not in fhir_summary_by_type:
-                fhir_summary_by_type[resource_type] = []
-            fhir_summary_by_type[resource_type].append(resource.data)
-
-        # Format FHIR summary for AI prompt
-        fhir_summary_text = ""
-        for resource_type, resources in fhir_summary_by_type.items():
-            fhir_summary_text += f"\n**{resource_type}** ({len(resources)} records):\n"
-            # Limit to first 10 records per type to avoid context overflow
-            for idx, resource_data in enumerate(resources[:10]):
-                # Extract key fields based on resource type
-                if resource_type == "Condition":
-                    code_text = resource_data.get("codeText", "N/A")
-                    category = (
-                        resource_data.get("categoryText", ["N/A"])[0] if resource_data.get("categoryText") else "N/A"
-                    )
-                    fhir_summary_text += f"  {idx + 1}. {code_text} ({category})\n"
-                elif resource_type == "Observation":
-                    code_text = resource_data.get("codeText", "N/A")
-                    value = resource_data.get("valueQuantity", {}).get("value", "N/A")
-                    unit = resource_data.get("valueQuantity", {}).get("unit", "")
-                    fhir_summary_text += f"  {idx + 1}. {code_text}: {value} {unit}\n"
-                elif resource_type == "MedicationRequest":
-                    medication = resource_data.get("medicationCodeText", "N/A")
-                    status = resource_data.get("status", "N/A")
-                    fhir_summary_text += f"  {idx + 1}. {medication} (Status: {status})\n"
-                else:
-                    # Generic summary for other types
-                    metadata = resource_data.get("metadata", {})
-                    fhir_summary_text += f"  {idx + 1}. {metadata.get('resourceType', resource_type)}\n"
-
-            if len(resources) > 10:
-                fhir_summary_text += f"  ... and {len(resources) - 10} more records\n"
-
-        # 5. Build appointment context
-        appointment_context = {
-            "appointment_date": appointment.appointment_date.isoformat() if appointment.appointment_date else "N/A",
-            "purpose": appointment.purpose or "N/A",
-            "provider_name": provider_name,
-        }
-
-        # 6. Run AI analysis
-        analysis_chain = FhirAnalysisChain()
-        analysis_result = analysis_chain.analyze(
-            appointment_context=appointment_context, fhir_summary=fhir_summary_text, resource_counts=resource_counts
-        )
-
-        # 7. Extract structured data for database storage
-        conditions_list = [
-            resource.data.get("codeText", "Unknown")
-            for resource in fhir_resources
-            if resource.resource_type == "Condition"  # Now a string, not enum
-        ][:20]  # Limit to first 20
-
-        medications_list = [
-            {"name": resource.data.get("medicationCodeText", "Unknown")}
-            for resource in fhir_resources
-            if resource.resource_type == "MedicationRequest"  # Now a string, not enum
-        ][:20]  # Limit to first 20
-
-        # 8. Store analysis in conversation_summaries with metadata
-        summary_data = {
-            "appointment_id": request.appointment_id,
-            "user_id": request.user_id,
-            "summary_text": analysis_result.clinical_summary,
-            "key_points": analysis_result.key_insights,
-            "diagnoses": conditions_list,
-            "medications": medications_list,
-            "recommendations": analysis_result.recommendations,
-            "created_by": request.user_id,
-            "updated_by": request.user_id,
-        }
-
-        db_summary = await summaries_repo.create_with_metadata(summary_data=summary_data, source="fhir_analysis")
-
-        # 9. Add metadata to response
-        analysis_result.resource_counts = resource_counts
-        analysis_result.metadata = {
-            "source": "fhir_analysis",
-            "summary_id": str(db_summary.id),
-            "total_resources": len(fhir_resources),
-            "appointment_id": str(request.appointment_id),
-            "analysis_focus": request.analysis_focus,
-        }
-
-        return analysis_result
+        # Initialize service and delegate business logic
+        service = FhirAnalysisService(db)
+        return await service.analyze_fhir_resources(request)
 
     except HTTPException:
         # Re-raise HTTP exceptions
@@ -622,3 +362,250 @@ async def analyze_fhir_resources(
     except Exception as e:
         logger.error(f"Error analyzing FHIR resources: {str(e)}", exc_info=e)
         raise HTTPException(status_code=500, detail=f"Failed to analyze FHIR resources: {str(e)}")
+
+
+@router.post(
+    "/comprehensive-summary",
+    response_model=ComprehensiveSummarizationResponse,
+    summary="Comprehensive Summarization",
+    description="Execute transcript summarization and FHIR analysis in parallel for a single appointment",
+    responses={
+        200: {
+            "description": "Summarization completed (may include partial success)",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "summaries": [
+                            {
+                                "id": "123e4567-e89b-12d3-a456-426614174000",
+                                "appointment_id": "123e4567-e89b-12d3-a456-426614174001",
+                                "user_id": "123e4567-e89b-12d3-a456-426614174002",
+                                "summary_text": "Patient presents with...",
+                                "key_points": ["Point 1", "Point 2"],
+                                "medications": [],
+                                "diagnoses": [],
+                                "instructions": [],
+                                "recommendations": [],
+                                "metadata": {
+                                    "source": "transcript",
+                                    "transcript_count": 2,
+                                    "analysis_version": "1.0"
+                                },
+                                "created_at": "2024-01-01T00:00:00Z",
+                                "updated_at": "2024-01-01T00:00:00Z",
+                                "created_by": "123e4567-e89b-12d3-a456-426614174002",
+                                "updated_by": "123e4567-e89b-12d3-a456-426614174002"
+                            },
+                            {
+                                "id": "223e4567-e89b-12d3-a456-426614174000",
+                                "appointment_id": "123e4567-e89b-12d3-a456-426614174001",
+                                "user_id": "123e4567-e89b-12d3-a456-426614174002",
+                                "summary_text": "FHIR analysis shows...",
+                                "key_points": ["Insight 1", "Insight 2"],
+                                "medications": [{"name": "Aspirin"}],
+                                "diagnoses": ["Hypertension"],
+                                "instructions": [],
+                                "recommendations": [],
+                                "metadata": {
+                                    "source": "fhir_analysis",
+                                    "total_resources": 50,
+                                    "analysis_version": "1.0"
+                                },
+                                "created_at": "2024-01-01T00:00:00Z",
+                                "updated_at": "2024-01-01T00:00:00Z",
+                                "created_by": "123e4567-e89b-12d3-a456-426614174002",
+                                "updated_by": "123e4567-e89b-12d3-a456-426614174002"
+                            }
+                        ],
+                        "errors": [],
+                        "metrics": {
+                            "total_requested": 2,
+                            "success_count": 2,
+                            "error_count": 0,
+                            "execution_time_seconds": 5.234,
+                            "transcript_execution_time": 2.5,
+                            "fhir_execution_time": 4.8,
+                            "partial_success": False,
+                            "timeout_occurred": False
+                        }
+                    }
+                }
+            },
+        },
+        400: {
+            "description": "Invalid input parameters",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "summaries": [],
+                        "errors": [
+                            {
+                                "source": "transcript",
+                                "error_type": "ValueError",
+                                "error_message": "transcripts list cannot be empty",
+                                "details": None,
+                                "timestamp": "2024-01-01T00:00:00Z"
+                            }
+                        ],
+                        "metrics": {
+                            "total_requested": 1,
+                            "success_count": 0,
+                            "error_count": 1,
+                            "execution_time_seconds": 0.05,
+                            "partial_success": False,
+                            "timeout_occurred": False
+                        }
+                    }
+                }
+            },
+        },
+        500: {
+            "description": "Internal server error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "summaries": [
+                            {
+                                "id": "123e4567-e89b-12d3-a456-426614174000",
+                                "summary_text": "Transcript summary completed",
+                                "metadata": {"source": "transcript"}
+                            }
+                        ],
+                        "errors": [
+                            {
+                                "source": "fhir_analysis",
+                                "error_type": "HTTPException",
+                                "error_message": "No FHIR resources found",
+                                "details": "Appointment has no EHR entity ID",
+                                "timestamp": "2024-01-01T00:00:00Z"
+                            }
+                        ],
+                        "metrics": {
+                            "total_requested": 2,
+                            "success_count": 1,
+                            "error_count": 1,
+                            "execution_time_seconds": 3.5,
+                            "partial_success": True,
+                            "timeout_occurred": False
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
+async def comprehensive_summary(
+    request: ComprehensiveSummarizationRequest, db: AsyncSession = Depends(get_db)
+) -> ComprehensiveSummarizationResponse:
+    """
+    Execute comprehensive summarization (transcript + FHIR analysis) in parallel.
+    
+    This endpoint orchestrates multiple summarization operations concurrently for
+    optimal performance. It supports partial success, meaning if one operation fails,
+    the other can still succeed.
+    
+    **Features:**
+    - Parallel execution using asyncio for faster response times
+    - Partial success support (returns successful summaries even if some fail)
+    - Detailed error tracking per source (transcript vs FHIR)
+    - Execution metrics and timing for each operation
+    - Configurable timeout to prevent long-running operations
+    - Separate database transactions per operation
+    
+    **Request Parameters:**
+    - `appointment_id`: Required. The appointment to summarize.
+    - `user_id`: Required. The patient user ID.
+    - `transcripts`: Optional. List of transcript objects. If provided, transcript summarization runs.
+    - `include_fhir_analysis`: Optional. Default True. Whether to run FHIR analysis.
+    - `resource_types`: Optional. Filter FHIR resources by type.
+    - `analysis_focus`: Optional. Focus area for FHIR analysis.
+    - `timeout_seconds`: Optional. Default 120. Maximum execution time (10-300 seconds).
+    
+    **Response Structure:**
+    - `summaries`: List of ConversationSummary objects. Each has `metadata.source` field:
+      - `"transcript"`: From transcript summarization
+      - `"fhir_analysis"`: From FHIR analysis
+    - `errors`: List of errors for failed operations with detailed information
+    - `metrics`: Execution statistics including timing and success rates
+    
+    **Success Scenarios:**
+    - **Complete Success**: All requested operations succeeded (errors list is empty)
+    - **Partial Success**: Some succeeded, some failed (both summaries and errors present)
+    - **Complete Failure**: All operations failed (summaries list is empty)
+    
+    **HTTP Status:** Always returns 200 OK, even for partial or complete failure.
+    Check the `metrics` and `errors` fields to determine actual success status.
+    
+    Args:
+        request: Comprehensive summarization request with all parameters
+        db: Database session (injected)
+    
+    Returns:
+        ComprehensiveSummarizationResponse with summaries, errors, and metrics
+    
+    Raises:
+        HTTPException: Only for request validation errors (400)
+    """
+    logger.info(
+        f"Comprehensive summary request received - "
+        f"appointment_id: {request.appointment_id}, "
+        f"user_id: {request.user_id}, "
+        f"has_transcripts: {request.has_transcript_data()}, "
+        f"include_fhir: {request.has_fhir_data_requested()}"
+    )
+
+    try:
+        # Initialize service and delegate business logic
+        service = ComprehensiveSummarizationService(db)
+        response = await service.execute_parallel_summarization(request)
+
+        # Log summary of results
+        logger.info(
+            f"Comprehensive summary completed - "
+            f"appointment_id: {request.appointment_id}, "
+            f"success: {response.metrics.success_count}/{response.metrics.total_requested}, "
+            f"errors: {response.metrics.error_count}, "
+            f"partial_success: {response.metrics.partial_success}, "
+            f"execution_time: {response.metrics.execution_time_seconds:.2f}s"
+        )
+
+        # Log detailed results for each source
+        if response.summaries:
+            for summary in response.summaries:
+                source = summary.metadata.get("source", "unknown") if summary.metadata else "unknown"
+                logger.debug(
+                    f"Summary created - source: {source}, summary_id: {summary.id}"
+                )
+
+        if response.errors:
+            for error in response.errors:
+                logger.warning(
+                    f"Summarization error - "
+                    f"source: {error.source}, "
+                    f"type: {error.error_type}, "
+                    f"message: {error.error_message}"
+                )
+
+        return response
+
+    except ValidationError as e:
+        logger.error(
+            f"Validation error in comprehensive summary - "
+            f"appointment_id: {request.appointment_id}, "
+            f"error: {str(e)}",
+            exc_info=True
+        )
+        raise HTTPException(status_code=400, detail=f"Request validation failed: {str(e)}")
+    
+    except Exception as e:
+        logger.error(
+            f"Unexpected error in comprehensive summary - "
+            f"appointment_id: {request.appointment_id}, "
+            f"error: {str(e)}",
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to execute comprehensive summarization: {str(e)}"
+        )
+
