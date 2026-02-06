@@ -375,59 +375,61 @@ async def analyze_fhir_resources(
             "content": {
                 "application/json": {
                     "example": {
-                        "summaries": [
-                            {
-                                "id": "123e4567-e89b-12d3-a456-426614174000",
-                                "appointment_id": "123e4567-e89b-12d3-a456-426614174001",
-                                "user_id": "123e4567-e89b-12d3-a456-426614174002",
-                                "summary_text": "Patient presents with...",
-                                "key_points": ["Point 1", "Point 2"],
-                                "medications": [],
-                                "diagnoses": [],
-                                "instructions": [],
-                                "recommendations": [],
-                                "metadata": {
-                                    "source": "transcript",
-                                    "transcript_count": 2,
-                                    "analysis_version": "1.0"
-                                },
-                                "created_at": "2024-01-01T00:00:00Z",
-                                "updated_at": "2024-01-01T00:00:00Z",
-                                "created_by": "123e4567-e89b-12d3-a456-426614174002",
-                                "updated_by": "123e4567-e89b-12d3-a456-426614174002"
-                            },
-                            {
-                                "id": "223e4567-e89b-12d3-a456-426614174000",
-                                "appointment_id": "123e4567-e89b-12d3-a456-426614174001",
-                                "user_id": "123e4567-e89b-12d3-a456-426614174002",
-                                "summary_text": "FHIR analysis shows...",
-                                "key_points": ["Insight 1", "Insight 2"],
-                                "medications": [{"name": "Aspirin"}],
-                                "diagnoses": ["Hypertension"],
-                                "instructions": [],
-                                "recommendations": [],
-                                "metadata": {
-                                    "source": "fhir_analysis",
-                                    "total_resources": 50,
-                                    "analysis_version": "1.0"
-                                },
-                                "created_at": "2024-01-01T00:00:00Z",
-                                "updated_at": "2024-01-01T00:00:00Z",
-                                "created_by": "123e4567-e89b-12d3-a456-426614174002",
-                                "updated_by": "123e4567-e89b-12d3-a456-426614174002"
-                            }
-                        ],
-                        "errors": [],
-                        "metrics": {
-                            "total_requested": 2,
-                            "success_count": 2,
-                            "error_count": 0,
-                            "execution_time_seconds": 5.234,
-                            "transcript_execution_time": 2.5,
-                            "fhir_execution_time": 4.8,
-                            "partial_success": False,
-                            "timeout_occurred": False
-                        }
+                        "success": True,
+                        "message": None,
+                        "data": {
+                            "summaries": [
+                                {
+                                    "id": "123e4567-e89b-12d3-a456-426614174000",
+                                    "appointmentId": "appt-123456",
+                                    "userId": "user-123456",
+                                    "summaryText": "Patient visited for chest pain that started 2 days ago. Physical examination revealed normal vital signs. ECG showed no abnormalities.",
+                                    "keyPoints": [
+                                        "Chest pain started 2 days ago",
+                                        "No history of cardiac issues",
+                                        "Normal vital signs",
+                                        "ECG showed no abnormalities",
+                                    ],
+                                    "medications": [{"name": "Aspirin", "dosage": "81mg", "frequency": "Once daily"}],
+                                    "diagnoses": ["Chest pain, unspecified"],
+                                    "instructions": ["Follow up in 2 weeks", "Monitor symptoms"],
+                                    "recommendations": ["Regular exercise", "Maintain healthy diet"],
+                                    "createdBy": "system",
+                                    "createdAt": "2024-01-15T10:30:00.000Z",
+                                    "updatedBy": "system",
+                                    "updatedAt": "2024-01-15T10:30:00.000Z",
+                                    "metadata": {"source": "transcript", "summaryType": "original", "language": "en"},
+                                }
+                            ],
+                            "fhirSummaries": [
+                                {
+                                    "id": "223e4567-e89b-12d3-a456-426614174000",
+                                    "appointmentId": "appt-123456",
+                                    "userId": "user-123456",
+                                    "summaryText": "FHIR analysis shows patient history of hypertension (controlled). Current medications include lisinopril. No medication interactions identified.",
+                                    "keyPoints": [
+                                        "History of hypertension",
+                                        "Taking lisinopril",
+                                        "No drug interactions",
+                                    ],
+                                    "medications": [{"name": "Lisinopril", "dosage": "10mg daily"}],
+                                    "diagnoses": ["Hypertension"],
+                                    "instructions": [],
+                                    "recommendations": ["Continue current medication regimen"],
+                                    "createdBy": "system",
+                                    "createdAt": "2024-01-15T10:30:05.000Z",
+                                    "updatedBy": "system",
+                                    "updatedAt": "2024-01-15T10:30:05.000Z",
+                                    "metadata": {
+                                        "source": "fhir_analysis",
+                                        "summaryType": "original",
+                                        "language": "en",
+                                        "totalResources": 50,
+                                    },
+                                }
+                            ],
+                        },
+                        "error": None,
                     }
                 }
             },
@@ -437,57 +439,32 @@ async def analyze_fhir_resources(
             "content": {
                 "application/json": {
                     "example": {
-                        "summaries": [],
-                        "errors": [
-                            {
-                                "source": "transcript",
-                                "error_type": "ValueError",
-                                "error_message": "transcripts list cannot be empty",
-                                "details": None,
-                                "timestamp": "2024-01-01T00:00:00Z"
-                            }
-                        ],
-                        "metrics": {
-                            "total_requested": 1,
-                            "success_count": 0,
-                            "error_count": 1,
-                            "execution_time_seconds": 0.05,
-                            "partial_success": False,
-                            "timeout_occurred": False
-                        }
+                        "success": False,
+                        "message": None,
+                        "data": {"summaries": [], "fhirSummaries": []},
+                        "error": "At least one data source must be provided",
                     }
                 }
             },
         },
         500: {
-            "description": "Internal server error",
+            "description": "Partial success - one operation succeeded, one failed",
             "content": {
                 "application/json": {
                     "example": {
-                        "summaries": [
-                            {
-                                "id": "123e4567-e89b-12d3-a456-426614174000",
-                                "summary_text": "Transcript summary completed",
-                                "metadata": {"source": "transcript"}
-                            }
-                        ],
-                        "errors": [
-                            {
-                                "source": "fhir_analysis",
-                                "error_type": "HTTPException",
-                                "error_message": "No FHIR resources found",
-                                "details": "Appointment has no EHR entity ID",
-                                "timestamp": "2024-01-01T00:00:00Z"
-                            }
-                        ],
-                        "metrics": {
-                            "total_requested": 2,
-                            "success_count": 1,
-                            "error_count": 1,
-                            "execution_time_seconds": 3.5,
-                            "partial_success": True,
-                            "timeout_occurred": False
-                        }
+                        "success": True,
+                        "message": "Partial success: 1 transcript summaries, 0 FHIR summaries created. 1 operations failed.",
+                        "data": {
+                            "summaries": [
+                                {
+                                    "id": "123e4567-e89b-12d3-a456-426614174000",
+                                    "summaryText": "Transcript summary completed successfully",
+                                    "metadata": {"source": "transcript"},
+                                }
+                            ],
+                            "fhirSummaries": [],
+                        },
+                        "error": None,
                     }
                 }
             },
@@ -499,50 +476,56 @@ async def comprehensive_summary(
 ) -> ComprehensiveSummarizationResponse:
     """
     Execute comprehensive summarization (transcript + FHIR analysis) in parallel.
-    
+
     This endpoint orchestrates multiple summarization operations concurrently for
     optimal performance. It supports partial success, meaning if one operation fails,
     the other can still succeed.
-    
+
     **Features:**
     - Parallel execution using asyncio for faster response times
     - Partial success support (returns successful summaries even if some fail)
-    - Detailed error tracking per source (transcript vs FHIR)
-    - Execution metrics and timing for each operation
+    - Separate arrays for transcript and FHIR summaries
+    - Wrapped response structure (success, message, data, error)
     - Configurable timeout to prevent long-running operations
     - Separate database transactions per operation
-    
+
     **Request Parameters:**
     - `appointment_id`: Required. The appointment to summarize.
     - `user_id`: Required. The patient user ID.
     - `transcripts`: Optional. List of transcript objects. If provided, transcript summarization runs.
-    - `include_fhir_analysis`: Optional. Default True. Whether to run FHIR analysis.
+    - `include_fhir_analysis`: Optional. Default False. Whether to run FHIR analysis.
     - `resource_types`: Optional. Filter FHIR resources by type.
     - `analysis_focus`: Optional. Focus area for FHIR analysis.
     - `timeout_seconds`: Optional. Default 120. Maximum execution time (10-300 seconds).
-    
+
     **Response Structure:**
-    - `summaries`: List of ConversationSummary objects. Each has `metadata.source` field:
-      - `"transcript"`: From transcript summarization
-      - `"fhir_analysis"`: From FHIR analysis
-    - `errors`: List of errors for failed operations with detailed information
-    - `metrics`: Execution statistics including timing and success rates
-    
+    ```json
+    {
+      "success": true,
+      "message": null,
+      "data": {
+        "summaries": [...],      // Array of transcript summaries
+        "fhirSummaries": [...]   // Array of FHIR summaries
+      },
+      "error": null
+    }
+    ```
+
     **Success Scenarios:**
-    - **Complete Success**: All requested operations succeeded (errors list is empty)
-    - **Partial Success**: Some succeeded, some failed (both summaries and errors present)
-    - **Complete Failure**: All operations failed (summaries list is empty)
-    
+    - **Complete Success**: success=true, error=null, arrays populated
+    - **Partial Success**: success=true, message describes partial failure
+    - **Complete Failure**: success=false, error contains error message
+
     **HTTP Status:** Always returns 200 OK, even for partial or complete failure.
-    Check the `metrics` and `errors` fields to determine actual success status.
-    
+    Check the `success` and `error` fields to determine actual success status.
+
     Args:
         request: Comprehensive summarization request with all parameters
         db: Database session (injected)
-    
+
     Returns:
-        ComprehensiveSummarizationResponse with summaries, errors, and metrics
-    
+        ComprehensiveSummarizationResponse with wrapped structure containing summaries
+
     Raises:
         HTTPException: Only for request validation errors (400)
     """
@@ -563,49 +546,35 @@ async def comprehensive_summary(
         logger.info(
             f"Comprehensive summary completed - "
             f"appointment_id: {request.appointment_id}, "
-            f"success: {response.metrics.success_count}/{response.metrics.total_requested}, "
-            f"errors: {response.metrics.error_count}, "
-            f"partial_success: {response.metrics.partial_success}, "
-            f"execution_time: {response.metrics.execution_time_seconds:.2f}s"
+            f"success: {response.success}, "
+            f"transcript_count: {len(response.summaries)}, "
+            f"fhir_count: {len(response.fhir_summaries)}, "
+            f"has_error: {response.error is not None}"
         )
+        logger.info(f"Response: {response}")
 
-        # Log detailed results for each source
-        if response.summaries:
-            for summary in response.summaries:
-                source = summary.metadata.get("source", "unknown") if summary.metadata else "unknown"
-                logger.debug(
-                    f"Summary created - source: {source}, summary_id: {summary.id}"
-                )
+        # Log detailed results for each summary type
+        for summary in response.summaries:
+            logger.debug(f"Transcript summary created - summary_id: {summary.id}")
 
-        if response.errors:
-            for error in response.errors:
-                logger.warning(
-                    f"Summarization error - "
-                    f"source: {error.source}, "
-                    f"type: {error.error_type}, "
-                    f"message: {error.error_message}"
-                )
+        for summary in response.fhir_summaries:
+            logger.debug(f"FHIR summary created - summary_id: {summary.id}")
+
+        if response.error:
+            logger.warning(f"Comprehensive summary error: {response.error}")
 
         return response
 
     except ValidationError as e:
         logger.error(
-            f"Validation error in comprehensive summary - "
-            f"appointment_id: {request.appointment_id}, "
-            f"error: {str(e)}",
-            exc_info=True
+            f"Validation error in comprehensive summary - appointment_id: {request.appointment_id}, error: {str(e)}",
+            exc_info=True,
         )
         raise HTTPException(status_code=400, detail=f"Request validation failed: {str(e)}")
-    
+
     except Exception as e:
         logger.error(
-            f"Unexpected error in comprehensive summary - "
-            f"appointment_id: {request.appointment_id}, "
-            f"error: {str(e)}",
-            exc_info=True
+            f"Unexpected error in comprehensive summary - appointment_id: {request.appointment_id}, error: {str(e)}",
+            exc_info=True,
         )
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to execute comprehensive summarization: {str(e)}"
-        )
-
+        raise HTTPException(status_code=500, detail=f"Failed to execute comprehensive summarization: {str(e)}")

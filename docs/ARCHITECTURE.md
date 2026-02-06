@@ -323,9 +323,10 @@ for result in results:
 
 # Return partial success if applicable
 return ComprehensiveSummarizationResponse(
-    summaries=summaries,
+    transcript_summary=transcript_summary,
+    fhir_summary=fhir_summary,
     errors=errors,
-    metrics=build_metrics(summaries, errors)
+    metrics=build_metrics(transcript_summary, fhir_summary, errors)
 )
 ```
 

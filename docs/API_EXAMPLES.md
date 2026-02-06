@@ -128,11 +128,16 @@ result = api.comprehensive_summarization(
 # Handle response
 if result['metrics']['error_count'] == 0:
     print("Complete success!")
-    for summary in result['summaries']:
-        print(f"Source: {summary['metadata']['source']}")
-        print(f"Summary: {summary['summary_text'][:100]}...")
+    if result['transcript_summary']:
+        print(f"Transcript: {result['transcript_summary']['summary_text'][:100]}...")
+    if result['fhir_summary']:
+        print(f"FHIR: {result['fhir_summary']['summary_text'][:100]}...")
 elif result['metrics']['partial_success']:
     print(f"Partial success: {result['metrics']['success_count']} succeeded")
+    if result['transcript_summary']:
+        print(f"Transcript succeeded: {result['transcript_summary']['summary_text'][:50]}...")
+    if result['fhir_summary']:
+        print(f"FHIR succeeded: {result['fhir_summary']['summary_text'][:50]}...")
     print(f"Errors: {result['errors']}")
 else:
     print("Complete failure")
@@ -159,32 +164,44 @@ interface ComprehensiveSummaryRequest {
 }
 
 interface ComprehensiveSummaryResponse {
-  summaries: Array<{
+  transcriptSummary: {
     id: string;
-    appointment_id: string;
-    user_id: string;
-    summary_text: string;
+    appointmentId: string;
+    userId: string;
+    summaryText: string;
     metadata: {
-      source: 'transcript' | 'fhir_analysis';
+      source: 'transcript';
       [key: string]: any;
     };
-    created_at: string;
-    updated_at: string;
-  }>;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+  fhirSummary: {
+    id: string;
+    appointmentId: string;
+    userId: string;
+    summaryText: string;
+    metadata: {
+      source: 'fhir_analysis';
+      [key: string]: any;
+    };
+    createdAt: string;
+    updatedAt: string;
+  } | null;
   errors: Array<{
     source: string;
-    error_type: string;
-    error_message: string;
+    errorType: string;
+    errorMessage: string;
     details?: string;
     timestamp: string;
   }>;
   metrics: {
-    total_requested: number;
-    success_count: number;
-    error_count: number;
-    execution_time_seconds: number;
-    partial_success: boolean;
-    timeout_occurred: boolean;
+    totalRequested: number;
+    successCount: number;
+    errorCount: number;
+    executionTimeSeconds: number;
+    partialSuccess: boolean;
+    timeoutOccurred: boolean;
   };
 }
 
@@ -240,14 +257,22 @@ const result = await api.comprehensiveSummarization({
 });
 
 // Handle response
-if (result.metrics.error_count === 0) {
+if (result.metrics.errorCount === 0) {
   console.log('Complete success!');
-  result.summaries.forEach(summary => {
-    console.log(`Source: ${summary.metadata.source}`);
-    console.log(`Summary: ${summary.summary_text.substring(0, 100)}...`);
-  });
-} else if (result.metrics.partial_success) {
-  console.log(`Partial success: ${result.metrics.success_count} succeeded`);
+  if (result.transcriptSummary) {
+    console.log(`Transcript: ${result.transcriptSummary.summaryText.substring(0, 100)}...`);
+  }
+  if (result.fhirSummary) {
+    console.log(`FHIR: ${result.fhirSummary.summaryText.substring(0, 100)}...`);
+  }
+} else if (result.metrics.partialSuccess) {
+  console.log(`Partial success: ${result.metrics.successCount} succeeded`);
+  if (result.transcriptSummary) {
+    console.log(`Transcript succeeded`);
+  }
+  if (result.fhirSummary) {
+    console.log(`FHIR succeeded`);
+  }
   console.error('Errors:', result.errors);
 } else {
   console.error('Complete failure');
@@ -293,20 +318,13 @@ export const ComprehensiveSummary: React.FC<Props> = ({
         timeout_seconds: 120
       });
 
-      // Extract summaries by source
-      const transcript = result.summaries.find(
-        s => s.metadata.source === 'transcript'
-      );
-      const fhir = result.summaries.find(
-        s => s.metadata.source === 'fhir_analysis'
-      );
-
-      setTranscriptSummary(transcript?.summary_text || null);
-      setFhirSummary(fhir?.summary_text || null);
+      // Access summaries directly from response
+      setTranscriptSummary(result.transcriptSummary?.summaryText || null);
+      setFhirSummary(result.fhirSummary?.summaryText || null);
 
       // Handle errors
       if (result.errors.length > 0) {
-        setErrors(result.errors.map(e => e.error_message));
+        setErrors(result.errors.map(e => e.errorMessage));
       }
     } catch (error) {
       setErrors([`Failed to generate summary: ${error.message}`]);
@@ -647,7 +665,8 @@ def comprehensive_summarization_with_error_handling(
             logger.info(f"Complete success for appointment {appointment_id}")
             return {
                 'status': 'success',
-                'summaries': result['summaries'],
+                'transcript_summary': result.get('transcript_summary'),
+                'fhir_summary': result.get('fhir_summary'),
                 'execution_time': result['metrics']['execution_time_seconds']
             }
         
@@ -660,7 +679,8 @@ def comprehensive_summarization_with_error_handling(
             )
             return {
                 'status': 'partial_success',
-                'summaries': result['summaries'],
+                'transcript_summary': result.get('transcript_summary'),
+                'fhir_summary': result.get('fhir_summary'),
                 'errors': result['errors'],
                 'execution_time': result['metrics']['execution_time_seconds']
             }
@@ -709,12 +729,16 @@ result = comprehensive_summarization_with_error_handling(
 
 if result['status'] == 'success':
     print("All operations succeeded!")
-    for summary in result['summaries']:
-        print(f"- {summary['metadata']['source']}: {summary['summary_text'][:50]}...")
+    if result['transcript_summary']:
+        print(f"- Transcript: {result['transcript_summary']['summary_text'][:50]}...")
+    if result['fhir_summary']:
+        print(f"- FHIR: {result['fhir_summary']['summary_text'][:50]}...")
 elif result['status'] == 'partial_success':
     print("Some operations succeeded:")
-    for summary in result['summaries']:
-        print(f"- {summary['metadata']['source']}: ✓")
+    if result['transcript_summary']:
+        print("- Transcript: ✓")
+    if result['fhir_summary']:
+        print("- FHIR: ✓")
     print("Some operations failed:")
     for error in result['errors']:
         print(f"- {error['source']}: {error['error_message']}")
@@ -750,27 +774,27 @@ async function comprehensiveSummarizationWithErrorHandling(
     });
 
     // Complete success
-    if (result.metrics.error_count === 0) {
+    if (result.metrics.errorCount === 0) {
       console.log(`Complete success for appointment ${appointmentId}`);
       return {
         status: 'success',
-        summaries: result.summaries,
-        execution_time: result.metrics.execution_time_seconds
+        summaries: [result.transcriptSummary, result.fhirSummary].filter(Boolean),
+        execution_time: result.metrics.executionTimeSeconds
       };
     }
 
     // Partial success
-    if (result.metrics.partial_success) {
+    if (result.metrics.partialSuccess) {
       console.warn(
         `Partial success for appointment ${appointmentId}: ` +
-        `${result.metrics.success_count} succeeded, ` +
-        `${result.metrics.error_count} failed`
+        `${result.metrics.successCount} succeeded, ` +
+        `${result.metrics.errorCount} failed`
       );
       return {
         status: 'partial_success',
-        summaries: result.summaries,
+        summaries: [result.transcriptSummary, result.fhirSummary].filter(Boolean),
         errors: result.errors,
-        execution_time: result.metrics.execution_time_seconds
+        execution_time: result.metrics.executionTimeSeconds
       };
     }
 
@@ -813,7 +837,7 @@ switch (result.status) {
   case 'success':
     console.log('All operations succeeded!');
     result.summaries?.forEach(summary => {
-      console.log(`- ${summary.metadata.source}: ${summary.summary_text.substring(0, 50)}...`);
+      console.log(`- ${summary.metadata.source}: ${summary.summaryText.substring(0, 50)}...`);
     });
     break;
 
@@ -824,7 +848,7 @@ switch (result.status) {
     });
     console.log('Some operations failed:');
     result.errors?.forEach(error => {
-      console.log(`- ${error.source}: ${error.error_message}`);
+      console.log(`- ${error.source}: ${error.errorMessage}`);
     });
     break;
 

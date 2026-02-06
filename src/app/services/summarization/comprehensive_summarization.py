@@ -8,6 +8,7 @@ from typing import List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.app.common.logging import get_logger
+from src.app.db.config.database import get_session_factory
 from src.app.models.comprehensive_summarization import (
     ComprehensiveSummarizationRequest,
     ComprehensiveSummarizationResponse,
@@ -27,13 +28,13 @@ logger = get_logger(__name__)
 class ComprehensiveSummarizationService:
     """
     Service for orchestrating multiple summarization operations in parallel.
-    
+
     This service handles the business logic for:
     - Executing transcript summarization and FHIR analysis concurrently
     - Handling partial success scenarios
     - Tracking detailed execution metrics
     - Managing timeouts and errors gracefully
-    
+
     Follows SOLID principles:
     - Single Responsibility: Only orchestrates, doesn't perform summarization
     - Open/Closed: Can easily add new summarization types
@@ -43,13 +44,12 @@ class ComprehensiveSummarizationService:
     def __init__(self, db: AsyncSession):
         """
         Initialize the comprehensive summarization service.
-        
+
         Args:
-            db: Database session for repository operations
+            db: Database session for repository operations (not used for parallel ops)
         """
         self.db = db
-        self.transcript_service = TranscriptSummarizationService(db)
-        self.fhir_service = FhirAnalysisService(db)
+        self.session_factory = get_session_factory()
         self.logger = logger
 
     async def execute_parallel_summarization(
@@ -57,21 +57,21 @@ class ComprehensiveSummarizationService:
     ) -> ComprehensiveSummarizationResponse:
         """
         Execute multiple summarization operations in parallel.
-        
+
         This method:
         1. Determines which summarizations to run based on available data
         2. Executes them concurrently using asyncio.gather()
         3. Handles partial success (some succeed, some fail)
         4. Returns comprehensive results with metrics
-        
+
         Args:
             request: Comprehensive summarization request with all parameters
-        
+
         Returns:
             ComprehensiveSummarizationResponse with summaries, errors, and metrics
         """
         start_time = datetime.utcnow()
-        
+
         self.logger.info(
             f"Starting comprehensive summarization - "
             f"appointment_id: {request.appointment_id}, user_id: {request.user_id}"
@@ -87,13 +87,8 @@ class ComprehensiveSummarizationService:
         tasks, task_sources = self._build_task_list(request)
 
         if not tasks:
-            self.logger.warning(
-                f"No tasks to execute - "
-                f"appointment_id: {request.appointment_id}"
-            )
-            return self._build_empty_response(
-                "No data sources available for summarization", start_time
-            )
+            self.logger.warning(f"No tasks to execute - appointment_id: {request.appointment_id}")
+            return self._build_empty_response("No data sources available for summarization", start_time)
 
         self.logger.info(
             f"Executing {len(tasks)} summarization task(s) in parallel - "
@@ -101,49 +96,52 @@ class ComprehensiveSummarizationService:
         )
 
         # Execute all tasks in parallel with timeout
-        results = await self._execute_tasks_with_timeout(
-            tasks, task_sources, request.timeout_seconds
-        )
+        results = await self._execute_tasks_with_timeout(tasks, task_sources, request.timeout_seconds)
 
         # Process results and build response
-        summaries, errors, task_timings = self._process_results(results, task_sources)
+        transcript_summaries, fhir_summaries, error_messages = self._process_results(results, task_sources)
 
-        # Calculate metrics
+        # Calculate execution time
         end_time = datetime.utcnow()
         execution_time = (end_time - start_time).total_seconds()
-        
-        metrics = self._build_metrics(
-            total_requested=len(tasks),
-            success_count=len(summaries),
-            error_count=len(errors),
-            execution_time=execution_time,
-            task_timings=task_timings,
-            timeout_occurred=any(
-                isinstance(r, asyncio.TimeoutError) for r in results
-            ),
-        )
+
+        # Determine success status
+        has_summaries = len(transcript_summaries) > 0 or len(fhir_summaries) > 0
+        has_errors = len(error_messages) > 0
+
+        # Build response message
+        message = None
+        error = None
+
+        if has_summaries and has_errors:
+            message = f"Partial success: {len(transcript_summaries)} transcript summaries, {len(fhir_summaries)} FHIR summaries created. {len(error_messages)} operations failed."
+        elif not has_summaries and has_errors:
+            error = "; ".join(error_messages)
 
         self.logger.info(
             f"Comprehensive summarization completed - "
             f"appointment_id: {request.appointment_id}, "
-            f"success: {metrics.success_count}/{metrics.total_requested}, "
-            f"execution_time: {metrics.execution_time_seconds:.2f}s, "
-            f"partial_success: {metrics.partial_success}"
+            f"transcript_summaries: {len(transcript_summaries)}, "
+            f"fhir_summaries: {len(fhir_summaries)}, "
+            f"errors: {len(error_messages)}, "
+            f"execution_time: {execution_time:.2f}s"
         )
 
         return ComprehensiveSummarizationResponse(
-            summaries=summaries, errors=errors, metrics=metrics
+            success=has_summaries or not has_errors,
+            message=message,
+            summaries=transcript_summaries,
+            fhir_summaries=fhir_summaries,
+            error=error,
         )
 
-    def _build_task_list(
-        self, request: ComprehensiveSummarizationRequest
-    ) -> Tuple[List, List[str]]:
+    def _build_task_list(self, request: ComprehensiveSummarizationRequest) -> Tuple[List, List[str]]:
         """
         Build list of tasks to execute based on available data.
-        
+
         Args:
             request: Comprehensive summarization request
-        
+
         Returns:
             Tuple of (tasks list, task source names)
         """
@@ -179,30 +177,23 @@ class ComprehensiveSummarizationService:
 
         return tasks, task_sources
 
-    async def _execute_tasks_with_timeout(
-        self, tasks: List, task_sources: List[str], timeout_seconds: int
-    ) -> List:
+    async def _execute_tasks_with_timeout(self, tasks: List, task_sources: List[str], timeout_seconds: int) -> List:
         """
         Execute tasks in parallel with timeout handling.
-        
+
         Args:
             tasks: List of coroutines to execute
             task_sources: List of source names for each task
             timeout_seconds: Maximum execution time in seconds
-        
+
         Returns:
             List of results (can include exceptions)
         """
-        self.logger.debug(
-            f"Starting parallel execution - "
-            f"task_count: {len(tasks)}, timeout: {timeout_seconds}s"
-        )
+        self.logger.debug(f"Starting parallel execution - task_count: {len(tasks)}, timeout: {timeout_seconds}s")
 
         try:
             # Execute with timeout and return_exceptions=True for partial success
-            results = await asyncio.wait_for(
-                asyncio.gather(*tasks, return_exceptions=True), timeout=timeout_seconds
-            )
+            results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=timeout_seconds)
 
             self.logger.debug(
                 f"Parallel execution completed - "
@@ -213,167 +204,150 @@ class ComprehensiveSummarizationService:
             return results
 
         except asyncio.TimeoutError:
-            self.logger.error(
-                f"Parallel execution timed out after {timeout_seconds}s - "
-                f"tasks: {task_sources}"
-            )
+            self.logger.error(f"Parallel execution timed out after {timeout_seconds}s - tasks: {task_sources}")
             # Return timeout errors for all tasks
-            return [asyncio.TimeoutError(f"Operation timed out after {timeout_seconds}s")] * len(
-                tasks
-            )
+            return [asyncio.TimeoutError(f"Operation timed out after {timeout_seconds}s")] * len(tasks)
 
     def _process_results(
         self, results: List, task_sources: List[str]
-    ) -> Tuple[List[ConversationSummary], List[SummarizationError], dict]:
+    ) -> Tuple[List[ConversationSummary], List[ConversationSummary], List[str]]:
         """
-        Process parallel execution results.
-        
-        Separates successful summaries from errors and tracks timing.
-        
+        Process parallel execution results into separate arrays.
+
+        Separates transcript summaries from FHIR summaries and tracks errors.
+
         Args:
             results: List of results from asyncio.gather()
             task_sources: List of source names for each task
-        
-        Returns:
-            Tuple of (summaries, errors, task_timings)
-        """
-        summaries = []
-        errors = []
-        task_timings = {}
 
-        self.logger.debug(
-            f"Processing {len(results)} results from parallel execution"
-        )
+        Returns:
+            Tuple of (transcript_summaries, fhir_summaries, error_messages)
+        """
+        transcript_summaries = []
+        fhir_summaries = []
+        error_messages = []
+
+        self.logger.debug(f"Processing {len(results)} results from parallel execution")
 
         for idx, result in enumerate(results):
             source = task_sources[idx]
-            
+
             if isinstance(result, Exception):
                 # Handle error
-                error = self._build_error_detail(source, result)
-                errors.append(error)
-                
-                self.logger.error(
-                    f"Summarization failed - "
-                    f"source: {source}, "
-                    f"error_type: {error.error_type}, "
-                    f"error: {error.error_message}"
-                )
-                
+                error_msg = f"{source} failed: {str(result)}"
+                error_messages.append(error_msg)
+
+                self.logger.error(f"Summarization failed - source: {source}, error: {str(result)}")
+
             elif result is not None:
-                # Handle success
-                summaries.append(result)
-                
-                # Extract timing from metadata if available
-                if hasattr(result, "metadata") and result.metadata:
-                    timing_key = f"{source}_execution_time"
-                    if timing_key in result.metadata:
-                        task_timings[source] = result.metadata[timing_key]
-                
-                self.logger.info(
-                    f"Summarization succeeded - "
-                    f"source: {source}, "
-                    f"summary_id: {result.id if hasattr(result, 'id') else 'unknown'}"
-                )
+                # Handle success - route to appropriate array based on source
+                if source == "transcript":
+                    transcript_summaries.append(result)
+                    self.logger.info(
+                        f"Transcript summarization succeeded - "
+                        f"summary_id: {result.id if hasattr(result, 'id') else 'unknown'}"
+                    )
+                elif source == "fhir_analysis":
+                    fhir_summaries.append(result)
+                    self.logger.info(
+                        f"FHIR analysis succeeded - summary_id: {result.id if hasattr(result, 'id') else 'unknown'}"
+                    )
             else:
                 # Handle None result (shouldn't happen, but defensive)
-                self.logger.warning(
-                    f"Summarization returned None - source: {source}"
-                )
-                error = SummarizationError(
-                    source=source,
-                    error_type="NullResult",
-                    error_message="Summarization returned no result",
-                    details="Service returned None instead of ConversationSummary",
-                )
-                errors.append(error)
+                self.logger.warning(f"Summarization returned None - source: {source}")
+                error_messages.append(f"{source}: No result returned")
 
         self.logger.debug(
             f"Results processed - "
-            f"successes: {len(summaries)}, errors: {len(errors)}"
+            f"transcript_summaries: {len(transcript_summaries)}, "
+            f"fhir_summaries: {len(fhir_summaries)}, "
+            f"errors: {len(error_messages)}"
         )
 
-        return summaries, errors, task_timings
+        return transcript_summaries, fhir_summaries, error_messages
 
     async def _run_transcript_summarization(
         self, request: ComprehensiveSummarizationRequest
     ) -> Optional[ConversationSummary]:
         """
-        Execute transcript summarization.
-        
+        Execute transcript summarization with its own database session.
+
         Args:
             request: Comprehensive summarization request
-        
+
         Returns:
             ConversationSummary if successful
-        
+
         Raises:
             Exception: Re-raises any exception to be caught by gather()
         """
         start_time = datetime.utcnow()
-        
+
         self.logger.info(
             f"Starting transcript summarization - "
             f"appointment_id: {request.appointment_id}, "
-            f"transcript_count: {len(request.transcripts)}"
+            f"transcript_count: {len(request.transcripts or [])}"
         )
 
-        try:
-            # Build transcript-specific request
-            transcript_req = TranscriptSummarizationRequest(
-                appointment_id=request.appointment_id,
-                transcripts=request.transcripts,
-                user_id=request.user_id,
-            )
+        # Create a separate database session for this operation
+        async with self.session_factory() as session:
+            try:
+                # Create service with its own session
+                transcript_service = TranscriptSummarizationService(session)
 
-            # Execute summarization
-            result = await self.transcript_service.summarize_transcript(transcript_req)
+                # Build transcript-specific request
+                transcript_req = TranscriptSummarizationRequest(
+                    appointment_id=request.appointment_id,
+                    transcripts=request.transcripts or [],
+                    user_id=request.user_id,
+                )
 
-            # Calculate execution time
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-            
-            self.logger.info(
-                f"Transcript summarization completed - "
-                f"appointment_id: {request.appointment_id}, "
-                f"execution_time: {execution_time:.2f}s"
-            )
+                # Execute summarization
+                result = await transcript_service.summarize_transcript(transcript_req)
 
-            # Add execution time to metadata
-            if result.metadata:
-                result.metadata["transcript_execution_time"] = execution_time
+                # Calculate execution time
+                execution_time = (datetime.utcnow() - start_time).total_seconds()
 
-            return result
+                self.logger.info(
+                    f"Transcript summarization completed - "
+                    f"appointment_id: {request.appointment_id}, "
+                    f"execution_time: {execution_time:.2f}s"
+                )
 
-        except Exception as e:
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-            
-            self.logger.error(
-                f"Transcript summarization failed - "
-                f"appointment_id: {request.appointment_id}, "
-                f"execution_time: {execution_time:.2f}s, "
-                f"error: {str(e)}",
-                exc_info=True,
-            )
-            # Re-raise to be caught by gather()
-            raise
+                # Add execution time to metadata
+                if result.metadata:
+                    result.metadata["transcript_execution_time"] = execution_time
 
-    async def _run_fhir_analysis(
-        self, request: ComprehensiveSummarizationRequest
-    ) -> Optional[ConversationSummary]:
+                return result
+
+            except Exception as e:
+                execution_time = (datetime.utcnow() - start_time).total_seconds()
+
+                self.logger.error(
+                    f"Transcript summarization failed - "
+                    f"appointment_id: {request.appointment_id}, "
+                    f"execution_time: {execution_time:.2f}s, "
+                    f"error: {str(e)}",
+                    exc_info=True,
+                )
+                # Re-raise to be caught by gather()
+                raise
+
+    async def _run_fhir_analysis(self, request: ComprehensiveSummarizationRequest) -> Optional[ConversationSummary]:
         """
-        Execute FHIR analysis.
-        
+        Execute FHIR analysis with its own database session.
+
         Args:
             request: Comprehensive summarization request
-        
+
         Returns:
             ConversationSummary if successful
-        
+
         Raises:
             Exception: Re-raises any exception to be caught by gather()
         """
         start_time = datetime.utcnow()
-        
+
         self.logger.info(
             f"Starting FHIR analysis - "
             f"appointment_id: {request.appointment_id}, "
@@ -381,62 +355,65 @@ class ComprehensiveSummarizationService:
             f"analysis_focus: {request.analysis_focus}"
         )
 
-        try:
-            # Build FHIR-specific request
-            fhir_req = FhirAnalysisRequest(
-                appointment_id=request.appointment_id,
-                user_id=request.user_id,
-                resource_types=request.resource_types,
-                analysis_focus=request.analysis_focus,
-            )
+        # Create a separate database session for this operation
+        async with self.session_factory() as session:
+            try:
+                # Create service with its own session
+                fhir_service = FhirAnalysisService(session)
 
-            # Execute analysis
-            result = await self.fhir_service.analyze_fhir_resources(fhir_req)
+                # Build FHIR-specific request
+                fhir_req = FhirAnalysisRequest(
+                    appointment_id=request.appointment_id,
+                    user_id=request.user_id,
+                    resource_types=request.resource_types,
+                    analysis_focus=request.analysis_focus,
+                )
 
-            # Calculate execution time
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-            
-            self.logger.info(
-                f"FHIR analysis completed - "
-                f"appointment_id: {request.appointment_id}, "
-                f"execution_time: {execution_time:.2f}s"
-            )
+                # Execute analysis
+                result = await fhir_service.analyze_fhir_resources(fhir_req)
 
-            # Add execution time to metadata
-            if result.metadata:
-                result.metadata["fhir_execution_time"] = execution_time
+                # Calculate execution time
+                execution_time = (datetime.utcnow() - start_time).total_seconds()
 
-            return result
+                self.logger.info(
+                    f"FHIR analysis completed - "
+                    f"appointment_id: {request.appointment_id}, "
+                    f"execution_time: {execution_time:.2f}s"
+                )
 
-        except Exception as e:
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
-            
-            self.logger.error(
-                f"FHIR analysis failed - "
-                f"appointment_id: {request.appointment_id}, "
-                f"execution_time: {execution_time:.2f}s, "
-                f"error: {str(e)}",
-                exc_info=True,
-            )
-            # Re-raise to be caught by gather()
-            raise
+                # Add execution time to metadata
+                if result.metadata:
+                    result.metadata["fhir_execution_time"] = execution_time
 
-    def _build_error_detail(
-        self, source: str, error: Exception
-    ) -> SummarizationError:
+                return result
+
+            except Exception as e:
+                execution_time = (datetime.utcnow() - start_time).total_seconds()
+
+                self.logger.error(
+                    f"FHIR analysis failed - "
+                    f"appointment_id: {request.appointment_id}, "
+                    f"execution_time: {execution_time:.2f}s, "
+                    f"error: {str(e)}",
+                    exc_info=True,
+                )
+                # Re-raise to be caught by gather()
+                raise
+
+    def _build_error_detail(self, source: str, error: Exception) -> SummarizationError:
         """
         Build detailed error information from exception.
-        
+
         Args:
             source: Source of the error ('transcript' or 'fhir_analysis')
             error: The exception that occurred
-        
+
         Returns:
             SummarizationError with detailed information
         """
         error_type = type(error).__name__
         error_message = str(error)
-        
+
         # Extract additional details based on error type
         details = None
         if hasattr(error, "detail"):
@@ -451,10 +428,7 @@ class ComprehensiveSummarizationService:
         except Exception:
             pass
 
-        self.logger.debug(
-            f"Built error detail - "
-            f"source: {source}, type: {error_type}, message: {error_message}"
-        )
+        self.logger.debug(f"Built error detail - source: {source}, type: {error_type}, message: {error_message}")
 
         return SummarizationError(
             source=source,
@@ -475,7 +449,7 @@ class ComprehensiveSummarizationService:
     ) -> SummarizationMetrics:
         """
         Build execution metrics.
-        
+
         Args:
             total_requested: Total number of tasks requested
             success_count: Number of successful tasks
@@ -483,7 +457,7 @@ class ComprehensiveSummarizationService:
             execution_time: Total execution time in seconds
             task_timings: Dictionary of individual task timings
             timeout_occurred: Whether any timeout occurred
-        
+
         Returns:
             SummarizationMetrics object
         """
@@ -511,39 +485,19 @@ class ComprehensiveSummarizationService:
 
         return metrics
 
-    def _build_empty_response(
-        self, message: str, start_time: datetime
-    ) -> ComprehensiveSummarizationResponse:
+    def _build_empty_response(self, message: str, start_time: datetime) -> ComprehensiveSummarizationResponse:
         """
         Build empty response when no tasks are available.
-        
+
         Args:
             message: Error message explaining why no tasks were executed
             start_time: When the operation started
-        
+
         Returns:
             ComprehensiveSummarizationResponse with no summaries and an error
         """
-        execution_time = (datetime.utcnow() - start_time).total_seconds()
-
-        error = SummarizationError(
-            source="system",
-            error_type="NoDataAvailable",
-            error_message=message,
-            details="Neither transcript data nor FHIR analysis was requested/available",
-        )
-
-        metrics = SummarizationMetrics(
-            total_requested=0,
-            success_count=0,
-            error_count=1,
-            execution_time_seconds=round(execution_time, 3),
-            partial_success=False,
-            timeout_occurred=False,
-        )
-
         self.logger.warning(f"Empty response built - message: {message}")
 
         return ComprehensiveSummarizationResponse(
-            summaries=[], errors=[error], metrics=metrics
+            success=False, message=None, summaries=[], fhir_summaries=[], error=message
         )

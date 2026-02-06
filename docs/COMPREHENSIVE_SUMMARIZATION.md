@@ -71,45 +71,62 @@ The Comprehensive Summarization endpoint provides a unified API for executing mu
 
 ### Success Response (200 OK)
 
-**Note:** Always returns 200 OK. Check `metrics.error_count` and `errors` array for actual status.
+**Note:** Always returns 200 OK with wrapped response structure. Check `success` field and `error` message for actual status.
 
 ```json
 {
+  "success": true,
+  "message": "string (optional warning message)",
   "summaries": [
     {
       "id": "uuid",
-      "appointment_id": "uuid",
-      "user_id": "uuid",
-      "summary_text": "string",
+      "appointmentId": "uuid",
+      "userId": "uuid",
+      "summaryText": "string",
+      "keyPoints": ["string"],
+      "medications": [{"name": "string", "dosage": "string"}],
+      "diagnoses": ["string"],
+      "instructions": ["string"],
+      "recommendations": [{"text": "string", "priority": "string"}],
       "metadata": {
-        "source": "transcript | fhir_analysis",
+        "source": "transcript",
         "analysis_version": "string",
-        "...additional source-specific fields"
+        "transcript_count": "integer"
       },
-      "created_at": "datetime",
-      "updated_at": "datetime"
+      "createdAt": "datetime",
+      "updatedAt": "datetime",
+      "createdBy": "uuid",
+      "updatedBy": "uuid"
     }
   ],
-  "errors": [
+  "fhirSummaries": [
     {
-      "source": "transcript | fhir_analysis",
-      "error_type": "string",
-      "error_message": "string",
-      "details": "string (optional)",
-      "timestamp": "datetime",
-      "traceback": "string (optional)"
+      "id": "uuid",
+      "appointmentId": "uuid",
+      "userId": "uuid",
+      "summaryText": "string",
+      "keyPoints": ["string"],
+      "medications": [{"name": "string", "dosage": "string"}],
+      "diagnoses": ["string"],
+      "instructions": ["string"],
+      "recommendations": [{"text": "string", "priority": "string"}],
+      "metadata": {
+        "source": "fhir_analysis",
+        "analysis_version": "string",
+        "total_resources": "integer",
+        "resource_counts": {
+          "Condition": "integer",
+          "Observation": "integer",
+          "MedicationRequest": "integer"
+        }
+      },
+      "createdAt": "datetime",
+      "updatedAt": "datetime",
+      "createdBy": "uuid",
+      "updatedBy": "uuid"
     }
   ],
-  "metrics": {
-    "total_requested": "integer",
-    "success_count": "integer",
-    "error_count": "integer",
-    "execution_time_seconds": "float",
-    "transcript_execution_time": "float (optional)",
-    "fhir_execution_time": "float (optional)",
-    "partial_success": "boolean",
-    "timeout_occurred": "boolean"
-  }
+  "error": "string (error message if complete failure)"
 }
 ```
 
@@ -117,16 +134,13 @@ The Comprehensive Summarization endpoint provides a unified API for executing mu
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `summaries` | Array | Successfully generated summaries |
-| `summaries[].metadata.source` | String | `"transcript"` or `"fhir_analysis"` |
-| `errors` | Array | Errors encountered during processing |
-| `errors[].source` | String | Which operation failed |
-| `metrics.total_requested` | Integer | Number of operations requested |
-| `metrics.success_count` | Integer | Number of successful operations |
-| `metrics.error_count` | Integer | Number of failed operations |
-| `metrics.execution_time_seconds` | Float | Total execution time |
-| `metrics.partial_success` | Boolean | Some succeeded, some failed |
-| `metrics.timeout_occurred` | Boolean | Operation timed out |
+| `success` | Boolean | Whether the request was processed successfully |
+| `message` | String \| null | Optional warning message (used for partial success) |
+| `summaries` | Array | Transcript-based summaries (empty if not requested or failed) |
+| `fhirSummaries` | Array | FHIR-based summaries (empty if not requested or failed) |
+| `summaries[].metadata.source` | String | Always `"transcript"` |
+| `fhirSummaries[].metadata.source` | String | Always `"fhir_analysis"` |
+| `error` | String \| null | Error message for complete failures |
 
 ---
 
@@ -189,27 +203,27 @@ POST /care-capture/comprehensive-summary
 **Response:**
 ```json
 {
-  "summaries": [
-    {
-      "id": "abc-123",
-      "appointment_id": "123e4567-e89b-12d3-a456-426614174000",
-      "summary_text": "Patient experiencing persistent headache for 3 days without fever or neck stiffness...",
-      "metadata": {
-        "source": "transcript",
-        "analysis_version": "1.0",
-        "transcript_count": 1
+  "success": true,
+  "message": null,
+  "data": {
+    "summaries": [
+      {
+        "id": "abc-123",
+        "appointmentId": "123e4567-e89b-12d3-a456-426614174000",
+        "summaryText": "Patient experiencing persistent headache for 3 days without fever or neck stiffness...",
+        "keyPoints": ["Persistent headache for 3 days", "No fever", "Vital signs stable"],
+        "metadata": {
+          "source": "transcript",
+          "analysis_version": "1.0",
+          "transcript_count": 1
+        },
+        "createdAt": "2024-01-15T10:05:00Z",
+        "updatedAt": "2024-01-15T10:05:00Z"
       }
-    }
-  ],
-  "errors": [],
-  "metrics": {
-    "total_requested": 1,
-    "success_count": 1,
-    "error_count": 0,
-    "execution_time_seconds": 2.45,
-    "partial_success": false,
-    "timeout_occurred": false
-  }
+    ],
+    "fhirSummaries": []
+  },
+  "error": null
 }
 ```
 
@@ -231,33 +245,33 @@ POST /care-capture/comprehensive-summary
 **Response:**
 ```json
 {
-  "summaries": [
-    {
-      "id": "def-456",
-      "appointment_id": "123e4567-e89b-12d3-a456-426614174000",
-      "summary_text": "Patient has documented history of Type 2 Diabetes and Hypertension...",
-      "metadata": {
-        "source": "fhir_analysis",
-        "analysis_version": "1.0",
-        "total_resources": 225,
-        "resource_counts": {
-          "Condition": 12,
-          "Observation": 180,
-          "MedicationRequest": 33
+  "success": true,
+  "message": null,
+  "data": {
+    "summaries": [],
+    "fhirSummaries": [
+      {
+        "id": "def-456",
+        "appointmentId": "123e4567-e89b-12d3-a456-426614174000",
+        "summaryText": "Patient has documented history of Type 2 Diabetes and Hypertension...",
+        "keyPoints": ["Type 2 Diabetes", "Hypertension", "Multiple medications"],
+        "metadata": {
+          "source": "fhir_analysis",
+          "analysis_version": "1.0",
+          "total_resources": 225,
+          "resource_counts": {
+            "Condition": 12,
+            "Observation": 180,
+            "MedicationRequest": 33
+          },
+          "analysis_focus": "chronic_conditions"
         },
-        "analysis_focus": "chronic_conditions"
+        "createdAt": "2024-01-15T10:05:00Z",
+        "updatedAt": "2024-01-15T10:05:00Z"
       }
-    }
-  ],
-  "errors": [],
-  "metrics": {
-    "total_requested": 1,
-    "success_count": 1,
-    "error_count": 0,
-    "execution_time_seconds": 4.78,
-    "partial_success": false,
-    "timeout_occurred": false
-  }
+    ]
+  },
+  "error": null
 }
 ```
 
@@ -285,39 +299,41 @@ POST /care-capture/comprehensive-summary
 **Response:**
 ```json
 {
-  "summaries": [
-    {
-      "id": "abc-123",
-      "metadata": {
-        "source": "transcript",
-        "transcript_count": 1
-      },
-      "summary_text": "Patient experiencing worsening shortness of breath..."
-    },
-    {
-      "id": "def-456",
-      "metadata": {
-        "source": "fhir_analysis",
-        "total_resources": 352
-      },
-      "summary_text": "Clinical analysis shows history of COPD and current medications..."
-    }
-  ],
-  "errors": [],
-  "metrics": {
-    "total_requested": 2,
-    "success_count": 2,
-    "error_count": 0,
-    "execution_time_seconds": 5.23,
-    "transcript_execution_time": 2.45,
-    "fhir_execution_time": 4.78,
-    "partial_success": false,
-    "timeout_occurred": false
-  }
+  "success": true,
+  "message": null,
+  "data": {
+    "summaries": [
+      {
+        "id": "abc-123",
+        "appointmentId": "123e4567-e89b-12d3-a456-426614174000",
+        "summaryText": "Patient experiencing worsening shortness of breath...",
+        "metadata": {
+          "source": "transcript",
+          "transcript_count": 1
+        },
+        "createdAt": "2024-01-15T10:05:00Z",
+        "updatedAt": "2024-01-15T10:05:00Z"
+      }
+    ],
+    "fhirSummaries": [
+      {
+        "id": "def-456",
+        "appointmentId": "123e4567-e89b-12d3-a456-426614174000",
+        "summaryText": "Clinical analysis shows history of COPD and current medications...",
+        "metadata": {
+          "source": "fhir_analysis",
+          "total_resources": 352
+        },
+        "createdAt": "2024-01-15T10:05:00Z",
+        "updatedAt": "2024-01-15T10:05:00Z"
+      }
+    ]
+  },
+  "error": null
 }
 ```
 
-**Note:** Sequential execution would take ~7.23s (2.45s + 4.78s), but parallel execution completed in 5.23s (**27.7% faster**).
+**Note:** Sequential execution would take ~7.23s (2.45s + 4.78s), but parallel execution completes in ~5.23s (**27.7% faster**).
 
 ### Example 4: Partial Success
 
@@ -340,32 +356,24 @@ POST /care-capture/comprehensive-summary
 **Response (transcript succeeded, FHIR failed):**
 ```json
 {
-  "summaries": [
-    {
-      "id": "abc-123",
-      "metadata": {
-        "source": "transcript"
-      },
-      "summary_text": "Patient experiencing chest pain..."
-    }
-  ],
-  "errors": [
-    {
-      "source": "fhir_analysis",
-      "error_type": "HTTPException",
-      "error_message": "No FHIR resources found for this appointment",
-      "details": "Appointment has no associated EHR entity ID",
-      "timestamp": "2024-01-15T10:05:23Z"
-    }
-  ],
-  "metrics": {
-    "total_requested": 2,
-    "success_count": 1,
-    "error_count": 1,
-    "execution_time_seconds": 2.89,
-    "partial_success": true,
-    "timeout_occurred": false
-  }
+  "success": true,
+  "message": "Transcript summarization succeeded, but FHIR analysis failed",
+  "data": {
+    "summaries": [
+      {
+        "id": "abc-123",
+        "appointmentId": "123e4567-e89b-12d3-a456-426614174000",
+        "summaryText": "Patient experiencing chest pain...",
+        "metadata": {
+          "source": "transcript"
+        },
+        "createdAt": "2024-01-15T10:05:00Z",
+        "updatedAt": "2024-01-15T10:05:00Z"
+      }
+    ],
+    "fhirSummaries": []
+  },
+  "error": null
 }
 ```
 
@@ -387,24 +395,13 @@ POST /care-capture/comprehensive-summary
 **Response:**
 ```json
 {
-  "summaries": [],
-  "errors": [
-    {
-      "source": "comprehensive_operation",
-      "error_type": "TimeoutError",
-      "error_message": "Operation timed out after 10 seconds",
-      "details": "Both operations exceeded timeout limit",
-      "timestamp": "2024-01-15T10:05:33Z"
-    }
-  ],
-  "metrics": {
-    "total_requested": 2,
-    "success_count": 0,
-    "error_count": 1,
-    "execution_time_seconds": 10.0,
-    "partial_success": false,
-    "timeout_occurred": true
-  }
+  "success": false,
+  "message": null,
+  "data": {
+    "summaries": [],
+    "fhirSummaries": []
+  },
+  "error": "Operation timed out after 10 seconds"
 }
 ```
 
@@ -450,20 +447,22 @@ POST /care-capture/comprehensive-summary
            └───────────────┬───────────────┘
                            │
                            ▼
-         ┌─────────────────────────────────┐
-         │   Process Results                │
-         │   - Separate successes/failures  │
-         │   - Build error details          │
-         │   - Calculate metrics            │
-         └────────────────┬────────────────┘
-                          │
-                          ▼
-         ┌────────────────────────────────┐
-         │   Return Unified Response       │
-         │   - summaries[]                 │
-         │   - errors[]                    │
-         │   - metrics{}                   │
-         └────────────────────────────────┘
+          ┌─────────────────────────────────┐
+          │   Process Results                │
+          │   - Separate successes/failures  │
+          │   - Collect error messages       │
+          │   - Build response arrays        │
+          └────────────────┬────────────────┘
+                           │
+                           ▼
+           ┌────────────────────────────────┐
+           │   Return Wrapped Response       │
+           │   - success: true/false         │
+           │   - message: (optional warning) │
+           │   - data.summaries[]            │
+           │   - data.fhirSummaries[]        │
+           │   - error: (error message)      │
+           └────────────────────────────────┘
 ```
 
 ---
@@ -567,13 +566,13 @@ The endpoint is designed to succeed partially:
 ```python
 # If transcript succeeds but FHIR fails:
 {
-  "summaries": [transcript_summary],  # User gets transcript data
-  "errors": [fhir_error],              # Error logged for debugging
-  "metrics": {
-    "success_count": 1,
-    "error_count": 1,
-    "partial_success": true            # Frontend can show warning
-  }
+  "success": True,                              # Request succeeded
+  "message": "Transcript summarization succeeded, but FHIR analysis failed",
+  "data": {
+    "summaries": [transcript_summary],          # User gets transcript data
+    "fhirSummaries": []                         # FHIR failed (empty array)
+  },
+  "error": None                                 # Not a complete failure
 }
 ```
 
@@ -582,18 +581,26 @@ The endpoint is designed to succeed partially:
 const response = await fetch('/comprehensive-summary', {...});
 const data = await response.json();
 
-if (data.metrics.partial_success) {
-  // Show successful summaries
-  displaySummaries(data.summaries);
-  
-  // Show warning about failures
-  showWarning(`Some operations failed: ${data.errors.length} error(s)`);
-} else if (data.metrics.success_count === 0) {
+if (!data.success) {
   // Complete failure
-  showError('Failed to generate summaries');
+  showError(`Failed to generate summaries: ${data.error}`);
 } else {
-  // Complete success
-  displaySummaries(data.summaries);
+  // Success or partial success
+  const transcriptCount = data.data.summaries.length;
+  const fhirCount = data.data.fhirSummaries.length;
+  
+  // Display successful summaries
+  if (transcriptCount > 0) {
+    displayTranscriptSummaries(data.data.summaries);
+  }
+  if (fhirCount > 0) {
+    displayFhirSummaries(data.data.fhirSummaries);
+  }
+  
+  // Show warning if partial success
+  if (data.message) {
+    showWarning(data.message);
+  }
 }
 ```
 
@@ -641,9 +648,22 @@ WHERE metadata->>'source' = 'fhir_analysis'
 // GET /conversation-summaries/appointment/:appointmentId
 const summaries = await api.getByAppointmentId('123e4567...');
 
-// Filter by source
-const transcriptSummary = summaries.find(s => s.metadata?.source === 'transcript');
-const fhirSummary = summaries.find(s => s.metadata?.source === 'fhir_analysis');
+// Filter by source (summaries stored separately in DB)
+const transcriptSummaries = summaries.filter(s => s.metadata?.source === 'transcript');
+const fhirSummaries = summaries.filter(s => s.metadata?.source === 'fhir_analysis');
+
+// Or use the comprehensive endpoint directly
+const response = await fetch('/care-capture/comprehensive-summary', {
+  method: 'POST',
+  body: JSON.stringify({
+    appointment_id: '123e4567...',
+    user_id: '223e4567...',
+    transcripts: [{text: '...'}],
+    include_fhir_analysis: true
+  })
+});
+
+const { summaries, fhirSummaries } = response.data;  // Already separated!
 ```
 
 ---
@@ -659,9 +679,14 @@ const fhirSummary = summaries.find(s => s.metadata?.source === 'fhir_analysis');
 
 ### 2. Handle Partial Success
 ```javascript
-// Check metrics before assuming success
-if (response.metrics.error_count > 0) {
-  logErrors(response.errors);
+// Check success and message fields
+if (data.success && data.message) {
+  // Partial success with warning
+  showWarning(data.message);
+}
+if (!data.success && data.error) {
+  // Complete failure
+  showError(data.error);
 }
 ```
 
@@ -673,23 +698,26 @@ if (response.metrics.error_count > 0) {
 }
 ```
 
-### 4. Monitor Execution Time
+### 4. Access Summaries by Type
 ```javascript
-// Track slow operations
-if (response.metrics.execution_time_seconds > 10) {
-  logSlowOperation(response);
+// Access summaries directly from response data
+const { summaries, fhirSummaries } = data.data;
+
+// Display in separate sections
+if (summaries.length > 0) {
+  displayTranscriptSummaries(summaries);
+}
+if (fhirSummaries.length > 0) {
+  displayFhirSummaries(fhirSummaries);
 }
 ```
 
-### 5. Filter by Source in Frontend
+### 5. Filter by Source in Database
 ```javascript
-// Organize by summary type
-const transcriptSummary = summaries.find(s => s.metadata?.source === 'transcript');
-const clinicalSummary = summaries.find(s => s.metadata?.source === 'fhir_analysis');
-
-// Display in separate sections
-displayTranscriptSection(transcriptSummary);
-displayClinicalSection(clinicalSummary);
+// Summaries are already separated in the response
+// No need to filter by metadata.source in the frontend
+const transcriptSummaries = data.data.summaries;  // All transcript-based
+const fhirSummaries = data.data.fhirSummaries;    // All FHIR-based
 ```
 
 ---

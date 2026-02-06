@@ -51,6 +51,38 @@ class ConversationSummariesRepository:
             logger.error(f"Error fetching summary for transcript ID: {appointment_id}", exc_info=e)
             raise e
     
+    async def get_by_appointment_id_and_source(
+        self, 
+        appointment_id: UUID, 
+        source: str
+    ) -> Optional[ConversationSummaries]:
+        """
+        Get conversation summary by appointment_id and metadata source.
+        
+        Args:
+            appointment_id: UUID of the appointment
+            source: Source of the summary (e.g., 'fhir_analysis', 'transcript')
+            
+        Returns:
+            ConversationSummaries object or None if not found
+        """
+        try:
+            from sqlalchemy import cast, String
+            
+            result = await self.session.execute(
+                select(ConversationSummaries).where(
+                    ConversationSummaries.appointment_id == appointment_id,
+                    cast(ConversationSummaries.summary_metadata["source"], String) == source
+                )
+            )
+            return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(
+                f"Error fetching summary for appointment_id: {appointment_id}, source: {source}", 
+                exc_info=e
+            )
+            raise e
+    
     async def get_by_user_id(self, user_id: UUID) -> Optional[ConversationSummaries]:
         try:
             result = await self.session.execute(
@@ -90,20 +122,51 @@ class ConversationSummariesRepository:
             raise e
         
     async def upsert(self, appointment_id: UUID, summary_data: dict) -> Optional[ConversationSummaries]:
+        """
+        Upsert a conversation summary based on appointment_id and metadata source.
+        If a summary with the same appointment_id and source exists, update it.
+        Otherwise, create a new summary.
+        
+        Args:
+            appointment_id: UUID of the appointment
+            summary_data: Dictionary containing summary fields (must include summary_metadata with source)
+            
+        Returns:
+            ConversationSummaries object (created or updated)
+        """
         try:
-            db_summary = await self.get_by_appointment_id(appointment_id)
+            # Extract source from metadata
+            source = summary_data.get("summary_metadata", {}).get("source", "unknown")
+            
+            # Try to find existing summary with same appointment_id and source
+            db_summary = await self.get_by_appointment_id_and_source(appointment_id, source)
+            
             if db_summary:
+                # Update existing summary
+                logger.info(
+                    f"Updating existing summary for appointment_id: {appointment_id}, "
+                    f"source: {source}, summary_id: {db_summary.id}"
+                )
                 for key, value in summary_data.items():
                     if hasattr(db_summary, key):
                         setattr(db_summary, key, value)
             else:
+                # Create new summary
+                logger.info(
+                    f"Creating new summary for appointment_id: {appointment_id}, source: {source}"
+                )
                 db_summary = ConversationSummaries(appointment_id=appointment_id, **summary_data)
                 self.session.add(db_summary)
+            
             await self.session.commit()
             await self.session.refresh(db_summary)
             return db_summary
         except Exception as e:
-            logger.error(f"Error upserting summary with ID: {appointment_id}", exc_info=e)
+            logger.error(
+                f"Error upserting summary for appointment_id: {appointment_id}, "
+                f"source: {summary_data.get('summary_metadata', {}).get('source', 'unknown')}", 
+                exc_info=e
+            )
             raise e
     
     async def create_with_metadata(
