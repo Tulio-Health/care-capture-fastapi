@@ -5,10 +5,18 @@ import traceback
 from datetime import datetime
 from typing import List, Optional, Tuple
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.app.common.logging import get_logger
+from src.app.core.settings import get_settings
 from src.app.db.config.database import get_session_factory
+from src.app.db.models.appointments import Appointment
+from src.app.db.objects.repositories.conversation_summaries import (
+    ConversationSummariesRepository,
+)
+from src.app.db.objects.repositories.fhir_resources import FhirResourcesRepository
+from src.app.models.attachment_summarization import AttachmentSummarizationRequest
 from src.app.models.comprehensive_summarization import (
     ComprehensiveSummarizationRequest,
     ComprehensiveSummarizationResponse,
@@ -19,10 +27,12 @@ from src.app.models.conversation_summaries import ConversationSummary
 from src.app.models.fhir_analysis import FhirAnalysisRequest
 from src.app.models.transcript_summarization import TranscriptSummarizationRequest
 
+from .attachment_summarization import AttachmentSummarizationService
 from .fhir_analysis import FhirAnalysisService
 from .transcript_summarization import TranscriptSummarizationService
 
 logger = get_logger(__name__)
+settings = get_settings()
 
 
 class ComprehensiveSummarizationService:
@@ -83,12 +93,47 @@ class ComprehensiveSummarizationService:
             f"timeout: {request.timeout_seconds}s"
         )
 
-        # Build list of tasks to execute
-        tasks, task_sources = self._build_task_list(request)
+        # Build list of tasks to execute and check for existing summaries
+        tasks, task_sources, existing_summaries = await self._build_task_list(request)
 
-        if not tasks:
-            self.logger.warning(f"No tasks to execute - appointment_id: {request.appointment_id}")
-            return self._build_empty_response("No data sources available for summarization", start_time)
+        # If all summaries exist, return them immediately
+        if not tasks and existing_summaries:
+            self.logger.info(
+                f"All summaries already exist - returning cached results - "
+                f"appointment_id: {request.appointment_id}, "
+                f"count: {len(existing_summaries)}"
+            )
+
+            # Separate existing summaries by type
+            transcript_summaries = []
+            fhir_summaries = []
+
+            for summary in existing_summaries:
+                source = summary.metadata.get("source") if summary.metadata else None
+                if source == "transcript":
+                    transcript_summaries.append(summary)
+                elif source in ["fhir_analysis", "attachment_summary"]:
+                    fhir_summaries.append(summary)
+
+            # Calculate execution time
+            end_time = datetime.utcnow()
+            execution_time = (end_time - start_time).total_seconds()
+
+            return ComprehensiveSummarizationResponse(
+                success=True,
+                message=f"Retrieved {len(existing_summaries)} existing summaries",
+                summaries=transcript_summaries,
+                fhir_summaries=fhir_summaries,
+                error=None,
+            )
+
+        if not tasks and not existing_summaries:
+            self.logger.warning(
+                f"No tasks to execute - appointment_id: {request.appointment_id}"
+            )
+            return self._build_empty_response(
+                "No data sources available for summarization", start_time
+            )
 
         self.logger.info(
             f"Executing {len(tasks)} summarization task(s) in parallel - "
@@ -96,10 +141,22 @@ class ComprehensiveSummarizationService:
         )
 
         # Execute all tasks in parallel with timeout
-        results = await self._execute_tasks_with_timeout(tasks, task_sources, request.timeout_seconds)
+        results = await self._execute_tasks_with_timeout(
+            tasks, task_sources, request.timeout_seconds
+        )
 
         # Process results and build response
-        transcript_summaries, fhir_summaries, error_messages = self._process_results(results, task_sources)
+        transcript_summaries, fhir_summaries, error_messages = self._process_results(
+            results, task_sources
+        )
+
+        # Merge existing summaries with newly created ones
+        for summary in existing_summaries:
+            source = summary.metadata.get("source") if summary.metadata else None
+            if source == "transcript":
+                transcript_summaries.append(summary)
+            elif source in ["fhir_analysis", "attachment_summary"]:
+                fhir_summaries.append(summary)
 
         # Calculate execution time
         end_time = datetime.utcnow()
@@ -113,8 +170,17 @@ class ComprehensiveSummarizationService:
         message = None
         error = None
 
+        new_count = (
+            len(transcript_summaries) + len(fhir_summaries) - len(existing_summaries)
+        )
+        existing_count = len(existing_summaries)
+
         if has_summaries and has_errors:
-            message = f"Partial success: {len(transcript_summaries)} transcript summaries, {len(fhir_summaries)} FHIR summaries created. {len(error_messages)} operations failed."
+            message = f"Partial success: {new_count} new summaries created, {existing_count} existing summaries retrieved. {len(error_messages)} operations failed."
+        elif has_summaries and existing_count > 0 and new_count > 0:
+            message = f"{new_count} new summaries created, {existing_count} existing summaries retrieved"
+        elif has_summaries and existing_count > 0 and new_count == 0:
+            message = f"Retrieved {existing_count} existing summaries"
         elif not has_summaries and has_errors:
             error = "; ".join(error_messages)
 
@@ -123,6 +189,8 @@ class ComprehensiveSummarizationService:
             f"appointment_id: {request.appointment_id}, "
             f"transcript_summaries: {len(transcript_summaries)}, "
             f"fhir_summaries: {len(fhir_summaries)}, "
+            f"existing_summaries: {existing_count}, "
+            f"new_summaries: {new_count}, "
             f"errors: {len(error_messages)}, "
             f"execution_time: {execution_time:.2f}s"
         )
@@ -135,49 +203,114 @@ class ComprehensiveSummarizationService:
             error=error,
         )
 
-    def _build_task_list(self, request: ComprehensiveSummarizationRequest) -> Tuple[List, List[str]]:
+    async def _build_task_list(
+        self, request: ComprehensiveSummarizationRequest
+    ) -> Tuple[List, List[str], List[ConversationSummary]]:
         """
         Build list of tasks to execute based on available data.
+
+        Checks for existing summaries first and only creates new tasks if needed.
 
         Args:
             request: Comprehensive summarization request
 
         Returns:
-            Tuple of (tasks list, task source names)
+            Tuple of (tasks list, task source names, existing summaries list)
         """
         tasks = []
         task_sources = []
+        existing_summaries = []
 
-        # Add transcript summarization if data available
+        # Check for transcript summarization
         if request.has_transcript_data():
-            self.logger.debug(
-                f"Adding transcript summarization task - "
-                f"transcript_count: {len(request.transcripts)}, "
-                f"appointment_id: {request.appointment_id}"
+            # Check if transcript summary already exists
+            existing_transcript = await self._get_existing_summary(
+                request, "transcript"
             )
-            tasks.append(self._run_transcript_summarization(request))
-            task_sources.append("transcript")
 
-        # Add FHIR analysis if requested
+            if existing_transcript:
+                self.logger.info(
+                    f"Using existing transcript summary - "
+                    f"appointment_id: {request.appointment_id}, "
+                    f"summary_id: {existing_transcript.id}"
+                )
+                existing_summaries.append(existing_transcript)
+            else:
+                self.logger.debug(
+                    f"Adding transcript summarization task - "
+                    f"transcript_count: {len(request.transcripts)}, "
+                    f"appointment_id: {request.appointment_id}"
+                )
+                tasks.append(self._run_transcript_summarization(request))
+                task_sources.append("transcript")
+
+        # Check for FHIR data (attachments or FHIR analysis)
         if request.has_fhir_data_requested():
-            self.logger.debug(
-                f"Adding FHIR analysis task - "
-                f"resource_types: {request.resource_types}, "
-                f"analysis_focus: {request.analysis_focus}, "
-                f"appointment_id: {request.appointment_id}"
-            )
-            tasks.append(self._run_fhir_analysis(request))
-            task_sources.append("fhir_analysis")
+            # Check if attachments exist for this appointment
+            has_attachments = await self._check_attachments_exist(request)
+
+            if has_attachments:
+                # Check if attachment summary already exists
+                existing_attachment = await self._get_existing_summary(
+                    request, "attachment_summary"
+                )
+
+                if existing_attachment:
+                    self.logger.info(
+                        f"Using existing attachment summary - "
+                        f"appointment_id: {request.appointment_id}, "
+                        f"summary_id: {existing_attachment.id}"
+                    )
+                    existing_summaries.append(existing_attachment)
+                else:
+                    self.logger.debug(
+                        f"Adding attachment summarization task (attachments found) - "
+                        f"appointment_id: {request.appointment_id}"
+                    )
+                    tasks.append(self._run_attachment_summarization(request))
+                    task_sources.append("attachment_summary")
+            else:
+                # Only fall back to FHIR analysis if config flag is enabled
+                if settings.ENABLE_FHIR_FALLBACK:
+                    # Check if FHIR analysis summary already exists
+                    existing_fhir = await self._get_existing_summary(
+                        request, "fhir_analysis"
+                    )
+
+                    if existing_fhir:
+                        self.logger.info(
+                            f"Using existing FHIR analysis summary - "
+                            f"appointment_id: {request.appointment_id}, "
+                            f"summary_id: {existing_fhir.id}"
+                        )
+                        existing_summaries.append(existing_fhir)
+                    else:
+                        self.logger.debug(
+                            f"Adding FHIR analysis task (no attachments found, fallback enabled) - "
+                            f"resource_types: {request.resource_types}, "
+                            f"analysis_focus: {request.analysis_focus}, "
+                            f"appointment_id: {request.appointment_id}"
+                        )
+                        tasks.append(self._run_fhir_analysis(request))
+                        task_sources.append("fhir_analysis")
+                else:
+                    self.logger.info(
+                        f"No attachments found and FHIR fallback disabled - skipping FHIR data processing - "
+                        f"appointment_id: {request.appointment_id}"
+                    )
 
         self.logger.debug(
             f"Task list built - "
             f"task_count: {len(tasks)}, sources: {task_sources}, "
+            f"existing_summaries: {len(existing_summaries)}, "
             f"appointment_id: {request.appointment_id}"
         )
 
-        return tasks, task_sources
+        return tasks, task_sources, existing_summaries
 
-    async def _execute_tasks_with_timeout(self, tasks: List, task_sources: List[str], timeout_seconds: int) -> List:
+    async def _execute_tasks_with_timeout(
+        self, tasks: List, task_sources: List[str], timeout_seconds: int
+    ) -> List:
         """
         Execute tasks in parallel with timeout handling.
 
@@ -189,11 +322,15 @@ class ComprehensiveSummarizationService:
         Returns:
             List of results (can include exceptions)
         """
-        self.logger.debug(f"Starting parallel execution - task_count: {len(tasks)}, timeout: {timeout_seconds}s")
+        self.logger.debug(
+            f"Starting parallel execution - task_count: {len(tasks)}, timeout: {timeout_seconds}s"
+        )
 
         try:
             # Execute with timeout and return_exceptions=True for partial success
-            results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=timeout_seconds)
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True), timeout=timeout_seconds
+            )
 
             self.logger.debug(
                 f"Parallel execution completed - "
@@ -204,9 +341,13 @@ class ComprehensiveSummarizationService:
             return results
 
         except asyncio.TimeoutError:
-            self.logger.error(f"Parallel execution timed out after {timeout_seconds}s - tasks: {task_sources}")
+            self.logger.error(
+                f"Parallel execution timed out after {timeout_seconds}s - tasks: {task_sources}"
+            )
             # Return timeout errors for all tasks
-            return [asyncio.TimeoutError(f"Operation timed out after {timeout_seconds}s")] * len(tasks)
+            return [
+                asyncio.TimeoutError(f"Operation timed out after {timeout_seconds}s")
+            ] * len(tasks)
 
     def _process_results(
         self, results: List, task_sources: List[str]
@@ -237,7 +378,9 @@ class ComprehensiveSummarizationService:
                 error_msg = f"{source} failed: {str(result)}"
                 error_messages.append(error_msg)
 
-                self.logger.error(f"Summarization failed - source: {source}, error: {str(result)}")
+                self.logger.error(
+                    f"Summarization failed - source: {source}, error: {str(result)}"
+                )
 
             elif result is not None:
                 # Handle success - route to appropriate array based on source
@@ -251,6 +394,11 @@ class ComprehensiveSummarizationService:
                     fhir_summaries.append(result)
                     self.logger.info(
                         f"FHIR analysis succeeded - summary_id: {result.id if hasattr(result, 'id') else 'unknown'}"
+                    )
+                elif source == "attachment_summary":
+                    fhir_summaries.append(result)  # Store in fhir_summaries array
+                    self.logger.info(
+                        f"Attachment summarization succeeded - summary_id: {result.id if hasattr(result, 'id') else 'unknown'}"
                     )
             else:
                 # Handle None result (shouldn't happen, but defensive)
@@ -333,7 +481,9 @@ class ComprehensiveSummarizationService:
                 # Re-raise to be caught by gather()
                 raise
 
-    async def _run_fhir_analysis(self, request: ComprehensiveSummarizationRequest) -> Optional[ConversationSummary]:
+    async def _run_fhir_analysis(
+        self, request: ComprehensiveSummarizationRequest
+    ) -> Optional[ConversationSummary]:
         """
         Execute FHIR analysis with its own database session.
 
@@ -400,6 +550,157 @@ class ComprehensiveSummarizationService:
                 # Re-raise to be caught by gather()
                 raise
 
+    async def _check_attachments_exist(
+        self, request: ComprehensiveSummarizationRequest
+    ) -> bool:
+        """
+        Check if appointment's encounter has DocumentReferences with attachments.
+
+        Returns:
+            bool: True if attachments exist, False otherwise
+        """
+        async with self.session_factory() as session:
+            try:
+                # Get appointment to find encounter_id
+                appointment_stmt = select(Appointment).where(
+                    Appointment.id == request.appointment_id
+                )
+                result = await session.execute(appointment_stmt)
+                appointment = result.scalar_one_or_none()
+
+                if not appointment or not appointment.ehr_entity_id:
+                    return False
+
+                # Check for DocumentReferences with attachments
+                fhir_repo = FhirResourcesRepository(session)
+                doc_refs = await fhir_repo.get_document_references_with_attachments(
+                    user_id=str(request.user_id), encounter_id=appointment.ehr_entity_id
+                )
+
+                return len(doc_refs) > 0
+
+            except Exception as e:
+                self.logger.error(
+                    f"Error checking attachments existence: {str(e)}", exc_info=True
+                )
+                return False
+
+    async def _run_attachment_summarization(
+        self, request: ComprehensiveSummarizationRequest
+    ) -> Optional[ConversationSummary]:
+        """
+        Execute attachment summarization with its own database session.
+
+        Args:
+            request: Comprehensive summarization request
+
+        Returns:
+            ConversationSummary if successful
+
+        Raises:
+            Exception: Re-raises any exception to be caught by gather()
+        """
+        start_time = datetime.utcnow()
+
+        self.logger.info(
+            f"Starting attachment summarization - "
+            f"appointment_id: {request.appointment_id}"
+        )
+
+        async with self.session_factory() as session:
+            try:
+                # Create service with its own session
+                attachment_service = AttachmentSummarizationService(session)
+
+                # Build attachment-specific request
+                attachment_req = AttachmentSummarizationRequest(
+                    appointment_id=request.appointment_id,
+                    user_id=request.user_id,
+                )
+
+                # Execute summarization
+                result = await attachment_service.analyze_attachments(attachment_req)
+
+                # Calculate execution time
+                execution_time = (datetime.utcnow() - start_time).total_seconds()
+
+                self.logger.info(
+                    f"Attachment summarization completed - "
+                    f"appointment_id: {request.appointment_id}, "
+                    f"execution_time: {execution_time:.2f}s"
+                )
+
+                # Add execution time to metadata
+                if result.metadata:
+                    result.metadata["attachment_execution_time"] = execution_time
+
+                return result
+
+            except Exception as e:
+                execution_time = (datetime.utcnow() - start_time).total_seconds()
+
+                self.logger.error(
+                    f"Attachment summarization failed - "
+                    f"appointment_id: {request.appointment_id}, "
+                    f"execution_time: {execution_time:.2f}s, "
+                    f"error: {str(e)}",
+                    exc_info=True,
+                )
+                # Re-raise to be caught by gather()
+                raise
+
+    async def _get_existing_summary(
+        self, request: ComprehensiveSummarizationRequest, source: str
+    ) -> Optional[ConversationSummary]:
+        """
+        Check if a summary already exists for this appointment and source type.
+
+        Args:
+            request: Comprehensive summarization request
+            source: Summary source type ('attachment_summary', 'fhir_analysis', 'transcript')
+
+        Returns:
+            ConversationSummary if exists, None otherwise
+        """
+        async with self.session_factory() as session:
+            try:
+                summaries_repo = ConversationSummariesRepository(session)
+
+                existing_summary = (
+                    await summaries_repo.get_by_appointment_id_and_source(
+                        appointment_id=request.appointment_id, source=source
+                    )
+                )
+
+                if existing_summary:
+                    self.logger.info(
+                        f"Found existing {source} summary - "
+                        f"appointment_id: {request.appointment_id}, "
+                        f"summary_id: {existing_summary.id}"
+                    )
+
+                    # Convert database entity to Pydantic model
+                    return ConversationSummary(
+                        id=existing_summary.id,
+                        user_id=existing_summary.user_id,
+                        appointment_id=existing_summary.appointment_id,
+                        summary_text=existing_summary.summary_text,
+                        summary_type=existing_summary.summary_type,
+                        metadata=existing_summary.summary_metadata,
+                        created_at=existing_summary.created_at,
+                        updated_at=existing_summary.updated_at,
+                    )
+
+                return None
+
+            except Exception as e:
+                self.logger.error(
+                    f"Error checking for existing {source} summary: {str(e)}",
+                    exc_info=True,
+                )
+                # Return None to allow creating new summary
+                return None
+
     def _build_error_detail(self, source: str, error: Exception) -> SummarizationError:
         """
         Build detailed error information from exception.
@@ -424,11 +725,15 @@ class ComprehensiveSummarizationService:
         # Capture traceback for debugging
         tb = None
         try:
-            tb = "".join(traceback.format_exception(type(error), error, error.__traceback__))
+            tb = "".join(
+                traceback.format_exception(type(error), error, error.__traceback__)
+            )
         except Exception:
             pass
 
-        self.logger.debug(f"Built error detail - source: {source}, type: {error_type}, message: {error_message}")
+        self.logger.debug(
+            f"Built error detail - source: {source}, type: {error_type}, message: {error_message}"
+        )
 
         return SummarizationError(
             source=source,
@@ -485,7 +790,9 @@ class ComprehensiveSummarizationService:
 
         return metrics
 
-    def _build_empty_response(self, message: str, start_time: datetime) -> ComprehensiveSummarizationResponse:
+    def _build_empty_response(
+        self, message: str, start_time: datetime
+    ) -> ComprehensiveSummarizationResponse:
         """
         Build empty response when no tasks are available.
 
