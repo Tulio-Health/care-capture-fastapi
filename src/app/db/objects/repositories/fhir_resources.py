@@ -3,6 +3,7 @@ from sqlalchemy import select, func, or_, cast, String, and_
 from src.app.db.models.fhir_resources import FhirResource
 from src.app.common.logging import get_logger
 from uuid import UUID
+from sqlalchemy.dialects import postgresql
 
 logger = get_logger(__name__)
 
@@ -289,23 +290,42 @@ class FhirResourcesRepository:
             # data ? 'attachments' checks if the key exists
             # jsonb_array_length > 0 ensures the array is not empty
             query = select(FhirResource).where(
-                and_(
-                    FhirResource.user_id == user_id,
-                    cast(FhirResource.resource_type, String) == "DocumentReference",
-                    FhirResource.data.op("?")("attachments"),  # JSONB ? operator
-                    func.jsonb_array_length(FhirResource.data["attachments"]) > 0,
-                    func.jsonb_extract_path_text(
-                        FhirResource.data, "encounterReference"
-                    )
-                    == encounter_reference,
-                )
-            )
+    and_(
+        FhirResource.user_id == user_id,
+        cast(FhirResource.resource_type, String) == "DocumentReference",
+        FhirResource.data.op("?")("attachments"),
+        func.jsonb_array_length(
+            FhirResource.data.op("->")("attachments")
+        ) > 0,
+        func.jsonb_extract_path_text(
+            FhirResource.data, "encounterReference"
+        ) == encounter_reference,
+    )
+)
 
             # Order by document date (most recent first)
             # Use data->>'date' field from DocumentReference
             query = query.order_by(
                 func.jsonb_extract_path_text(FhirResource.data, "date").desc()
             )
+                # =========================
+            # 🔎 DEBUG LOGGING (INSIDE TRY)
+            # =========================
+            
+
+            logger.info(
+                f"[DEBUG] user_id={user_id}, "
+                f"normalized_id={normalized_id}, "
+                f"encounter_reference={encounter_reference}"
+            )
+
+            compiled_query = query.compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True}
+            )
+
+            logger.info(f"[DEBUG] Generated SQL:\n{compiled_query}")
+            # =========================
 
             result = await self.session.execute(query)
             resources = result.scalars().all()

@@ -615,7 +615,7 @@ class ComprehensiveSummarizationService:
                 # Build attachment-specific request
                 attachment_req = AttachmentSummarizationRequest(
                     appointment_id=request.appointment_id,
-                    user_id=request.user_id,
+                    user_id=str(request.user_id),
                 )
 
                 # Execute summarization
