@@ -51,37 +51,70 @@ class ConversationSummariesRepository:
             logger.error(f"Error fetching summary for transcript ID: {appointment_id}", exc_info=e)
             raise e
     
-    async def get_by_appointment_id_and_source(
-        self, 
-        appointment_id: UUID, 
-        source: str
-    ) -> Optional[ConversationSummaries]:
-        """
-        Get conversation summary by appointment_id and metadata source.
+    # async def get_by_appointment_id_and_source(
+    #     self, 
+    #     appointment_id: UUID, 
+    #     source: str
+    # ) -> Optional[ConversationSummaries]:
+    #     """
+    #     Get conversation summary by appointment_id and metadata source.
         
-        Args:
-            appointment_id: UUID of the appointment
-            source: Source of the summary (e.g., 'fhir_analysis', 'transcript')
+    #     Args:
+    #         appointment_id: UUID of the appointment
+    #         source: Source of the summary (e.g., 'fhir_analysis', 'transcript')
             
-        Returns:
-            ConversationSummaries object or None if not found
+    #     Returns:
+    #         ConversationSummaries object or None if not found
+    #     """
+    #     try:
+    #         from sqlalchemy import cast, String
+            
+    #         result = await self.session.execute(
+    #             select(ConversationSummaries).where(
+    #                 ConversationSummaries.appointment_id == appointment_id,
+    #                 cast(ConversationSummaries.summary_metadata["source"], String) == source
+    #             )
+    #         )
+    #         return result.scalar_one_or_none()
+    #     except Exception as e:
+    #         logger.error(
+    #             f"Error fetching summary for appointment_id: {appointment_id}, source: {source}", 
+    #             exc_info=e
+    #         )
+    #         raise e
+
+    async def get_by_appointment_id_and_source(
+    self,
+    appointment_id: UUID,
+    source: str,
+) -> Optional[ConversationSummaries]:
+
         """
+        Get latest conversation summary by appointment_id and metadata source.
+        """
+
         try:
-            from sqlalchemy import cast, String
-            
-            result = await self.session.execute(
-                select(ConversationSummaries).where(
+            stmt = (
+                select(ConversationSummaries)
+                .where(
                     ConversationSummaries.appointment_id == appointment_id,
-                    cast(ConversationSummaries.summary_metadata["source"], String) == source
+                    ConversationSummaries.summary_metadata.op("->>")("source") == source,
                 )
+                .order_by(ConversationSummaries.created_at.desc())  # get latest
+                .limit(1)
             )
-            return result.scalar_one_or_none()
+
+            result = await self.session.execute(stmt)
+            return result.scalars().first()
+
         except Exception as e:
             logger.error(
-                f"Error fetching summary for appointment_id: {appointment_id}, source: {source}", 
-                exc_info=e
+                f"Error fetching summary for appointment_id: {appointment_id}, source: {source}",
+                exc_info=True,
             )
-            raise e
+            raise
+
+
     
     async def get_by_user_id(self, user_id: UUID) -> Optional[ConversationSummaries]:
         try:
