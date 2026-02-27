@@ -100,15 +100,17 @@ class AttachmentSummarizationChain:
 
 **Document Count:** {document_count}
 
-Provide a comprehensive clinical analysis including:
-1. Overall clinical summary synthesizing all documents
+If there is sufficient clinical information in the documents, provide a comprehensive clinical analysis including:
+1. Overall clinical summary — begin with a brief sentence referencing the appointment date ({appointment_date}), purpose ({appointment_purpose}), and provider ({provider_name}), then synthesize findings from all documents
 2. Key clinical insights and findings
 3. All diagnoses and conditions mentioned
 4. All medications mentioned with dosages
 5. Laboratory results with values and reference ranges
 6. Recommendations and follow-up instructions
 7. Risk factors identified
-8. Document metadata summary""",
+8. Document metadata summary
+
+If the documents contain insufficient or no clinical data, still populate `clinical_summary` with a brief statement noting the appointment context (date, purpose, provider) and that no significant clinical findings were available in the provided documents. Return empty lists for all other fields.""",
                 ),
             ]
         )

@@ -451,7 +451,7 @@ class AttachmentSummarizationService:
             "medications": [{"name": med} for med in analysis_result.medications_mentioned],
             "diagnoses": analysis_result.diagnoses_mentioned,
             "instructions": [],  # Attachment analysis uses recommendations instead
-            "recommendations": analysis_result.recommendations,
+            "recommendations": [{"text": rec} for rec in analysis_result.recommendations],
             "summary_metadata": {
                 "source": "attachment_summary",
                 "analysis_version": "1.0",
