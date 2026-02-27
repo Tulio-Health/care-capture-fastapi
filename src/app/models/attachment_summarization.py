@@ -47,14 +47,14 @@ class AttachmentSummarizationRequest(BaseModel):
         json_schema_extra={
             "example": {
                 "appointment_id": "12345678-1234-1234-1234-123456789abc",
-                "user_id": "user_2abc123",
+                "user_id": "12345678-1234-1234-1234-123456789abc",
                 "encounter_id": "97954261",
             }
         }
     )
 
     appointment_id: UUID = Field(..., description="Appointment UUID")
-    user_id: str = Field(..., description="User ID (Clerk user ID)")
+    user_id: UUID = Field(..., description="User ID (primary key from users table)")
     encounter_id: Optional[str] = Field(
         None, description="Optional encounter ID to filter DocumentReferences"
     )

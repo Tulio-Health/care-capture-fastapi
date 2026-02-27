@@ -9,6 +9,7 @@ from ..models.comprehensive_summarization import (
     ComprehensiveSummarizationRequest,
     ComprehensiveSummarizationResponse,
 )
+from ..models.attachment_summarization import AttachmentSummarizationRequest
 from ..models.conversation_summaries import ConversationSummary
 from ..models.fhir_analysis import FhirAnalysisRequest
 from ..models.playground_summarization import (
@@ -22,6 +23,7 @@ from ..services.summarization import (
     PlaygroundSummarizationService,
     TranscriptSummarizationService,
 )
+from ..services.summarization.attachment_summarization import AttachmentSummarizationService
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/care-capture", tags=["care-capture"])
@@ -362,6 +364,31 @@ async def analyze_fhir_resources(
     except Exception as e:
         logger.error(f"Error analyzing FHIR resources: {str(e)}", exc_info=e)
         raise HTTPException(status_code=500, detail=f"Failed to analyze FHIR resources: {str(e)}")
+
+
+@router.post(
+    "/attachment-summary",
+    response_model=ConversationSummary,
+    summary="Document Attachment Summarization",
+    description="Analyze document attachments (PDF, DOCX, TXT) for a patient appointment and generate clinical insights.",
+)
+async def attachment_summary(
+    request: AttachmentSummarizationRequest,
+    db: AsyncSession = Depends(get_db),
+) -> ConversationSummary:
+    try:
+        service = AttachmentSummarizationService(db)
+        return await service.analyze_attachments(request)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Attachment summarization failed - appointment_id: {request.appointment_id}: {str(e)}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=f"Attachment summarization failed: {str(e)}")
 
 
 @router.post(
