@@ -88,6 +88,42 @@ class AttachmentSummarizationService:
         # Fetch DocumentReference resources with attachments
         doc_references = await self._fetch_document_references(request, appointment)
 
+        if not doc_references:
+            self.logger.info(
+                f"No document attachments found for appointment {request.appointment_id} - returning empty summary"
+            )
+            summary_data = {
+                "summary_text": "No document attachments found for this appointment.",
+                "user_id": request.user_id,
+                "created_by": request.user_id,
+                "updated_by": request.user_id,
+                "key_points": [],
+                "medications": [],
+                "diagnoses": [],
+                "instructions": [],
+                "recommendations": [],
+                "summary_metadata": {
+                    "source": "attachment_summary",
+                    "analysis_version": "1.0",
+                    "total_documents": 0,
+                    "successful_documents": 0,
+                    "failed_documents": 0,
+                    "document_metadata": [],
+                    "extraction_errors": [],
+                    "encounter_id": appointment.ehr_entity_id,
+                    "provider_name": provider_name,
+                    "appointment_date": (
+                        appointment.appointment_date.isoformat() if appointment.appointment_date else None
+                    ),
+                    "lab_results": [],
+                    "risk_factors": [],
+                },
+            }
+            db_summary = await self.summaries_repo.upsert(
+                appointment_id=request.appointment_id, summary_data=summary_data
+            )
+            return ConversationSummary.model_validate(db_summary)
+
         # Download and extract text from all attachments
         extracted_documents = await self._process_attachments(doc_references)
 
@@ -183,12 +219,6 @@ class AttachmentSummarizationService:
             user_id=str(request.user_id),
             encounter_id=appointment.ehr_entity_id,
         )
-
-        if not doc_references:
-            raise ValueError(
-                f"No document attachments found for appointment {request.appointment_id} "
-                f"(encounter: {appointment.ehr_entity_id})"
-            )
 
         # Limit documents to prevent overwhelming the AI
         if len(doc_references) > self.MAX_DOCUMENTS:
