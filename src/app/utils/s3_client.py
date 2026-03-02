@@ -13,32 +13,24 @@ logger = get_logger(__name__)
 
 class S3DocumentClient:
     """
-    Handle S3 document downloads using AWS profile.
+    Handle S3 document downloads using AWS credentials.
 
-    Uses 'tuliodev' profile for authentication and downloads documents
-    from S3 based on file paths stored in FHIR DocumentReference resources.
+    Uses the IAM instance role (AppRunner) or environment credentials (local)
+    for authentication and downloads documents from S3 based on file paths
+    stored in FHIR DocumentReference resources.
     """
 
-    def __init__(self, profile_name: str = "tuliodev"):
-        """
-        Initialize S3 client with AWS profile.
-
-        Args:
-            profile_name: AWS profile name to use for authentication (default: 'tuliodev')
-        """
+    def __init__(self):
+        """Initialize S3 client using the ambient AWS credentials (IAM role or env vars)."""
         try:
-            # Create boto3 session with profile
-            session = boto3.Session(profile_name=profile_name)
+            session = boto3.Session()
             self.s3_client = session.client("s3")
             self.settings = get_settings()
-            self.profile_name = profile_name
 
-            logger.info(f"S3 client initialized with profile: {profile_name}")
+            logger.info("S3 client initialized")
 
         except Exception as e:
-            logger.error(
-                f"Failed to initialize S3 client with profile {profile_name}: {str(e)}"
-            )
+            logger.error(f"Failed to initialize S3 client: {str(e)}")
             raise
 
     def parse_s3_url(self, file_path: str) -> Tuple[str, str]:
