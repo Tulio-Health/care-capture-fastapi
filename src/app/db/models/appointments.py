@@ -22,4 +22,7 @@ class Appointment(Base):
     created_by = Column(UUID(as_uuid=True))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_by = Column(UUID(as_uuid=True))
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow) 
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # EHR integration field
+    ehr_entity_id = Column(String, nullable=True, comment="EHR entity identifier") 

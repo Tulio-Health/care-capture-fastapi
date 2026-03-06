@@ -1,11 +1,11 @@
-from sqlalchemy import Column, String, Integer
+from sqlalchemy import Column, String, Float
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
 
 class RefCmsProviderData(Base):
-    __tablename__ = 'ref_cms_provider_data'
+    __tablename__ = 'ref_cms_provider_data_loc'
 
     id = Column(UUID(as_uuid=True), primary_key=True)
     npi = Column(String)
@@ -15,7 +15,7 @@ class RefCmsProviderData(Base):
     provider_first_name = Column(String)
     provider_middle_name = Column(String)
     med_sch = Column(String)
-    grd_yr = Column(Integer)
+    grd_yr = Column(String)
     pri_spec = Column(String)
     sec_spec_1 = Column(String)
     sec_spec_2 = Column(String)
@@ -24,7 +24,7 @@ class RefCmsProviderData(Base):
     sec_spec_all = Column(String)
     facility_name = Column(String)
     org_pac_id = Column(String)
-    num_org_mem = Column(Integer)
+    num_org_mem = Column(String)
     adr_ln_1 = Column(String)
     adr_ln_2 = Column(String)
     city_town = Column(String)
@@ -39,5 +39,6 @@ class RefCmsProviderData(Base):
     ln_2_sprs = Column(String)
     ind_assgn = Column(String)
     grp_assgn = Column(String)
-
-    # Add more fields as needed based on the table structure 
+    timezone = Column(String)
+    latitude = Column(Float)
+    longitude = Column(Float)
