@@ -302,7 +302,11 @@ class FhirResourcesRepository:
                         FhirResource.data, "encounterReference"
                     )
                     == encounter_reference,
-                )
+                ),
+                or_(
+                    FhirResource.data["type"].astext.ilike("%Progress Note%"),
+                    FhirResource.data["type"].astext.ilike("%Clinical Note%"),
+                ),
             )
 
             # Order by document date (most recent first)
