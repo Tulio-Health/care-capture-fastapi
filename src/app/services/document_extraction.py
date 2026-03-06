@@ -1,6 +1,7 @@
 """Document text extraction service for various file formats."""
 
 import io
+import xml.etree.ElementTree as ET
 from typing import Optional
 
 import fitz  # PyMuPDF
@@ -70,6 +71,8 @@ class DocumentTextExtractor:
                 text = self._extract_from_docx(content, file_name)
             elif content_type == "text/plain":
                 text = self._extract_from_txt(content, file_name)
+            elif content_type in ["text/xml", "application/xml"]:
+                text = self._extract_from_xml(content, file_name)
             else:
                 # Try to infer from file name if available
                 if file_name:
@@ -229,6 +232,32 @@ class DocumentTextExtractor:
             logger.error(f"TXT extraction failed{file_info}: {str(e)}", exc_info=True)
             raise Exception(f"Failed to decode text file: {str(e)}") from e
 
+    def _extract_from_xml(self, content: bytes, file_name: Optional[str] = None) -> str:
+        """Extract text from XML/CDA clinical documents by collecting all text nodes."""
+        file_info = f" ({file_name})" if file_name else ""
+
+        try:
+            root = ET.fromstring(content)
+
+            text_parts = []
+            for elem in root.iter():
+                if elem.text and elem.text.strip():
+                    text_parts.append(elem.text.strip())
+                if elem.tail and elem.tail.strip():
+                    text_parts.append(elem.tail.strip())
+
+            extracted_text = "\n".join(text_parts)
+            logger.debug(f"Extracted text from XML{file_info} - chars: {len(extracted_text)}")
+            return extracted_text
+
+        except ET.ParseError as e:
+            # Fall back to raw decode if XML is malformed
+            logger.warning(f"XML parse error{file_info}: {e} - falling back to raw text decode")
+            return self._extract_from_txt(content, file_name)
+        except Exception as e:
+            logger.error(f"XML extraction failed{file_info}: {str(e)}", exc_info=True)
+            raise Exception(f"Failed to extract text from XML: {str(e)}") from e
+
     def _infer_type_from_filename(self, file_name: str) -> str:
         """
         Infer MIME type from file extension.
@@ -249,5 +278,7 @@ class DocumentTextExtractor:
             return "application/msword"
         elif file_name_lower.endswith(".txt"):
             return "text/plain"
+        elif file_name_lower.endswith(".xml"):
+            return "text/xml"
         else:
             return "application/octet-stream"
