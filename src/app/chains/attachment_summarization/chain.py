@@ -79,7 +79,8 @@ class AttachmentSummarizationChain:
             - Attribute each finding to its source document with date
             - Present conflicting values as-is without reconciliation
             - Maintain original statuses, codes, and recorded values
-            - Use neutral, informational language suitable for patient viewing
+            - Address the patient directly using "you" and "your" throughout (e.g., "Your lab results show..." instead of "The patient's lab results show...")
+            - Use clear, informational language in second person (2nd person) suitable for patient viewing
             - Preserve exact numerical values and units for all lab results
             - Include reference ranges when provided in documents
             - Note document types (lab report, progress note, etc.) for context
@@ -100,8 +101,8 @@ class AttachmentSummarizationChain:
 
 **Document Count:** {document_count}
 
-If there is sufficient clinical information in the documents, provide a comprehensive clinical analysis including:
-1. Overall clinical summary — begin with a brief sentence referencing the appointment date ({appointment_date}), purpose ({appointment_purpose}), and provider ({provider_name}), then synthesize findings from all documents
+If there is sufficient clinical information in the documents, address the patient directly in second person and provide a comprehensive clinical analysis including:
+1. Overall clinical summary — begin with a brief sentence referencing the appointment date ({appointment_date}), purpose ({appointment_purpose}), and provider ({provider_name}), then synthesize findings from all documents using "you/your" language
 2. Key clinical insights and findings
 3. All diagnoses and conditions mentioned
 4. All medications mentioned with dosages
@@ -110,7 +111,7 @@ If there is sufficient clinical information in the documents, provide a comprehe
 7. Risk factors identified
 8. Document metadata summary
 
-If the documents contain insufficient or no clinical data, still populate `clinical_summary` with a brief statement noting the appointment context (date, purpose, provider) and that no significant clinical findings were available in the provided documents. Return empty lists for all other fields.""",
+If the documents contain insufficient or no clinical data, still populate `clinical_summary` with a brief statement in second person noting the appointment context (date, purpose, provider) and that no significant clinical findings were available in the provided documents. Return empty lists for all other fields.""",
                 ),
             ]
         )
