@@ -303,33 +303,39 @@ class FhirResourcesRepository:
                     )
                     == encounter_reference,
                 ),
-                or_(
-                    FhirResource.data["type"].astext.ilike("%Progress Note%"),
-                    FhirResource.data["type"].astext.ilike("%Clinical Note%"),
+                and_(
+                    or_(
+                        FhirResource.data["type"].astext.ilike("%Progress%"),
+                        FhirResource.data["type"].astext.ilike("%Consult%"),
+                        FhirResource.data["type"].astext.ilike("%Ambulatory%"),
+                        FhirResource.data["type"].astext.ilike("%Note%"),
+                        FhirResource.data["type"].astext.ilike("%Summary%"),
+                        FhirResource.data["type"].astext.ilike("%Clinic%"),
+                    ),
+                    ~or_(
+                        FhirResource.data["type"].astext.ilike("%Education%"),
+                        FhirResource.data["type"].astext.ilike("%Waveform%"),
+                        FhirResource.data["type"].astext.ilike("%Consent%"),
+                        FhirResource.data["type"].astext.ilike("%Insurance%"),
+                        FhirResource.data["type"].astext.ilike("%License%"),
+                        FhirResource.data["type"].astext.ilike("%Billing%"),
+                        FhirResource.data["type"].astext.ilike("%HIPAA%"),
+                        FhirResource.data["type"].astext.ilike("%Reminder%"),
+                        FhirResource.data["type"].astext.ilike("%Phone Msg%"),
+                        FhirResource.data["type"].astext.ilike("%Letter%"),
+                        FhirResource.data["type"].astext.ilike("%Conversation%"),
+                        FhirResource.data["type"].astext.ilike("%Advance Directive%"),
+                        FhirResource.data["type"].astext.ilike("%Checklist%"),
+                        FhirResource.data["type"].astext.ilike("%Authorization%"),
+                        FhirResource.data["type"].astext.ilike("%Intake%"),
+                    ),
                 ),
             )
 
             # Order by document date (most recent first)
-            # Use data->>'date' field from DocumentReference
             query = query.order_by(
                 func.jsonb_extract_path_text(FhirResource.data, "date").desc()
             )
-            # =========================
-            # 🔎 DEBUG LOGGING (INSIDE TRY)
-            # =========================
-
-            logger.info(
-                f"[DEBUG] user_id={user_id}, "
-                f"normalized_id={normalized_id}, "
-                f"encounter_reference={encounter_reference}"
-            )
-
-            compiled_query = query.compile(
-                dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
-            )
-
-            logger.info(f"[DEBUG] Generated SQL:\n{compiled_query}")
-            # =========================
 
             result = await self.session.execute(query)
             resources = result.scalars().all()
