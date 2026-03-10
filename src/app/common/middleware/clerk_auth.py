@@ -247,14 +247,28 @@ class ClerkAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         
         try:
+            # Allow internal service-to-service calls
+            service_key = request.headers.get("x-internal-service-key")
+            internal_key = os.getenv("INTERNAL_SERVICE_KEY")
+            if service_key and internal_key and service_key == internal_key:
+                user_id = request.headers.get("x-user-id", "service")
+                request.state.user = {
+                    "clerk_id": user_id,
+                    "email": None,
+                    "role": "primary",
+                    "is_authenticated": True,
+                }
+                logger.info(f"[{request_id}] Internal service authentication - User: {user_id}")
+                return await call_next(request)
+
             # Extract token and role from headers
             token = request.headers.get("x-clerk-jwt")
             user_role = request.headers.get("x-user-role")
-            
+
             # Log request details
             logger.debug(f"[{request_id}] Auth check - Method: {request.method}, Path: {request.url.path}, "
                         f"IP: {request.client.host if request.client else 'unknown'}")
-            
+
             # Validate token presence
             if not token:
                 logger.warning(f"[{request_id}] Missing x-clerk-jwt header for {request.url.path}")
