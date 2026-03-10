@@ -83,6 +83,9 @@ class SSMParameterLoader:
             SSMParameterMapping('langsmith/api_key', 'LANGSMITH_API_KEY', is_secure=True),
             SSMParameterMapping('langsmith/endpoint', 'LANGSMITH_ENDPOINT'),
             SSMParameterMapping('langsmith/project', 'LANGSMITH_PROJECT'),
+
+            # Internal Service-to-Service Auth
+            SSMParameterMapping('internal/service_key', 'INTERNAL_SERVICE_KEY', is_secure=True),
         ]
     
     def should_load_ssm(self) -> bool:
