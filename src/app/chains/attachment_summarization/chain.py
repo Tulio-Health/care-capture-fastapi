@@ -55,6 +55,20 @@ class AttachmentSummarizationChain:
             - Synthesize information across multiple documents chronologically
             - Note any conflicting information between documents
 
+            Patient-Perspective Focus:
+            - Structure the clinical summary to answer these key patient questions:
+              * Why did I go to the doctor? (reason for visit / chief complaint)
+              * What did the doctor find? (examination findings / test results)
+              * What did they do? (procedures performed / treatments given)
+              * What is my diagnosis? (diagnoses / conditions identified)
+              * What should I do next? (follow-up instructions / next steps)
+
+            Diagnosis Identification:
+            - Identify and list all diagnoses or active medical conditions from the clinical documents
+            - Look for diagnoses in these sections: Diagnosis, Visit Diagnosis, Assessment, Impression,
+              Problems, Problem List, Active Problems, Ongoing Problems, Discharge Diagnosis,
+              Reason for Visit, or Past Medical History (if conditions are active)
+
             GUARDRAILS - Don't Do:
             - Add any new facts, values, or events not explicitly present in the documents
             - Infer missing clinical logic, intent, causality, or conclusions
@@ -102,9 +116,9 @@ class AttachmentSummarizationChain:
 **Document Count:** {document_count}
 
 If there is sufficient clinical information in the documents, address the patient directly in second person and provide a comprehensive clinical analysis including:
-1. Overall clinical summary — begin with a brief sentence referencing the appointment date ({appointment_date}), purpose ({appointment_purpose}), and provider ({provider_name}), then synthesize findings from all documents using "you/your" language
+1. Overall clinical summary — begin with a brief sentence referencing the appointment date ({appointment_date}), purpose ({appointment_purpose}), and provider ({provider_name}), then synthesize findings to answer: Why did you go to the doctor? What did the doctor find? What did they do? What is your diagnosis? What should you do next?
 2. Key clinical insights and findings
-3. All diagnoses and conditions mentioned
+3. All diagnoses and active medical conditions — look in sections such as Diagnosis, Visit Diagnosis, Assessment, Impression, Problems, Problem List, Active Problems, Ongoing Problems, Discharge Diagnosis, Reason for Visit, and Past Medical History (if active)
 4. All medications mentioned with dosages
 5. Laboratory results with values and reference ranges
 6. Recommendations and follow-up instructions
