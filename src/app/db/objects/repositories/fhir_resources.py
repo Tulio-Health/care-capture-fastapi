@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import String, and_, cast, func, or_, select
+from sqlalchemy import String, and_, cast, func, literal_column, or_, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -299,7 +299,7 @@ class FhirResourcesRepository:
                     func.jsonb_array_length(FhirResource.data.op("->")("attachments"))
                     > 0,
                     FhirResource.data.op("@>")(
-                        cast('{"attachments": [{"downloadStatus": "success"}]}', postgresql.JSONB)
+                        literal_column("'{\"attachments\": [{\"downloadStatus\": \"success\"}]}'::jsonb")
                     ),
                     func.jsonb_extract_path_text(
                         FhirResource.data, "encounterReference"
