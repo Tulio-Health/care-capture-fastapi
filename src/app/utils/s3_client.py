@@ -1,5 +1,6 @@
 """S3 client utility for downloading documents from AWS S3."""
 
+import mimetypes
 import re
 from typing import Tuple
 import boto3
@@ -147,17 +148,8 @@ class S3DocumentClient:
             >>> client.get_content_type_from_path("notes.docx")
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         """
-        file_path_lower = file_path.lower()
-
-        if file_path_lower.endswith(".pdf"):
-            return "application/pdf"
-        elif file_path_lower.endswith(".docx"):
-            return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        elif file_path_lower.endswith(".doc"):
-            return "application/msword"
-        elif file_path_lower.endswith(".txt"):
-            return "text/plain"
-        else:
-            # Default to PDF if unknown
-            logger.warning(f"Unknown file extension for {file_path}, defaulting to PDF")
-            return "application/pdf"
+        mime_type, _ = mimetypes.guess_type(file_path)
+        if mime_type:
+            return mime_type
+        logger.warning(f"Unknown file extension for {file_path}, defaulting to application/octet-stream")
+        return "application/octet-stream"

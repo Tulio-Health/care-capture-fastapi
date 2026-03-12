@@ -1,7 +1,9 @@
 """Document text extraction service for various file formats."""
 
 import io
+import mimetypes
 import xml.etree.ElementTree as ET
+from html.parser import HTMLParser
 from typing import Optional
 
 import fitz  # PyMuPDF
@@ -73,6 +75,10 @@ class DocumentTextExtractor:
                 text = self._extract_from_txt(content, file_name)
             elif content_type in ["text/xml", "application/xml"]:
                 text = self._extract_from_xml(content, file_name)
+            elif content_type in ["text/html", "application/xhtml+xml"]:
+                text = self._extract_from_html(content, file_name)
+            elif content_type.startswith("text/"):
+                text = self._extract_from_txt(content, file_name)
             else:
                 # Try to infer from file name if available
                 if file_name:
@@ -258,9 +264,47 @@ class DocumentTextExtractor:
             logger.error(f"XML extraction failed{file_info}: {str(e)}", exc_info=True)
             raise Exception(f"Failed to extract text from XML: {str(e)}") from e
 
+    def _extract_from_html(self, content: bytes, file_name: Optional[str] = None) -> str:
+        """Extract visible text from HTML by stripping tags."""
+        file_info = f" ({file_name})" if file_name else ""
+
+        try:
+            try:
+                raw = content.decode("utf-8")
+            except UnicodeDecodeError:
+                raw = content.decode("latin-1")
+
+            class _TextExtractor(HTMLParser):
+                def __init__(self):
+                    super().__init__()
+                    self._parts = []
+                    self._skip = False
+
+                def handle_starttag(self, tag, attrs):
+                    if tag in ("script", "style"):
+                        self._skip = True
+
+                def handle_endtag(self, tag):
+                    if tag in ("script", "style"):
+                        self._skip = False
+
+                def handle_data(self, data):
+                    if not self._skip and data.strip():
+                        self._parts.append(data.strip())
+
+            parser = _TextExtractor()
+            parser.feed(raw)
+            extracted_text = "\n".join(parser._parts)
+            logger.debug(f"Extracted text from HTML{file_info} - chars: {len(extracted_text)}")
+            return extracted_text
+
+        except Exception as e:
+            logger.warning(f"HTML extraction failed{file_info}: {e} - falling back to raw text")
+            return self._extract_from_txt(content, file_name)
+
     def _infer_type_from_filename(self, file_name: str) -> str:
         """
-        Infer MIME type from file extension.
+        Infer MIME type from file extension using the stdlib mimetypes module.
 
         Args:
             file_name: File name with extension
@@ -268,17 +312,5 @@ class DocumentTextExtractor:
         Returns:
             MIME type
         """
-        file_name_lower = file_name.lower()
-
-        if file_name_lower.endswith(".pdf"):
-            return "application/pdf"
-        elif file_name_lower.endswith(".docx"):
-            return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        elif file_name_lower.endswith(".doc"):
-            return "application/msword"
-        elif file_name_lower.endswith(".txt"):
-            return "text/plain"
-        elif file_name_lower.endswith(".xml"):
-            return "text/xml"
-        else:
-            return "application/octet-stream"
+        mime_type, _ = mimetypes.guess_type(file_name)
+        return mime_type or "application/octet-stream"
