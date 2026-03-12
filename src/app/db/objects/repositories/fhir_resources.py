@@ -298,6 +298,9 @@ class FhirResourcesRepository:
                     FhirResource.data.op("?")("attachments"),
                     func.jsonb_array_length(FhirResource.data.op("->")("attachments"))
                     > 0,
+                    FhirResource.data.op("@>")(
+                        cast('{"attachments": [{"downloadStatus": "success"}]}', postgresql.JSONB)
+                    ),
                     func.jsonb_extract_path_text(
                         FhirResource.data, "encounterReference"
                     )
@@ -311,6 +314,7 @@ class FhirResourcesRepository:
                         FhirResource.data["type"].astext.ilike("%Note%"),
                         FhirResource.data["type"].astext.ilike("%Summary%"),
                         FhirResource.data["type"].astext.ilike("%Clinic%"),
+                        FhirResource.data["type"].astext.ilike("%CCD%"),
                     ),
                     ~or_(
                         FhirResource.data["type"].astext.ilike("%Education%"),

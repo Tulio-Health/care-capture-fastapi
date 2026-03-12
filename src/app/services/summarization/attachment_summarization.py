@@ -257,6 +257,11 @@ class AttachmentSummarizationService:
 
             for attachment in attachments:
                 try:
+                    # Skip attachments that weren't successfully downloaded
+                    if attachment.get("downloadStatus") != "success":
+                        self.logger.debug(f"Skipping attachment with status '{attachment.get('downloadStatus')}' for document {doc_ref.ehr_resource_id}")
+                        continue
+
                     # Extract attachment metadata
                     file_path = attachment.get("filePath")
                     if not file_path:
