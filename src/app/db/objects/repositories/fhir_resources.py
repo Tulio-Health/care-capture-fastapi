@@ -307,15 +307,15 @@ class FhirResourcesRepository:
                     == encounter_reference,
                 ),
                 and_(
-                    or_(
-                        FhirResource.data["type"].astext.ilike("%Progress%"),
-                        FhirResource.data["type"].astext.ilike("%Consult%"),
-                        FhirResource.data["type"].astext.ilike("%Ambulatory%"),
-                        FhirResource.data["type"].astext.ilike("%Note%"),
-                        FhirResource.data["type"].astext.ilike("%Summary%"),
-                        FhirResource.data["type"].astext.ilike("%Clinic%"),
-                        FhirResource.data["type"].astext.ilike("%CCD%"),
-                    ),
+                    # or_(
+                    #     FhirResource.data["type"].astext.ilike("%Progress%"),
+                    #     FhirResource.data["type"].astext.ilike("%Consult%"),
+                    #     FhirResource.data["type"].astext.ilike("%Ambulatory%"),
+                    #     FhirResource.data["type"].astext.ilike("%Note%"),
+                    #     FhirResource.data["type"].astext.ilike("%Summary%"),
+                    #     FhirResource.data["type"].astext.ilike("%Clinic%"),
+                    #     FhirResource.data["type"].astext.ilike("%CCD%"),
+                    # ),
                     ~or_(
                         FhirResource.data["type"].astext.ilike("%Education%"),
                         FhirResource.data["type"].astext.ilike("%Waveform%"),
