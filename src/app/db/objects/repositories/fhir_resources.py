@@ -298,20 +298,24 @@ class FhirResourcesRepository:
                     FhirResource.data.op("?")("attachments"),
                     func.jsonb_array_length(FhirResource.data.op("->")("attachments"))
                     > 0,
+                    FhirResource.data.op("@>")(
+                        cast('{"attachments": [{"downloadStatus": "success"}]}', postgresql.JSONB)
+                    ),
                     func.jsonb_extract_path_text(
                         FhirResource.data, "encounterReference"
                     )
                     == encounter_reference,
                 ),
                 and_(
-                    or_(
-                        FhirResource.data["type"].astext.ilike("%Progress%"),
-                        FhirResource.data["type"].astext.ilike("%Consult%"),
-                        FhirResource.data["type"].astext.ilike("%Ambulatory%"),
-                        FhirResource.data["type"].astext.ilike("%Note%"),
-                        FhirResource.data["type"].astext.ilike("%Summary%"),
-                        FhirResource.data["type"].astext.ilike("%Clinic%"),
-                    ),
+                    # or_(
+                    #     FhirResource.data["type"].astext.ilike("%Progress%"),
+                    #     FhirResource.data["type"].astext.ilike("%Consult%"),
+                    #     FhirResource.data["type"].astext.ilike("%Ambulatory%"),
+                    #     FhirResource.data["type"].astext.ilike("%Note%"),
+                    #     FhirResource.data["type"].astext.ilike("%Summary%"),
+                    #     FhirResource.data["type"].astext.ilike("%Clinic%"),
+                    #     FhirResource.data["type"].astext.ilike("%CCD%"),
+                    # ),
                     ~or_(
                         FhirResource.data["type"].astext.ilike("%Education%"),
                         FhirResource.data["type"].astext.ilike("%Waveform%"),
