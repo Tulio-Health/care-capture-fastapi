@@ -130,14 +130,11 @@ class AttachmentSummarizationService:
         if not extracted_documents:
             raise ValueError(f"Failed to extract text from any attachments for appointment {request.appointment_id}")
 
-        # Format documents for AI prompt
-        documents_text = self._format_documents_for_prompt(extracted_documents)
-
         # Build appointment context
         appointment_context = self._build_appointment_context(appointment, provider_name)
 
         # Run AI analysis
-        analysis_result = await self._run_ai_analysis(appointment_context, documents_text, len(extracted_documents))
+        analysis_result = await self._run_ai_analysis(appointment_context, extracted_documents)
 
         # Store analysis in database
         summary_data = self._prepare_summary_data(
@@ -405,16 +402,14 @@ class AttachmentSummarizationService:
     async def _run_ai_analysis(
         self,
         appointment_context: Dict[str, str],
-        documents_text: str,
-        document_count: int,
+        extracted_documents: List[DocumentAttachment],
     ) -> Any:
         """
-        Run AI analysis on extracted documents.
+        Run AI analysis on extracted documents using the map-reduce pipeline.
 
         Args:
             appointment_context: Context about the appointment
-            documents_text: Formatted document texts
-            document_count: Number of documents analyzed
+            extracted_documents: List of DocumentAttachment objects
 
         Returns:
             Analysis result object
@@ -424,10 +419,9 @@ class AttachmentSummarizationService:
         """
         try:
             analysis_chain = AttachmentSummarizationChain()
-            analysis_result = analysis_chain.analyze(
+            analysis_result = await analysis_chain.analyze(
                 appointment_context=appointment_context,
-                documents_text=documents_text,
-                document_count=document_count,
+                documents=extracted_documents,
             )
 
             self.logger.debug("AI analysis completed successfully")
@@ -489,7 +483,7 @@ class AttachmentSummarizationService:
             "recommendations": [{"text": rec} for rec in analysis_result.recommendations],
             "summary_metadata": {
                 "source": "attachment_summary",
-                "analysis_version": "1.0",
+                "analysis_version": "2.0",
                 "total_documents": len(extracted_documents),
                 "successful_documents": successful_docs,
                 "failed_documents": len(extraction_errors),

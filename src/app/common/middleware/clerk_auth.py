@@ -50,6 +50,8 @@ class ClerkAuthMiddleware(BaseHTTPMiddleware):
         "/favicon.ico",
         "/robots.txt",
         "/care-capture/playground-summarization",
+        "/care-capture/playground-attachment",
+        "/care-capture/playground-attachment-summary",
     }
     
     # Paths patterns that should be excluded (prefix matching)

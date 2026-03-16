@@ -32,21 +32,16 @@ All sensitive configuration is stored in AWS SSM:
 
 ## Setup
 
-1. Install Poetry if you haven't already:
+1. Install uv if you haven't already:
 ```bash
-curl -sSL https://install.python-poetry.org | python3 -
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 2. Clone the repository and install dependencies:
 ```bash
 git clone <repository-url>
 cd care-capture-fastapi
-poetry install
-```
-
-3. Activate the virtual environment:
-```bash
-poetry shell
+uv sync
 ```
 
 ## Development
@@ -54,19 +49,18 @@ poetry shell
 - Run the application:
 
 ```bash
-poetry run uvicorn src.app.main:app --reload
-#poetry run python main.py
+uv run uvicorn src.app.main:app --reload
 ```
 
 - Run tests:
 ```bash
-poetry run pytest
+uv run pytest
 ```
 
 - Format code:
 ```bash
-poetry run black .
-poetry run isort .
+uv run black .
+uv run isort .
 ```
 
 ## Project Structure
@@ -115,7 +109,7 @@ See [Architecture Documentation](./docs/ARCHITECTURE.md) for details.
 
 ## Dependencies
 
-All dependencies are managed by Poetry. See `pyproject.toml` for details.
+All dependencies are managed by uv. See `pyproject.toml` for details.
 
 ## Contributing
 

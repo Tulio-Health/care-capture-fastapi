@@ -40,6 +40,23 @@ class DocumentAttachment(BaseModel):
     )
 
 
+class DocumentSummary(BaseModel):
+    """Per-document extraction result from the Map phase."""
+
+    source_document_title: str
+    source_document_date: Optional[str] = None
+    source_document_type: str  # LLM-inferred (e.g., "Lab Report", "Progress Note")
+    clinical_findings: List[str] = Field(default_factory=list)
+    diagnoses: List[str] = Field(default_factory=list)
+    medications: List[str] = Field(default_factory=list)
+    lab_results: List[str] = Field(default_factory=list)
+    recommendations: List[str] = Field(default_factory=list)
+    risk_factors: List[str] = Field(default_factory=list)
+    procedures: List[str] = Field(default_factory=list)
+    vital_signs: List[str] = Field(default_factory=list)
+    narrative_summary: str  # 2-4 sentence free-text (catches what structured fields miss)
+
+
 class AttachmentSummarizationRequest(BaseModel):
     """Request model for attachment summarization."""
 

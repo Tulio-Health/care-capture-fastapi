@@ -1,4 +1,5 @@
 # src/app/main.py
+import os
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
@@ -128,6 +129,13 @@ def get_application() -> FastAPI:
     app.include_router(schedule_visit_router)
     app.include_router(translation_router)
     app.include_router(auth_test_router)
+
+    # Playground routes — only available in development
+    if os.getenv("APP_ENV", "development") == "development":
+        from src.app.routes.playground_attachment import router as playground_attachment_router
+        app.include_router(playground_attachment_router)
+        logger.info("Playground attachment router registered (development mode)")
+
     logger.debug("Routers included")
 
     return app

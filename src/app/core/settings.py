@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     # Environment Detection
     AWS_REGION: str = Field(default="us-east-2", min_length=1)
+    AWS_PROFILE: str = ""
 
     # Database Configuration
     DB_HOST: str = Field(default="localhost", min_length=1)
@@ -33,6 +34,9 @@ class Settings(BaseSettings):
 
     # External Services
     OPENAI_API_KEY: str = ""
+
+    # Playground (dev-only)
+    PLAYGROUND_API_KEY: str = ""
 
     # Summarization Configuration
     ENABLE_FHIR_FALLBACK: bool = Field(
@@ -113,7 +117,7 @@ class Settings(BaseSettings):
             raise
 
     class Config:
-        env_file = ".env"
+        env_file = (".env", ".env.development")
         env_file_encoding = "utf-8"
         case_sensitive = True
 

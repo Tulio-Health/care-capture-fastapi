@@ -3,4 +3,7 @@ cdk.out/
 node_modules/
 __pycache__/
 *.pyc
-.env 
+.env
+.claude/
+.serena/
+poetry.lock

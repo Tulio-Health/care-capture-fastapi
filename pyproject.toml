@@ -1,58 +1,63 @@
-[tool.poetry]
+[project]
 name = "care-capture-ai"
 version = "0.1.0"
 description = "API for Care Capture AI - Making healthcare patient data more meaningful for patients and caregivers"
-authors = ["Vishwanath Sinha <vsinhaa@tuliohealth.com>"]
+authors = [{name = "Vishwanath Sinha", email = "vsinhaa@tuliohealth.com"}]
 readme = "README.md"
-packages = [{include = "src"}]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.2,<0.116",
+    "uvicorn[standard]>=0.27.0,<0.28",
+    "sqlalchemy>=2.0.23,<3",
+    "psycopg2-binary>=2.9.9,<3",
+    "python-dotenv>=1.0.0,<2",
+    "langchain>=0.3.3,<0.4",
+    "langchain-openai>=0.2.2,<0.3",
+    "email-validator>=2.1.0,<3",  # Required for Pydantic EmailStr validation
+    "httpx>=0.27.0",
+    "alembic>=1.13.1,<2",
+    "fastapi-limiter>=0.1.6,<0.2",
+    "redis>=5.0.1,<6",  # Required for rate limiting storage
+    "boto3>=1.35.0,<2",  # Required for AWS SSM Parameter Store
+    "pyjwt>=2.8.0,<3",  # Required for JWT verification
+    "cryptography>=41.0.7,<42",  # Required for JWT key handling
+    "openai>=1.51.2,<2",
+    "greenlet>=3.0.3,<4",  # Required for SQLAlchemy async operations
+    "asyncpg>=0.30.0,<0.31",
+    "langgraph>=0.3.31,<0.4",
+    "langchain-community>=0.3.22,<0.4",
+    "apscheduler>=3.11.0,<4",
+    "langsmith>=0.3.42,<0.4",
+    "pymupdf>=1.24.0,<2",  # PyMuPDF (fitz) for PDF extraction
+    "python-docx>=1.1.0,<2",  # DOCX text extraction
+    "python-multipart>=0.0.9",  # Required for multipart/form-data file uploads
+    "pydantic-ai-slim[openai]>=1.0,<2",
+]
 
-[tool.poetry.dependencies]
-python = "^3.12"
-fastapi = "^0.115.2"
-uvicorn = {extras = ["standard"], version = "^0.27.0"}
-sqlalchemy = "^2.0.23"
-psycopg2-binary = "^2.9.9"
-python-dotenv = "^1.0.0"
-langchain = "^0.3.3"
-langchain-openai = "^0.2.2"
-email-validator = "^2.1.0.post1"  # Required for Pydantic EmailStr validation
-httpx = "^0.26.0"
-alembic = "^1.13.1"
-fastapi-limiter = "^0.1.6"
-redis = "^5.0.1"  # Required for rate limiting storage
-boto3 = "^1.35.0"  # Required for AWS SSM Parameter Store
-pyjwt = "^2.8.0"  # Required for JWT verification
-cryptography = "^41.0.7"  # Required for JWT key handling
-
-openai = "^1.51.2"
-greenlet = "^3.0.3"  # Required for SQLAlchemy async operations
-asyncpg = "^0.30.0"
-langgraph = "^0.3.31"
-langchain-community = "^0.3.22"
-apscheduler = "^3.11.0"
-langsmith = "^0.3.42"
-pymupdf = "^1.24.0"  # PyMuPDF (fitz) for PDF extraction
-python-docx = "^1.1.0"  # DOCX text extraction
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.0.0"
-pytest-asyncio = "^0.23.5"
-pytest-cov = "^4.1.0"
-black = "^24.1.1"
-isort = "^5.13.2"
-flake8 = "^7.0.0"
-mypy = "^1.8.0"
-
-[tool.poetry.scripts]
+[project.scripts]
 start-dev = "src.app.main:main"
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0,<9",
+    "pytest-asyncio>=0.23.5,<0.24",
+    "pytest-cov>=4.1.0,<5",
+    "black>=24.1.1,<25",
+    "isort>=5.13.2,<6",
+    "flake8>=7.0.0,<8",
+    "mypy>=1.8.0,<2",
+]
+
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
 
 [tool.black]
 line-length = 88
-target-version = ['py38']
+target-version = ['py312']
 include = '\.pyi?$'
 
 [tool.isort]
@@ -60,9 +65,8 @@ profile = "black"
 multi_line_output = 3
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 check_untyped_defs = true
- 
