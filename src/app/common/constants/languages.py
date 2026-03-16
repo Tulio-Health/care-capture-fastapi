@@ -14,6 +14,7 @@ class LanguageCode(str, Enum):
     MANDARIN = "zh"
     BENGALI = "bn"
     HINDI = "hi"
+    ARABIC = "ar"
 
 
 class LanguageName(str, Enum):
@@ -23,6 +24,7 @@ class LanguageName(str, Enum):
     MANDARIN = "Mandarin"
     BENGALI = "Bengali"
     HINDI = "Hindi"
+    ARABIC = "Arabic"
 
 class LanguageInfo:
     """Language information and metadata."""
@@ -40,6 +42,7 @@ class LanguageInfo:
             LanguageCode.PORTUGUESE: LanguageName.PORTUGUESE,
             LanguageCode.MANDARIN: LanguageName.MANDARIN,
             LanguageCode.BENGALI: LanguageName.BENGALI,
+            LanguageCode.ARABIC: LanguageName.ARABIC,
         }
         return code_to_name.get(language_code, "Unknown")
     
@@ -83,6 +86,15 @@ class LanguageInfo:
                 "measurement_preferences": "metric",
                 "date_format": "DD/MM/YYYY",
                 "time_format": "12-hour with AM/PM"
+            },
+            LanguageCode.ARABIC: {
+                "sentence_structure": "Verb-Subject-Object (VSO) / Subject-Verb-Object",
+                "formality_levels": ["حضرتك", "أنت"],
+                "medical_honorifics": ["دكتور", "دكتورة"],
+                "measurement_preferences": "metric",
+                "date_format": "DD/MM/YYYY",
+                "time_format": "12-hour",
+                "text_direction": "rtl"
             }
         }
         return context_maps.get(language_code, {})
