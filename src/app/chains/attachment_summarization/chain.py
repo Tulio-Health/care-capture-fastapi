@@ -46,6 +46,12 @@ Patient-Perspective Language:
 Diagnosis Identification:
 - Look for diagnoses in: Diagnosis, Visit Diagnosis, Assessment, Impression, Problems, Problem List,
   Active Problems, Ongoing Problems, Discharge Diagnosis, Reason for Visit, Past Medical History (if active)
+-Past Medical History may contain chronic conditions. Extract them only if they are clearly active or referenced as relevant to the current visit.
+-Reason for Visit often contains symptoms rather than confirmed diagnoses. Extract items from this section only if they represent a medical condition.
+-If ICD-10 codes appear (e.g., M25.512), remove the code and keep the diagnosis description.
+-Convert medical terminology into patient-friendly language while preserving the clinical meaning.
+-If multiple diagnoses refer to the same anatomical region and underlying condition, combine them into a single primary diagnosis and optionally list symptoms separately
+
 
 GUARDRAILS - Don't Do:
 - Add any new facts, values, or events not explicitly present in the document
@@ -57,7 +63,7 @@ GUARDRAILS - Don't Do:
 GUARDRAILS - Do:
 - Extract only what is explicitly stated in the document
 - Preserve original statuses, codes, and recorded values
-- Return one DocumentSummary per document in the batch, in order"""
+- Return one DocumentSummary per document in the batch, in order """
 
 _SYNTHESIS_SYSTEM_PROMPT = """You are a clinical AI assistant that synthesizes multiple per-document clinical extractions into a unified patient-facing summary.
 
@@ -96,7 +102,9 @@ GUARDRAILS - Do:
 - Present conflicting values as-is"""
 
 
-def _create_batches(documents: List[DocumentAttachment]) -> List[List[DocumentAttachment]]:
+def _create_batches(
+    documents: List[DocumentAttachment],
+) -> List[List[DocumentAttachment]]:
     """Group documents into batches that fit within the token budget."""
     batches = []
     current_batch: List[DocumentAttachment] = []
@@ -119,9 +127,13 @@ def _create_batches(documents: List[DocumentAttachment]) -> List[List[DocumentAt
     return batches
 
 
-def _format_batch_prompt(batch: List[DocumentAttachment], batch_num: int, total_batches: int) -> str:
+def _format_batch_prompt(
+    batch: List[DocumentAttachment], batch_num: int, total_batches: int
+) -> str:
     """Format a batch of documents into a user prompt for the extraction agent."""
-    parts = [f"Batch {batch_num} of {total_batches}. Extract structured clinical data from each document below.\n"]
+    parts = [
+        f"Batch {batch_num} of {total_batches}. Extract structured clinical data from each document below.\n"
+    ]
 
     for idx, doc in enumerate(batch, 1):
         header = f"\n--- DOCUMENT {idx} ---\n"
@@ -153,8 +165,12 @@ class AttachmentSummarizationChain:
         self._model = None
         self._extraction_agent = None
         self._synthesis_agent = None
-        self._extraction_system_prompt = extraction_system_prompt or _EXTRACTION_SYSTEM_PROMPT
-        self._synthesis_system_prompt = synthesis_system_prompt or _SYNTHESIS_SYSTEM_PROMPT
+        self._extraction_system_prompt = (
+            extraction_system_prompt or _EXTRACTION_SYSTEM_PROMPT
+        )
+        self._synthesis_system_prompt = (
+            synthesis_system_prompt or _SYNTHESIS_SYSTEM_PROMPT
+        )
 
     @property
     def model(self):
@@ -237,9 +253,13 @@ class AttachmentSummarizationChain:
         """
         batches = _create_batches(documents)
         if not batches:
-            raise ValueError("No valid documents to analyze after filtering extraction errors.")
+            raise ValueError(
+                "No valid documents to analyze after filtering extraction errors."
+            )
 
-        logger.info(f"Map phase: {len(batches)} batch(es) from {len(documents)} document(s)")
+        logger.info(
+            f"Map phase: {len(batches)} batch(es) from {len(documents)} document(s)"
+        )
 
         # Map phase: extract from each batch in parallel
         tasks = [
@@ -252,13 +272,17 @@ class AttachmentSummarizationChain:
         all_summaries: List[DocumentSummary] = []
         for i, result in enumerate(batch_results):
             if isinstance(result, Exception):
-                logger.error(f"Batch {i + 1} extraction failed: {result}", exc_info=result)
+                logger.error(
+                    f"Batch {i + 1} extraction failed: {result}", exc_info=result
+                )
             else:
                 all_summaries.extend(result)
 
         if not all_summaries:
             raise Exception("All extraction batches failed — cannot synthesize.")
 
-        logger.info(f"Reduce phase: synthesizing {len(all_summaries)} document summary(ies)")
+        logger.info(
+            f"Reduce phase: synthesizing {len(all_summaries)} document summary(ies)"
+        )
 
         return await self._synthesize(appointment_context, all_summaries)
