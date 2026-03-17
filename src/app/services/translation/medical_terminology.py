@@ -306,6 +306,202 @@ class MedicalTerminologyService:
                 "emergency": "紧急",
             },
             
+            LanguageCode.HINDI: {
+                # Diabetes and related terms
+                "diabetes": "मधुमेह",
+                "borderline diabetes": "सीमारेखा मधुमेह",
+                "type 2 diabetes": "टाइप 2 मधुमेह",
+                "gestational diabetes": "गर्भावस्था मधुमेह",
+                "diabetic": "मधुमेह रोगी",
+
+                # Blood pressure
+                "high blood pressure": "उच्च रक्तचाप",
+                "hypertension": "उच्च रक्तचाप",
+                "low blood pressure": "निम्न रक्तचाप",
+                "hypotension": "निम्न रक्तचाप",
+                "blood pressure": "रक्तचाप",
+
+                # Heart and cardiovascular
+                "chest pain": "छाती में दर्द",
+                "angina": "एनजाइना",
+                "heart attack": "दिल का दौरा",
+                "cardiac": "हृदय संबंधी",
+                "cardiovascular": "हृदय-वाहिकीय",
+
+                # Medications
+                "medication": "दवाई",
+                "prescription": "नुस्खा",
+                "dosage": "खुराक",
+                "frequency": "आवृत्ति",
+                "daily": "प्रतिदिन",
+                "twice daily": "दिन में दो बार",
+                "three times daily": "दिन में तीन बार",
+                "weekly": "साप्ताहिक",
+                "monthly": "मासिक",
+
+                # Common medications
+                "hydrochlorothiazide": "हाइड्रोक्लोरोथियाज़ाइड",
+                "metformin": "मेटफॉर्मिन",
+                "insulin": "इंसुलिन",
+                "aspirin": "एस्पिरिन",
+                "paracetamol": "पेरासिटामोल",
+                "ibuprofen": "इबुप्रोफेन",
+
+                # Medical procedures
+                "follow-up": "अनुवर्ती",
+                "appointment": "नियुक्ति",
+                "consultation": "परामर्श",
+                "examination": "परीक्षण",
+                "test": "जाँच",
+                "surgery": "शल्य चिकित्सा",
+
+                # Symptoms
+                "pain": "दर्द",
+                "fever": "बुखार",
+                "cough": "खाँसी",
+                "headache": "सिरदर्द",
+                "nausea": "मतली",
+                "vomiting": "उल्टी",
+                "dizziness": "चक्कर",
+                "fatigue": "थकान",
+
+                # Lifestyle
+                "exercise": "व्यायाम",
+                "diet": "आहार",
+                "lifestyle": "जीवनशैली",
+                "weight": "वजन",
+                "obesity": "मोटापा",
+                "smoking": "धूम्रपान",
+                "alcohol": "शराब",
+
+                # Measurements
+                "mg": "मिलीग्राम",
+                "ml": "मिलीलीटर",
+                "kg": "किलोग्राम",
+                "cm": "सेंटीमीटर",
+                "mm": "मिलीमीटर",
+
+                # Time periods
+                "weeks": "सप्ताह",
+                "months": "महीने",
+                "years": "साल",
+                "immediately": "तुरंत",
+                "as needed": "आवश्यकतानुसार",
+
+                # Instructions
+                "take": "लें",
+                "avoid": "बचें",
+                "monitor": "निगरानी करें",
+                "check": "जाँचें",
+                "report": "रिपोर्ट करें",
+                "contact": "संपर्क करें",
+
+                # Severity levels
+                "mild": "हल्का",
+                "moderate": "मध्यम",
+                "severe": "गंभीर",
+                "critical": "जटिल",
+                "emergency": "आपातकाल",
+            },
+
+            LanguageCode.ARABIC: {
+                # Diabetes and related terms
+                "diabetes": "السكري",
+                "borderline diabetes": "مقدمات السكري",
+                "type 2 diabetes": "السكري من النوع الثاني",
+                "gestational diabetes": "سكري الحمل",
+                "diabetic": "مريض السكري",
+
+                # Blood pressure
+                "high blood pressure": "ارتفاع ضغط الدم",
+                "hypertension": "ارتفاع ضغط الدم",
+                "low blood pressure": "انخفاض ضغط الدم",
+                "hypotension": "انخفاض ضغط الدم",
+                "blood pressure": "ضغط الدم",
+
+                # Heart and cardiovascular
+                "chest pain": "ألم في الصدر",
+                "angina": "الذبحة الصدرية",
+                "heart attack": "النوبة القلبية",
+                "cardiac": "قلبي",
+                "cardiovascular": "قلبي وعائي",
+
+                # Medications
+                "medication": "دواء",
+                "prescription": "وصفة طبية",
+                "dosage": "جرعة",
+                "frequency": "تكرار الجرعة",
+                "daily": "يومياً",
+                "twice daily": "مرتين يومياً",
+                "three times daily": "ثلاث مرات يومياً",
+                "weekly": "أسبوعياً",
+                "monthly": "شهرياً",
+
+                # Common medications
+                "hydrochlorothiazide": "هيدروكلوروثيازيد",
+                "metformin": "ميتفورمين",
+                "insulin": "الأنسولين",
+                "aspirin": "الأسبرين",
+                "paracetamol": "باراسيتامول",
+                "ibuprofen": "إيبوبروفين",
+
+                # Medical procedures
+                "follow-up": "متابعة",
+                "appointment": "موعد",
+                "consultation": "استشارة",
+                "examination": "فحص",
+                "test": "اختبار",
+                "surgery": "جراحة",
+
+                # Symptoms
+                "pain": "ألم",
+                "fever": "حمى",
+                "cough": "سعال",
+                "headache": "صداع",
+                "nausea": "غثيان",
+                "vomiting": "قيء",
+                "dizziness": "دوار",
+                "fatigue": "إرهاق",
+
+                # Lifestyle
+                "exercise": "تمرين",
+                "diet": "نظام غذائي",
+                "lifestyle": "نمط الحياة",
+                "weight": "وزن",
+                "obesity": "سمنة",
+                "smoking": "تدخين",
+                "alcohol": "كحول",
+
+                # Measurements
+                "mg": "ملغ",
+                "ml": "مل",
+                "kg": "كغ",
+                "cm": "سم",
+                "mm": "مم",
+
+                # Time periods
+                "weeks": "أسابيع",
+                "months": "أشهر",
+                "years": "سنوات",
+                "immediately": "فوراً",
+                "as needed": "عند الحاجة",
+
+                # Instructions
+                "take": "تناول",
+                "avoid": "تجنب",
+                "monitor": "راقب",
+                "check": "تحقق",
+                "report": "أبلغ",
+                "contact": "تواصل",
+
+                # Severity levels
+                "mild": "خفيف",
+                "moderate": "متوسط",
+                "severe": "شديد",
+                "critical": "حرج",
+                "emergency": "طارئ",
+            },
+
             LanguageCode.BENGALI: {
                 # Diabetes and related terms
                 "diabetes": "ডায়াবেটিস",
@@ -473,9 +669,26 @@ class MedicalTerminologyService:
                 "measurement_preferences": "metric",
                 "date_format": "DD/MM/YYYY",
                 "time_format": "12-hour with AM/PM"
-            }
+            },
+            LanguageCode.HINDI: {
+                "sentence_structure": "Subject-Object-Verb (SOV)",
+                "formality_levels": ["आप", "तुम", "तू"],
+                "medical_honorifics": ["डॉक्टर", "चिकित्सक"],
+                "measurement_preferences": "metric",
+                "date_format": "DD/MM/YYYY",
+                "time_format": "12-hour with AM/PM"
+            },
+            LanguageCode.ARABIC: {
+                "sentence_structure": "Verb-Subject-Object (VSO) in formal; Subject-Verb-Object (SVO) in modern medical",
+                "formality_levels": ["حضرتك", "أنت"],
+                "medical_honorifics": ["الدكتور", "الدكتورة"],
+                "measurement_preferences": "metric",
+                "date_format": "DD/MM/YYYY",
+                "time_format": "12-hour",
+                "script_direction": "right-to-left (RTL)"
+            },
         }
-        
+
         return context_maps.get(language_code, {})
     
     def enhance_translation_prompt(self, language_code: str) -> str:
@@ -550,17 +763,52 @@ class MedicalTerminologyService:
             - Use metric measurements (mg, ml, kg)
             - Use 12-hour time format with AM/PM
             - Use DD/MM/YYYY date format
-            
+
             KEY MEDICAL TERMS:
             {chr(10).join([f"- {eng}: {bengali}" for eng, bengali in list(terminology.items())[:10]])}
-            
+
             SEMANTIC EXAMPLES:
             - "Borderline diabetes" → "সীমারেখার ডায়াবেটিস" (not word-for-word)
             - "High blood pressure" → "উচ্চ রক্তচাপ" (medical terminology)
             - "Take medication daily" → "ওষুধ দৈনিক গ্রহণ করুন" (natural Bengali)
-            """
+            """,
+
+            LanguageCode.HINDI: f"""
+            HINDI SEMANTIC CONTEXT:
+            - Use natural Hindi sentence structure (SOV)
+            - Use appropriate formality (आप for medical context)
+            - Use metric measurements (mg, ml, kg)
+            - Use 12-hour time format with AM/PM
+            - Use DD/MM/YYYY date format
+
+            KEY MEDICAL TERMS:
+            {chr(10).join([f"- {eng}: {hindi}" for eng, hindi in list(terminology.items())[:10]])}
+
+            SEMANTIC EXAMPLES:
+            - "Borderline diabetes" → "सीमारेखा मधुमेह" (medical terminology)
+            - "High blood pressure" → "उच्च रक्तचाप" (natural Hindi)
+            - "Take medication daily" → "दवाई प्रतिदिन लें" (formal medical)
+            """,
+
+            LanguageCode.ARABIC: f"""
+            ARABIC SEMANTIC CONTEXT:
+            - Use Modern Standard Arabic (MSA) appropriate for medical contexts
+            - Script direction is right-to-left (RTL) — ensure proper text flow
+            - Use appropriate honorifics (الدكتور / الدكتورة)
+            - Use metric measurements (ملغ, مل, كغ)
+            - Use 12-hour time format
+            - Use DD/MM/YYYY date format
+
+            KEY MEDICAL TERMS:
+            {chr(10).join([f"- {eng}: {arabic}" for eng, arabic in list(terminology.items())[:10]])}
+
+            SEMANTIC EXAMPLES:
+            - "Borderline diabetes" → "مقدمات السكري" (medical terminology)
+            - "High blood pressure" → "ارتفاع ضغط الدم" (natural Arabic)
+            - "Take medication daily" → "تناول الدواء يومياً" (formal medical)
+            """,
         }
-        
+
         return prompt_enhancements.get(language_code, "")
 
 # Global instance
