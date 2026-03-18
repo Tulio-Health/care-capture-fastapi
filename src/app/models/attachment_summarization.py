@@ -51,6 +51,7 @@ class DocumentSummary(BaseModel):
     medications: List[str] = Field(default_factory=list)
     lab_results: List[str] = Field(default_factory=list)
     recommendations: List[str] = Field(default_factory=list)
+    instructions: List[str] = Field(default_factory=list)
     risk_factors: List[str] = Field(default_factory=list)
     procedures: List[str] = Field(default_factory=list)
     vital_signs: List[str] = Field(default_factory=list)
@@ -166,9 +167,14 @@ class AttachmentSummarizationResponse(BaseModel):
         default_factory=list, description="Laboratory results and test findings"
     )
 
+    instructions: List[str] = Field(
+        default_factory=list,
+        description="Direct instructions given by the provider to the patient",
+    )
+
     recommendations: List[str] = Field(
         default_factory=list,
-        description="Clinical recommendations and follow-up instructions",
+        description="Clinical recommendations",
     )
 
     risk_factors: List[str] = Field(

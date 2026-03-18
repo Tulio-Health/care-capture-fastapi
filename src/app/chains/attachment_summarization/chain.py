@@ -33,7 +33,8 @@ Extraction Guidelines:
 - Identify laboratory test results with values and reference ranges
 - Extract vital signs and physical examination findings
 - Identify procedures performed or recommended
-- Note any recommendations, follow-up instructions, or care plans
+- Extract direct instructions given by the provider to the patient (e.g., "take with food", "return in 2 weeks", "avoid heavy lifting", "check blood pressure daily") into the `instructions` field
+- Extract clinical suggestions and follow-up plans (e.g., "consider increasing dosage", "repeat HbA1c in 3 months", "referral to cardiology") into the `recommendations` field
 - Highlight critical, abnormal, or concerning findings
 - Identify risk factors
 - Write a 2-4 sentence narrative_summary capturing clinical context not covered by structured fields
@@ -85,7 +86,8 @@ key_insights field:
 diagnoses_mentioned: Deduplicated list of all diagnoses/conditions across all documents
 medications_mentioned: Deduplicated list of all medications with dosages
 lab_results: Deduplicated list of all lab values with units and reference ranges
-recommendations: Deduplicated list of all recommendations and follow-up instructions
+instructions: Deduplicated list of all direct patient instructions from the provider
+recommendations: Deduplicated list of all clinical recommendations
 risk_factors: Deduplicated list of all risk factors identified
 document_metadata: Build from source_document_title, source_document_date, source_document_type in each DocumentSummary
 
