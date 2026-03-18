@@ -29,12 +29,14 @@ Document Type Inference:
 
 Extraction Guidelines:
 - Extract all mentioned diagnoses, conditions, and clinical findings
-- List all medications with dosages and instructions
+- Extract only drug-based medications (e.g., tablets, injections, syrups, inhalers) that contain active pharmaceutical ingredients.
+Include dosage, frequency, and route where available.
 - Identify laboratory test results with values and reference ranges
 - Extract vital signs and physical examination findings
 - Identify procedures performed or recommended
-- Extract direct instructions given by the provider to the patient (e.g., "take with food", "return in 2 weeks", "avoid heavy lifting", "check blood pressure daily") into the `instructions` field
-- Extract clinical suggestions and follow-up plans (e.g., "consider increasing dosage", "repeat HbA1c in 3 months", "referral to cardiology") into the `recommendations` field
+- Extract direct instructions given by the provider to the patient for post visit (e.g., "take with food", "return in 2 weeks", "avoid heavy lifting", "check blood pressure daily") into the `instructions` field
+- Extract clinical suggestions, advices and follow-up plans for post visit (e.g., "consider increasing dosage", "repeat HbA1c in 3 months", "referral to cardiology") into the `recommendations` field
+- Extract significant findings, abnormal results, trends, or changes in condition, each insight should be a short, clear statement (not a full summary). into the `key_insights` field.
 - Highlight critical, abnormal, or concerning findings
 - Identify risk factors
 - Write a 2-4 sentence narrative_summary capturing clinical context not covered by structured fields
@@ -60,6 +62,7 @@ GUARDRAILS - Don't Do:
 - Interpret or explain the clinical meaning or significance of findings
 - Predict outcomes, risks, disease progression, or treatment effectiveness
 - Recommend actions beyond what's stated in the document
+- Interventions like oxygen administered, IV fluids without medication additives, cold/heat packs, physiotherapy, counseling, monitoring instructions, or medical procedures in Medications
 
 GUARDRAILS - Do:
 - Extract only what is explicitly stated in the document
