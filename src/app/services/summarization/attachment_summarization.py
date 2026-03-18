@@ -40,9 +40,6 @@ class AttachmentSummarizationService:
     Follows the same architectural pattern as FhirAnalysisService.
     """
 
-    # Maximum documents to process per encounter
-    MAX_DOCUMENTS = 20
-
     def __init__(self, db: AsyncSession):
         """
         Initialize the attachment summarization service.
@@ -90,10 +87,27 @@ class AttachmentSummarizationService:
 
         if not doc_references:
             self.logger.info(
-                f"No document attachments found for appointment {request.appointment_id} - returning empty summary"
+                f"No document attachments found for appointment {request.appointment_id} - returning static appointment summary"
             )
+            appt_date = appointment.appointment_date.strftime("%B %d, %Y") if appointment.appointment_date else None
+            purpose = appointment.purpose
+            if provider_name and provider_name != "N/A":
+                if appt_date:
+                    base = f"Your appointment with {provider_name} on {appt_date}"
+                else:
+                    base = f"Your appointment with {provider_name}"
+            else:
+                if appt_date:
+                    base = f"Your appointment on {appt_date}"
+                else:
+                    base = "Your appointment"
+            if purpose:
+                base += f" was for {purpose}."
+            else:
+                base += "."
+            fallback_summary_text = f"{base} No clinical documents were available for this encounter."
             summary_data = {
-                "summary_text": "No document attachments found for this appointment.",
+                "summary_text": fallback_summary_text,
                 "user_id": request.user_id,
                 "created_by": request.user_id,
                 "updated_by": request.user_id,
@@ -216,11 +230,6 @@ class AttachmentSummarizationService:
             user_id=str(request.user_id),
             encounter_id=appointment.ehr_entity_id,
         )
-
-        # Limit documents to prevent overwhelming the AI
-        if len(doc_references) > self.MAX_DOCUMENTS:
-            self.logger.warning(f"Found {len(doc_references)} documents, limiting to {self.MAX_DOCUMENTS}")
-            doc_references = doc_references[: self.MAX_DOCUMENTS]
 
         self.logger.debug(
             f"Fetched {len(doc_references)} DocumentReferences with attachments - "
