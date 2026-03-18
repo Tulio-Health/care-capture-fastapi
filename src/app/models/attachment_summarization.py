@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DocumentAttachment(BaseModel):
@@ -55,7 +55,9 @@ class DocumentSummary(BaseModel):
     risk_factors: List[str] = Field(default_factory=list)
     procedures: List[str] = Field(default_factory=list)
     vital_signs: List[str] = Field(default_factory=list)
-    narrative_summary: str  # 2-4 sentence free-text (catches what structured fields miss)
+    narrative_summary: (
+        str  # 2-4 sentence free-text (catches what structured fields miss)
+    )
 
 
 class AttachmentSummarizationRequest(BaseModel):
@@ -160,7 +162,7 @@ class AttachmentSummarizationResponse(BaseModel):
 
     medications_mentioned: List[str] = Field(
         default_factory=list,
-        description="Medications and treatments mentioned across documents",
+        description="Medications mentioned across documents",
     )
 
     lab_results: List[str] = Field(
