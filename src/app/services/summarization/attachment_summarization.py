@@ -312,6 +312,7 @@ class AttachmentSummarizationService:
                             content_type=content_type,
                             title=title,
                             date=doc_date,
+                            document_type=doc_ref.data.get("type"),
                             file_name=file_name,
                             size=size,
                             extracted_text=text,
@@ -335,6 +336,7 @@ class AttachmentSummarizationService:
                             content_type=attachment.get("contentType", "unknown"),
                             title=attachment.get("title", "Unknown Document"),
                             date=None,
+                            document_type=doc_ref.data.get("type"),
                             file_name=attachment.get("fileName"),
                             size=attachment.get("size"),
                             extracted_text="",
@@ -465,12 +467,6 @@ class AttachmentSummarizationService:
         document_metadata = []
         extraction_errors = []
 
-        # Build lookup from title to LLM-inferred clinical document type
-        llm_type_by_title = {
-            m.get("title", ""): m.get("type")
-            for m in (analysis_result.document_metadata or [])
-        }
-
         for doc in extracted_documents:
             metadata = {
                 "title": doc.title,
@@ -478,7 +474,7 @@ class AttachmentSummarizationService:
                 "file_name": doc.file_name,
                 "size": doc.size,
                 "date": doc.date.isoformat() if doc.date else None,
-                "clinical_document_type": llm_type_by_title.get(doc.title),
+                "clinical_document_type": doc.document_type,
             }
             document_metadata.append(metadata)
 

@@ -87,7 +87,7 @@ key_insights field:
 - Fold in procedures and vital_signs from per-document summaries as relevant insights
 
 diagnoses_mentioned: Deduplicated list of all diagnoses/conditions across all documents
-medications_mentioned: Deduplicated list of all medications with dosages
+medications_mentioned: Deduplicated list of drug-based medications with dosages. Include only items with active pharmaceutical ingredients (tablets, injections, syrups, inhalers, patches). Exclude oxygen therapy, IV fluids without medication additives, cold/heat packs, blood transfusions, wound care, physiotherapy, counseling, and any other non-drug clinical interventions or procedures.
 lab_results: Deduplicated list of all lab values with units and reference ranges
 instructions: Deduplicated list of all direct patient instructions from the provider
 recommendations: Deduplicated list of all clinical recommendations
@@ -99,6 +99,7 @@ GUARDRAILS - Don't Do:
 - Reconcile, normalize, prioritize, or resolve conflicting values
 - Act as clinical decision support in any form
 - Merge data inappropriately across different encounters or time periods
+- Include non-drug interventions (oxygen therapy, IV fluids, cold/heat packs, physiotherapy, wound care, etc.) in medications_mentioned
 
 GUARDRAILS - Do:
 - De-duplicate identical entries

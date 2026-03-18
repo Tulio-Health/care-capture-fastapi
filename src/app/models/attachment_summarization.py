@@ -31,6 +31,10 @@ class DocumentAttachment(BaseModel):
     date: Optional[datetime] = Field(
         None, description="Document date from FHIR metadata"
     )
+    document_type: Optional[str] = Field(
+        None,
+        description="Clinical document type from FHIR metadata (e.g., 'Progress Notes', 'Consult Note')",
+    )
     file_name: Optional[str] = Field(None, description="Original file name")
     size: Optional[int] = Field(None, description="File size in bytes")
     extracted_text: str = Field(..., description="Extracted text content from document")
@@ -41,22 +45,74 @@ class DocumentAttachment(BaseModel):
 
 
 class DocumentSummary(BaseModel):
-    """Per-document extraction result from the Map phase."""
+    """Structured clinical data extracted from a single medical document. Only include information explicitly stated in the source text."""
 
-    source_document_title: str
-    source_document_date: Optional[str] = None
-    source_document_type: str  # LLM-inferred (e.g., "Lab Report", "Progress Note")
-    clinical_findings: List[str] = Field(default_factory=list)
-    diagnoses: List[str] = Field(default_factory=list)
-    medications: List[str] = Field(default_factory=list)
-    lab_results: List[str] = Field(default_factory=list)
-    recommendations: List[str] = Field(default_factory=list)
-    instructions: List[str] = Field(default_factory=list)
-    risk_factors: List[str] = Field(default_factory=list)
-    procedures: List[str] = Field(default_factory=list)
-    vital_signs: List[str] = Field(default_factory=list)
-    narrative_summary: (
-        str  # 2-4 sentence free-text (catches what structured fields miss)
+    source_document_title: str = Field(
+        ..., description="Title of the source document as provided in the metadata"
+    )
+    source_document_date: Optional[str] = Field(
+        None,
+        description="Date of the document in ISO format (YYYY-MM-DD), from metadata or document content",
+    )
+    source_document_type: str = Field(
+        ...,
+        description=(
+            "Document type inferred from content (e.g., 'Lab Report', 'Progress Note', "
+            "'Discharge Summary', 'Radiology Report', 'Consultation Note', 'Operative Report'). "
+            "Infer dynamically from the content."
+        ),
+    )
+    clinical_findings: List[str] = Field(
+        default_factory=list,
+        description="Clinical observations, examination findings, and notable results explicitly stated in the document",
+    )
+    diagnoses: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Confirmed diagnoses and active conditions. Convert medical abbreviations to patient-friendly language "
+            "(e.g., 'HTN' → 'High blood pressure'). Remove ICD-10 codes. Combine related diagnoses for the same condition."
+        ),
+    )
+    medications: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Drug-based medications only — items that contain active pharmaceutical ingredients "
+            "(e.g., tablets, capsules, injections, syrups, inhalers, patches, topical creams). "
+            "Include dosage, frequency, and route of administration where stated. "
+            "Do NOT include: oxygen therapy, IV fluids without medication additives, "
+            "cold/heat packs, blood transfusions, wound care, physiotherapy, counseling, "
+            "monitoring instructions, or any other non-drug clinical intervention or procedure."
+        ),
+    )
+    lab_results: List[str] = Field(
+        default_factory=list,
+        description="Laboratory test results with values, units, and reference ranges. Preserve exact numerical values. Format: 'Test Name: Value Unit (Reference Range)'",
+        examples=[["HbA1c: 6.8% (target <7.0%)", "WBC: 7.2 K/uL (4.5-11.0)"]],
+    )
+    recommendations: List[str] = Field(
+        default_factory=list,
+        description="Clinical suggestions, advice, and follow-up plans (e.g., 'consider increasing dosage', 'repeat HbA1c in 3 months'). Do not include direct patient instructions.",
+    )
+    instructions: List[str] = Field(
+        default_factory=list,
+        description="Direct instructions given by the provider to the patient (e.g., 'take with food', 'return in 2 weeks', 'avoid heavy lifting'). Do not include clinical recommendations.",
+    )
+    risk_factors: List[str] = Field(
+        default_factory=list,
+        description="Identified risk factors and concerning findings requiring monitoring, only those explicitly stated in the document",
+    )
+    procedures: List[str] = Field(
+        default_factory=list,
+        description="Medical procedures performed or recommended, with relevant details (date, site, outcome) where stated",
+    )
+    vital_signs: List[str] = Field(
+        default_factory=list,
+        description="Vital sign measurements with values and units (e.g., 'Blood Pressure: 138/88 mmHg', 'Heart Rate: 72 bpm'). Preserve exact values.",
+        examples=[["Blood Pressure: 138/88 mmHg", "Heart Rate: 72 bpm"]],
+    )
+    narrative_summary: str = Field(
+        ...,
+        description="A 2-4 sentence free-text summary capturing the overall clinical context and key findings not fully covered by the structured fields above",
     )
 
 
@@ -81,11 +137,7 @@ class AttachmentSummarizationRequest(BaseModel):
 
 
 class AttachmentSummarizationResponse(BaseModel):
-    """
-    Response model for attachment summarization.
-
-    Structurally similar to FhirAnalysisResponse for consistency.
-    """
+    """Unified patient-facing summary synthesized from multiple clinical document extractions. Use second person ('you', 'your'). Deduplicate across documents. Preserve conflicting values as-is."""
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -143,12 +195,20 @@ class AttachmentSummarizationResponse(BaseModel):
     )
 
     clinical_summary: str = Field(
-        ..., description="Overall clinical summary synthesized from all documents"
+        ...,
+        description=(
+            "Patient-facing clinical summary. Begin with appointment date, purpose, and provider. "
+            "Answer: Why did you visit? What was found? What was done? What is the diagnosis? "
+            "What should you do next? Use 'you'/'your'."
+        ),
     )
 
     key_insights: List[str] = Field(
         default_factory=list,
-        description="Key clinical insights and findings from documents",
+        description=(
+            "Significant clinical findings, abnormal results, trends, and notable observations across all documents. "
+            "Include relevant procedures and vital signs. Each insight is a short, clear statement."
+        ),
     )
 
     documents_analyzed: int = Field(
@@ -157,35 +217,44 @@ class AttachmentSummarizationResponse(BaseModel):
 
     diagnoses_mentioned: List[str] = Field(
         default_factory=list,
-        description="Diagnoses and conditions mentioned across documents",
+        description="Deduplicated list of all diagnoses and active conditions across all documents in patient-friendly language",
     )
 
     medications_mentioned: List[str] = Field(
         default_factory=list,
-        description="Medications mentioned across documents",
+        description=(
+            "Drug-based medications only — items with active pharmaceutical ingredients "
+            "(e.g., tablets, capsules, injections, syrups, inhalers, patches). "
+            "Include dosage, frequency, and route where stated. "
+            "Do NOT include: oxygen therapy, IV fluids without medication additives, "
+            "cold/heat packs, blood transfusions, wound care, physiotherapy, counseling, "
+            "or any other non-drug clinical intervention or procedure."
+        ),
     )
 
     lab_results: List[str] = Field(
-        default_factory=list, description="Laboratory results and test findings"
+        default_factory=list,
+        description="Deduplicated laboratory test results with values, units, and reference ranges. Preserve exact numerical values.",
     )
 
     instructions: List[str] = Field(
         default_factory=list,
-        description="Direct instructions given by the provider to the patient",
+        description="Deduplicated list of all direct patient instructions from providers across all documents. Do not include clinical recommendations.",
     )
 
     recommendations: List[str] = Field(
         default_factory=list,
-        description="Clinical recommendations",
+        description="Deduplicated list of all clinical recommendations and follow-up plans across all documents. Do not include direct patient instructions.",
     )
 
     risk_factors: List[str] = Field(
-        default_factory=list, description="Identified risk factors and concerns"
+        default_factory=list,
+        description="Deduplicated list of all identified risk factors and concerning findings across all documents",
     )
 
     document_metadata: List[Dict[str, Any]] = Field(
         default_factory=list,
-        description="Metadata about analyzed documents (title, date, type, etc.)",
+        description="Metadata for each analyzed document built from source_document_title, source_document_date, and source_document_type",
     )
 
     extraction_errors: List[Dict[str, str]] = Field(
