@@ -456,6 +456,12 @@ class AttachmentSummarizationService:
         document_metadata = []
         extraction_errors = []
 
+        # Build lookup from title to LLM-inferred clinical document type
+        llm_type_by_title = {
+            m.get("title", ""): m.get("type")
+            for m in (analysis_result.document_metadata or [])
+        }
+
         for doc in extracted_documents:
             metadata = {
                 "title": doc.title,
@@ -463,6 +469,7 @@ class AttachmentSummarizationService:
                 "file_name": doc.file_name,
                 "size": doc.size,
                 "date": doc.date.isoformat() if doc.date else None,
+                "clinical_document_type": llm_type_by_title.get(doc.title),
             }
             document_metadata.append(metadata)
 
@@ -480,7 +487,7 @@ class AttachmentSummarizationService:
             "medications": [{"name": med} for med in analysis_result.medications_mentioned],
             "diagnoses": analysis_result.diagnoses_mentioned,
             "instructions": [],  # Attachment analysis uses recommendations instead
-            "recommendations": [{"text": rec} for rec in analysis_result.recommendations],
+            "recommendations": [{"recommendation": rec} for rec in analysis_result.recommendations],
             "summary_metadata": {
                 "source": "attachment_summary",
                 "analysis_version": "2.0",
