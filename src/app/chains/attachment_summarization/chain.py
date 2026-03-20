@@ -107,11 +107,19 @@ Section 2: Diagnoses (diagnoses_mentioned)
 
 Section 3: Medications (medications_mentioned)
 - Include ONLY drug-based medications (tablets, injections, inhalers, etc.)
+- Extract and summarize current medications also
 - Include dosage, frequency, and route if available
 - Exclude in final output in this field:
   - Oxygen therapy
   - IV fluids without drugs
   - Procedures or therapies (e.g., physiotherapy)
+- Include BOTH:
+  1. Active/Ongoing medications (from CURRENT MEDICATIONS or similar sections)
+  2. Newly prescribed medications during the visit
+
+- Determine status ONLY if explicitly documented
+- Do NOT infer changes unless clearly stated
+- Do NOT restrict medications to only those discussed in the visit
 
 ----------------------------------------
 
@@ -161,7 +169,7 @@ RULES
 5. Do NOT mix data from different visits
 6. Do NOT use imperative language (e.g., "Take this", "Avoid this")
 7. Do NOT classify non-drug interventions as medications
-8. Do NOT expand abbreviations unless clearly known and safe"""
+8. Do NOT expand abbreviations unless clearly known and safe """
 
 _SYNTHESIS_SYSTEM_PROMPT = """You are a clinical AI assistant that synthesizes multiple per-document clinical extractions into a unified patient-facing summary.
 
