@@ -1,113 +1,126 @@
-from langchain.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
-from langsmith import traceable
-from typing import Dict, Any
+"""PydanticAI translation chain for medical conversation summaries."""
+
 import json
+import logging
+from typing import Dict, Any
 
-from src.app.common.llm_factory import get_default_chat_model
-from src.app.core.langsmith_trace import LangSmithTrace
-from src.app.common.logging import get_logger
-from src.app.services.translation.medical_terminology import medical_terminology_service
+from langsmith import traceable
+from pydantic_ai import Agent
+
+from src.app.common.llm_factory import get_pydantic_ai_model
 from src.app.common.constants.languages import LanguageInfo
+from src.app.models.translation import TranslatedSummary
+from src.app.services.translation.medical_terminology import medical_terminology_service
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
-_tracer = None
+_TRANSLATION_SYSTEM_PROMPT = """You are a professional medical translator with expertise in healthcare terminology and semantic understanding.
+Your task is to translate provided medical conversation summary fields into the requested target language with semantic accuracy.
 
-def get_tracer():
-    global _tracer
-    if _tracer is None:
-        _tracer = LangSmithTrace().trace(tags=[__name__])
-    return _tracer
+CRITICAL TRANSLATION RULES:
+1. Maintain semantic accuracy — translate meaning, not just words
+2. Use culturally appropriate medical terminology for the target language
+3. Translate medication names to appropriate local terminology when available
+4. Preserve all numbers, dates, and numeric values exactly as they are
+5. Do NOT translate field names — only translate content values
+6. Use formal, clinically appropriate language
+7. Ensure translations sound natural and idiomatic in the target language
+8. Maintain consistent terminology throughout
 
+TRANSLATION SCOPE:
+- Translate: summary_text, key_points, diagnoses, instructions, recommendation descriptions
+- Translate medication names, dosage instructions, and frequency descriptions to local terminology
+- Do NOT translate: field names (name, dosage, frequency keys), UUIDs, numeric values, units
 
-def get_callbacks():
-    """Get callbacks list, handling disabled tracing"""
-    tracer = get_tracer()
-    return [tracer] if tracer is not None else []
+Return only the translatable fields as a structured output."""
+
 
 class TranslationChain:
     """
-    A specialized translation chain for medical conversation summaries.
-    
-    This chain translates medical content while preserving:
-    - Medical terminology accuracy
-    - JSON structure integrity
-    - Data types and field names
-    - Critical medical information
+    PydanticAI-based translation chain for medical conversation summaries.
+
+    Translates the content fields of a summary while preserving metadata
+    (IDs, timestamps, etc.) from the original.
     """
-    
-    def __init__(self):
+
+    def __init__(self, system_prompt: str | None = None):
         self._model = None
-        self.parser = JsonOutputParser()
-        
+        self._agent = None
+        self._system_prompt = system_prompt or _TRANSLATION_SYSTEM_PROMPT
+
+    @property
+    def model(self):
+        if self._model is None:
+            self._model = get_pydantic_ai_model()
+        return self._model
+
+    @property
+    def agent(self) -> Agent:
+        if self._agent is None:
+            self._agent = Agent(
+                self.model,
+                output_type=TranslatedSummary,
+                system_prompt=self._system_prompt,
+            )
+        return self._agent
+
     @traceable(name="translate_conversation_summary")
-    async def translate_conversation_summary(self, summary_data: Dict[str, Any], target_language: str) -> Dict[str, Any]:
+    async def translate_conversation_summary(
+        self, summary_data: Dict[str, Any], target_language: str
+    ) -> Dict[str, Any]:
         """
-        Translate a conversation summary to the specified language.
-        
+        Translate the content fields of a conversation summary to the target language.
+
         Args:
-            summary_data: The conversation summary data to translate
-            target_language: The target language code (e.g., 'es', 'fr', 'de')
-            
+            summary_data: The full conversation summary dict (snake_case keys)
+            target_language: ISO 639-1 language code (e.g. 'es', 'ar', 'fr')
+
         Returns:
-            Translated conversation summary with the same structure
+            Dict with translated content fields merged back with original metadata
         """
         try:
-            # Get semantic context and terminology for the target language
+            language_name = LanguageInfo.get_language_name(target_language)
+            if language_name == "Unknown":
+                language_name = target_language
+
             semantic_context = medical_terminology_service.enhance_translation_prompt(target_language)
-            
-            # Create specialized prompt for medical content translation
-            prompt = ChatPromptTemplate.from_messages([
-                ("system", f"""You are a professional medical translator with expertise in healthcare terminology and semantic understanding. 
-                Your task is to translate the provided medical conversation summary to {{target_language}} with semantic accuracy.
-                
-                CRITICAL TRANSLATION RULES:
-                1. **Maintain Exact JSON Structure**: Keep all field names, data types, and structure identical
-                2. **Semantic Translation**: Translate with semantic understanding, not just word-for-word
-                3. **Medical Terminology**: Use culturally appropriate medical terminology for the target language
-                4. **Medication Names**: Translate medication names to appropriate local terminology when possible
-                5. **Data Integrity**: Preserve all dates, numbers, UUIDs, and technical identifiers exactly as they are
-                6. **Field Names**: Do NOT translate field names (id, appointment_id, user_id, etc.) - only translate content
-                7. **Cultural Sensitivity**: Consider cultural differences in medical communication and terminology
-                8. **Consistency**: Maintain consistent terminology throughout the translation
-                9. **Natural Language**: Ensure translations sound natural and idiomatic in the target language
-                
-                {semantic_context}
-                
-                TRANSLATION SCOPE:
-                - Translate: summary_text, key_points, diagnoses, instructions with semantic understanding
-                - MEDICATIONS: Translate medication names, dosage, and frequency to appropriate local terminology
-                - Translate recommendation descriptions with cultural context
-                - Do NOT translate: field names, UUIDs, dates, numbers, technical identifiers
-                
-                Return ONLY the translated JSON object with the exact same structure."""),
-                ("user", "Translate this medical conversation summary to {target_language}:\n\n{summary_data}")
-            ])
-            
-            # Create the translation chain
-            chain = prompt | self.model | self.parser
-            
-            # Execute translation
-            result = await chain.ainvoke({
-                "target_language": target_language,
-                "summary_data": json.dumps(summary_data, ensure_ascii=False, indent=2)
-            }, config={"callbacks": get_callbacks()})
-            
+
+            translatable = {
+                "summary_text": summary_data.get("summary_text", ""),
+                "key_points": summary_data.get("key_points"),
+                "medications": summary_data.get("medications"),
+                "diagnoses": summary_data.get("diagnoses"),
+                "instructions": summary_data.get("instructions"),
+                "recommendations": summary_data.get("recommendations"),
+            }
+
+            user_prompt = (
+                f"Translate the following medical summary fields to {language_name} ({target_language}).\n\n"
+            )
+            if semantic_context:
+                user_prompt += f"{semantic_context}\n\n"
+            user_prompt += (
+                f"Medical Summary Fields:\n"
+                f"{json.dumps(translatable, ensure_ascii=False, indent=2)}"
+            )
+
+            result = await self.agent.run(user_prompt)
+            translated: TranslatedSummary = result.output
+
+            # Merge translated fields back with original metadata
+            merged = dict(summary_data)
+            merged.update({
+                "summary_text": translated.summary_text,
+                "key_points": translated.key_points,
+                "medications": translated.medications,
+                "diagnoses": translated.diagnoses,
+                "instructions": translated.instructions,
+                "recommendations": translated.recommendations,
+            })
+
             logger.info(f"Successfully translated summary to {target_language}")
-            return result
-            
+            return merged
+
         except Exception as e:
             logger.error(f"Translation failed for language {target_language}: {str(e)}")
             raise ValueError(f"Translation failed: {str(e)}")
-    
-    @property
-    def model(self):
-        """Lazy load the model on first access"""
-        if self._model is None:
-            self._model = get_default_chat_model()
-        return self._model
-    
-    def get_supported_languages(self) -> list[str]:
-        """Get list of supported language codes."""
-        return LanguageInfo.get_supported_languages()

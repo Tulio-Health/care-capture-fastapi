@@ -14,6 +14,7 @@ class LanguageCode(str, Enum):
     MANDARIN = "zh"
     BENGALI = "bn"
     HINDI = "hi"
+    ARABIC = "ar"
 
 
 class LanguageName(str, Enum):
@@ -23,6 +24,7 @@ class LanguageName(str, Enum):
     MANDARIN = "Mandarin"
     BENGALI = "Bengali"
     HINDI = "Hindi"
+    ARABIC = "Arabic"
 
 class LanguageInfo:
     """Language information and metadata."""
@@ -40,6 +42,8 @@ class LanguageInfo:
             LanguageCode.PORTUGUESE: LanguageName.PORTUGUESE,
             LanguageCode.MANDARIN: LanguageName.MANDARIN,
             LanguageCode.BENGALI: LanguageName.BENGALI,
+            LanguageCode.HINDI: LanguageName.HINDI,
+            LanguageCode.ARABIC: LanguageName.ARABIC,
         }
         return code_to_name.get(language_code, "Unknown")
     
@@ -83,6 +87,23 @@ class LanguageInfo:
                 "measurement_preferences": "metric",
                 "date_format": "DD/MM/YYYY",
                 "time_format": "12-hour with AM/PM"
-            }
+            },
+            LanguageCode.HINDI: {
+                "sentence_structure": "Subject-Object-Verb (SOV)",
+                "formality_levels": ["आप", "तुम", "तू"],
+                "medical_honorifics": ["डॉक्टर", "चिकित्सक"],
+                "measurement_preferences": "metric",
+                "date_format": "DD/MM/YYYY",
+                "time_format": "12-hour with AM/PM"
+            },
+            LanguageCode.ARABIC: {
+                "sentence_structure": "Verb-Subject-Object (VSO) in formal; Subject-Verb-Object (SVO) in modern medical",
+                "formality_levels": ["حضرتك", "أنت"],
+                "medical_honorifics": ["الدكتور", "الدكتورة"],
+                "measurement_preferences": "metric",
+                "date_format": "DD/MM/YYYY",
+                "time_format": "12-hour",
+                "script_direction": "right-to-left (RTL)"
+            },
         }
         return context_maps.get(language_code, {})

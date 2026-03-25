@@ -30,8 +30,7 @@ env.bak/
 venv.bak/
 .python-version
 
-# Poetry
-poetry.lock
+# uv — uv.lock is committed, no ignore needed
 
 # IDE
 .idea/

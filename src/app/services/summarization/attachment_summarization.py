@@ -40,9 +40,6 @@ class AttachmentSummarizationService:
     Follows the same architectural pattern as FhirAnalysisService.
     """
 
-    # Maximum documents to process per encounter
-    MAX_DOCUMENTS = 20
-
     def __init__(self, db: AsyncSession):
         """
         Initialize the attachment summarization service.
@@ -90,10 +87,27 @@ class AttachmentSummarizationService:
 
         if not doc_references:
             self.logger.info(
-                f"No document attachments found for appointment {request.appointment_id} - returning empty summary"
+                f"No document attachments found for appointment {request.appointment_id} - returning static appointment summary"
             )
+            appt_date = appointment.appointment_date.strftime("%B %d, %Y") if appointment.appointment_date else None
+            purpose = appointment.purpose
+            if provider_name and provider_name != "N/A":
+                if appt_date:
+                    base = f"Your appointment with {provider_name} on {appt_date}"
+                else:
+                    base = f"Your appointment with {provider_name}"
+            else:
+                if appt_date:
+                    base = f"Your appointment on {appt_date}"
+                else:
+                    base = "Your appointment"
+            if purpose:
+                base += f" was for {purpose}."
+            else:
+                base += "."
+            fallback_summary_text = f"{base} No clinical documents were available for this encounter."
             summary_data = {
-                "summary_text": "No document attachments found for this appointment.",
+                "summary_text": fallback_summary_text,
                 "user_id": request.user_id,
                 "created_by": request.user_id,
                 "updated_by": request.user_id,
@@ -130,14 +144,11 @@ class AttachmentSummarizationService:
         if not extracted_documents:
             raise ValueError(f"Failed to extract text from any attachments for appointment {request.appointment_id}")
 
-        # Format documents for AI prompt
-        documents_text = self._format_documents_for_prompt(extracted_documents)
-
         # Build appointment context
         appointment_context = self._build_appointment_context(appointment, provider_name)
 
         # Run AI analysis
-        analysis_result = await self._run_ai_analysis(appointment_context, documents_text, len(extracted_documents))
+        analysis_result = await self._run_ai_analysis(appointment_context, extracted_documents)
 
         # Store analysis in database
         summary_data = self._prepare_summary_data(
@@ -220,11 +231,6 @@ class AttachmentSummarizationService:
             encounter_id=appointment.ehr_entity_id,
         )
 
-        # Limit documents to prevent overwhelming the AI
-        if len(doc_references) > self.MAX_DOCUMENTS:
-            self.logger.warning(f"Found {len(doc_references)} documents, limiting to {self.MAX_DOCUMENTS}")
-            doc_references = doc_references[: self.MAX_DOCUMENTS]
-
         self.logger.debug(
             f"Fetched {len(doc_references)} DocumentReferences with attachments - "
             f"appointment_id: {request.appointment_id}"
@@ -306,6 +312,7 @@ class AttachmentSummarizationService:
                             content_type=content_type,
                             title=title,
                             date=doc_date,
+                            document_type=doc_ref.data.get("type"),
                             file_name=file_name,
                             size=size,
                             extracted_text=text,
@@ -329,6 +336,7 @@ class AttachmentSummarizationService:
                             content_type=attachment.get("contentType", "unknown"),
                             title=attachment.get("title", "Unknown Document"),
                             date=None,
+                            document_type=doc_ref.data.get("type"),
                             file_name=attachment.get("fileName"),
                             size=attachment.get("size"),
                             extracted_text="",
@@ -405,16 +413,14 @@ class AttachmentSummarizationService:
     async def _run_ai_analysis(
         self,
         appointment_context: Dict[str, str],
-        documents_text: str,
-        document_count: int,
+        extracted_documents: List[DocumentAttachment],
     ) -> Any:
         """
-        Run AI analysis on extracted documents.
+        Run AI analysis on extracted documents using the map-reduce pipeline.
 
         Args:
             appointment_context: Context about the appointment
-            documents_text: Formatted document texts
-            document_count: Number of documents analyzed
+            extracted_documents: List of DocumentAttachment objects
 
         Returns:
             Analysis result object
@@ -424,10 +430,9 @@ class AttachmentSummarizationService:
         """
         try:
             analysis_chain = AttachmentSummarizationChain()
-            analysis_result = analysis_chain.analyze(
+            analysis_result = await analysis_chain.analyze(
                 appointment_context=appointment_context,
-                documents_text=documents_text,
-                document_count=document_count,
+                documents=extracted_documents,
             )
 
             self.logger.debug("AI analysis completed successfully")
@@ -469,6 +474,7 @@ class AttachmentSummarizationService:
                 "file_name": doc.file_name,
                 "size": doc.size,
                 "date": doc.date.isoformat() if doc.date else None,
+                "clinical_document_type": doc.document_type,
             }
             document_metadata.append(metadata)
 
@@ -485,11 +491,11 @@ class AttachmentSummarizationService:
             "key_points": analysis_result.key_insights,
             "medications": [{"name": med} for med in analysis_result.medications_mentioned],
             "diagnoses": analysis_result.diagnoses_mentioned,
-            "instructions": [],  # Attachment analysis uses recommendations instead
-            "recommendations": [{"text": rec} for rec in analysis_result.recommendations],
+            "instructions": analysis_result.instructions,
+            "recommendations": [{"recommendation": rec} for rec in analysis_result.recommendations],
             "summary_metadata": {
                 "source": "attachment_summary",
-                "analysis_version": "1.0",
+                "analysis_version": "2.0",
                 "total_documents": len(extracted_documents),
                 "successful_documents": successful_docs,
                 "failed_documents": len(extraction_errors),

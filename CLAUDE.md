@@ -23,7 +23,7 @@ This FastAPI application has been migrated to use AWS Systems Manager (SSM) Para
 ### Prerequisites
 - AWS CLI configured with credentials
 - Local Redis server running on port 6379  
-- Python 3.12+ and Poetry installed
+- Python 3.12+ and uv installed (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
 
 ### Environment Configuration
 The `.env.development` file is already configured:
@@ -38,13 +38,13 @@ DEBUG=true
 ### Start Development Server
 ```bash
 # Install dependencies
-poetry install
+uv sync
 
 # Start with SSM parameter loading
-poetry run python -m uvicorn src.app.main:app --host 0.0.0.0 --port 8000 --reload
+uv run uvicorn src.app.main:app --host 0.0.0.0 --port 8000 --reload
 
 # Alternative using the main function
-poetry run python src/app/main.py
+uv run python src/app/main.py
 ```
 
 The application will:
@@ -119,7 +119,7 @@ NEW_PARAM: str = ""
 
 ```bash
 # Start development server with SSM
-poetry run python -m uvicorn src.app.main:app --host 0.0.0.0 --port 8000 --reload
+uv run uvicorn src.app.main:app --host 0.0.0.0 --port 8000 --reload
 
 # Check Redis connection (ensure local Redis is running)
 redis-cli ping
@@ -131,7 +131,7 @@ psql -h dev-db-carecapture-ai.cbyowmas6qgt.us-east-2.rds.amazonaws.com -U postgr
 aws ssm describe-parameters --query "Parameters[?contains(Name, 'tuliohealth/dev')]"
 
 # Test SSM parameter loading
-poetry run python -c "
+uv run python -c "
 import asyncio
 import sys
 sys.path.append('src')

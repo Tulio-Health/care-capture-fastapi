@@ -1,12 +1,31 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Dict, Any, List
 from uuid import UUID, uuid4
 from datetime import datetime
-from src.app.common.constants.languages import LanguageCode
-from src.app.models.conversation_summaries import ConversationSummary
+
+def _validate_language_code(v: str) -> str:
+    if not (len(v) == 2 and v.isalpha() and v.islower()):
+        raise ValueError(f"language_code must be a valid ISO 639-1 code (2 lowercase letters), got: {v!r}")
+    return v
+
+
+class TranslatedSummary(BaseModel):
+    """PydanticAI output model — contains only the translatable fields of a conversation summary."""
+    summary_text: str
+    key_points: Optional[List[str]] = None
+    medications: Optional[List[Dict[str, Any]]] = None
+    diagnoses: Optional[List[str]] = None
+    instructions: Optional[List[str]] = None
+    recommendations: Optional[List[Dict[str, Any]]] = None
+
 
 class TranslationRequest(BaseModel):
-    language_code: LanguageCode = Field(..., description="Target language code")
+    language_code: str = Field(..., description="Target language code (ISO 639-1, e.g. 'es', 'ar', 'fr')")
+
+    @field_validator("language_code")
+    @classmethod
+    def validate_language_code(cls, v: str) -> str:
+        return _validate_language_code(v)
 
 class PlaygroundConversationSummary(BaseModel):
     """Simplified conversation summary for playground testing with auto-generated metadata."""
@@ -33,8 +52,13 @@ class PlaygroundConversationSummary(BaseModel):
 class PlaygroundTranslationRequest(BaseModel):
     """Request model for translation playground endpoint."""
     conversation_summary: PlaygroundConversationSummary = Field(..., alias="conversationSummary", description="Simplified conversation summary for playground testing")
-    language_code: LanguageCode = Field(..., alias="languageCode", description="Target language code for translation")
-    
+    language_code: str = Field(..., alias="languageCode", description="Target language code (ISO 639-1, e.g. 'es', 'ar', 'fr')")
+
+    @field_validator("language_code")
+    @classmethod
+    def validate_language_code(cls, v: str) -> str:
+        return _validate_language_code(v)
+
     class Config:
         """Pydantic model configuration."""
         populate_by_name = True  # Allow both camelCase and snake_case

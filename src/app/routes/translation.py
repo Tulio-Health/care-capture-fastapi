@@ -9,7 +9,6 @@ from src.app.services.translation.translation_service import TranslationService
 from src.app.models.translation import TranslationRequest, TranslationResponse, PlaygroundTranslationRequest
 from src.app.models.conversation_summaries import ConversationSummary
 from src.app.chains.translation.chain import TranslationChain
-from src.app.common.constants.languages import LanguageCode
 from src.app.common.logging import get_logger
 
 logger = get_logger(__name__)
