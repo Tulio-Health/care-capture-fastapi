@@ -10,14 +10,13 @@ from src.app.chains.ai_chat_intents.intend_identifier.models import RouterOption
 from src.app.db.config.database import get_db
 from src.app.db.models.chatbot_conversations import ChatbotConversation
 from src.app.db.models.chatbot_messages import ChatbotMessage
-from src.app.db.models.user_profiles import UserProfile
-from src.app.db.models.appointments import Appointment
 from src.app.models.ai_chat import AiChatRequest
 from src.app.models.intent_identify import IntentResponse, MedicalIntentResponse
 from sqlalchemy import select
 import json
 from src.app.core import get_settings
-from src.app.routes.pull_db_context import cache_all_user_data
+from src.app.routes.pull_db_context import cache_user_profile_and_insights, read_enriched_summaries
+from src.app.common.constants.cache_keys import chatbot_conversation_context_key
 from typing import Union
 
 router = APIRouter(
@@ -37,70 +36,67 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
         # user_id = "2a14bdf4-a39c-45fa-b76e-5972860603ec" # HARDCODED (I don't know how user id is fetched). TODO: Remove this.
         # user_id = "0ca4bb1b-6233-48fd-9998-99f556cdc22a" # HARDCODED (I don't know how user id is fetched). TODO: Remove this.
         
-        # Set up cache keys
+        # --- Load user profile and health insights (FastAPI-managed cache) ---
         user_profile_key = CACHE_KEY.CONVERSATION_USER_PROFILE.format(user_id)
-        appointments_key = CACHE_KEY.CONVERSATION_PAST_APPOINTMENTS.format(user_id)
-        visit_summaries_key = CACHE_KEY.CONVERSATION_PROVIDER_VISIT_SUMMARY.format(user_id)
-        conversation_messages_key = CACHE_KEY.CONVERSATION_CHAT_HISTORY.format(conversation_id)
         health_insights_key = CACHE_KEY.CONVERSATION_HEALTH_INSIGHTS.format(user_id)
-        
-        # Check if required cache keys exist
-        cache_miss = False
-        
-        try:
-            user_profile = json.loads(redis_client.get(user_profile_key))
-        except Exception as e:
-            user_profile = None
-        
-        try:
-            appointments = json.loads(redis_client.get(appointments_key))
-        except Exception as e:
-            appointments = None
-        
-        try:
-            visit_summaries = json.loads(redis_client.get(visit_summaries_key)) 
-        except Exception as e:    
-            visit_summaries = None
-            
-        try:
-            health_insights = json.loads(redis_client.get(health_insights_key))
-        except Exception as e:
-            health_insights = None
-        
-        if not user_profile or not appointments or not visit_summaries or not health_insights:
-            print(f"Cache miss: user_profile, appointments, visit_summaries, or health_insights for user_id={user_id}")
-            cache_miss = True
-            
-        if cache_miss:
-            print(f"Repopulating cache for user_id={user_id} (excluding messages)")
-            await cache_all_user_data(db, user_id, conversation_id, redis_client)
-            user_profile = json.loads(redis_client.get(user_profile_key))
-            appointments = json.loads(redis_client.get(appointments_key))
-            visit_summaries = json.loads(redis_client.get(visit_summaries_key))
-            health_insights = json.loads(redis_client.get(health_insights_key))
+        conversation_messages_key = CACHE_KEY.CONVERSATION_CHAT_HISTORY.format(conversation_id)
 
-        # Load conversation messages using lrange from its specific key, handled by Node API
-        # This is done once, outside the try/except for primary context loading.
+        try:
+            user_profile = json.loads(redis_client.get(user_profile_key))
+        except Exception:
+            user_profile = None
+
+        try:
+            health_insights = json.loads(redis_client.get(health_insights_key))
+        except Exception:
+            health_insights = None
+
+        # Repopulate profile/insights if missing
+        if not user_profile or not health_insights:
+            await cache_user_profile_and_insights(db, user_id, redis_client)
+            try:
+                user_profile = json.loads(redis_client.get(user_profile_key))
+            except Exception:
+                user_profile = {}
+            try:
+                health_insights = json.loads(redis_client.get(health_insights_key))
+            except Exception:
+                health_insights = []
+
+        # --- Read enriched summaries from Node API cache ---
+        enriched_summaries = read_enriched_summaries(user_id, redis_client)
+        if enriched_summaries is None:
+            enriched_summaries = []
+            print(f"Warning: No enriched summary cache for user {user_id}. Node API has not populated it yet.")
+
+        # --- Load conversation messages (managed by Node API) ---
         raw_conversation_history_items = redis_client.lrange(conversation_messages_key, 0, -2)
         conversation_messages = []
         if raw_conversation_history_items:
             for item_str in raw_conversation_history_items:
                 try:
-                    # Attempt to parse each item as JSON
-                    # If successful, it could be a dict (like AI response obj) or a list (like summary snapshot)
                     parsed_item = json.loads(item_str)
                     conversation_messages.append(parsed_item)
                 except json.JSONDecodeError:
-                    # If it's not valid JSON (e.g., plain user query string), append as is
                     conversation_messages.append(item_str)
-        
+
+        # --- Load conversation context for follow-ups ---
+        conversation_context = {}
+        try:
+            ctx_key = chatbot_conversation_context_key(conversation_id)
+            raw_ctx = redis_client.get(ctx_key)
+            if raw_ctx:
+                conversation_context = json.loads(raw_ctx)
+        except Exception:
+            conversation_context = {}
+
         # Build context data
         context_data = {
             "user_profile": user_profile,
-            "appointments": appointments,
-            "visit_summaries": visit_summaries,
+            "enriched_summaries": enriched_summaries,
             "conversation_messages": conversation_messages,
-            "health_insights": health_insights
+            "health_insights": health_insights,
+            "conversation_context": conversation_context,
         }
         
         # Process the chat request
