@@ -113,7 +113,27 @@ class PastVisitIntentChain:
                         return True
                 return False
 
-            filtered = [s for s in filtered if matches_provider(s)]
+            name_matched = [s for s in filtered if matches_provider(s)]
+
+            if name_matched:
+                filtered = name_matched
+            else:
+                # Provider name matched nothing — try as specialty fallback
+                # (LLM sometimes puts "cardiologist" in provider_name instead of specialty)
+                q_stem = q_name[:6] if len(q_name) >= 6 else q_name
+                spec_fallback = [
+                    s for s in filtered
+                    if s.get("providerSpecialty")
+                    and (
+                        q_name in s["providerSpecialty"].lower()
+                        or s["providerSpecialty"].lower() in q_name
+                        or (q_stem and q_stem in s["providerSpecialty"].lower())
+                    )
+                ]
+                if spec_fallback:
+                    filtered = spec_fallback
+                else:
+                    filtered = name_matched  # empty — will hit no-data path
 
         # --- NPI ---
         if query.npi:
