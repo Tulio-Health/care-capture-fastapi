@@ -2,9 +2,9 @@ from enum import Enum
 
 CACHE_KEY_PREFIX = "care-capture-cache-key"
 
-# Node API writes to this key prefix (no CACHE_KEY_PREFIX — it uses its own prefix)
-CHATBOT_USER_SUMMARIES_PREFIX = "chatbot:user-summaries"
-CHATBOT_CONVERSATION_CONTEXT_PREFIX = "chatbot:conversation-context"
+# Node API's ioredis client auto-prepends CACHE_KEY_PREFIX to all keys
+CHATBOT_USER_SUMMARIES_PREFIX = f"{CACHE_KEY_PREFIX}:chatbot:user-summaries"
+CHATBOT_CONVERSATION_CONTEXT_PREFIX = f"{CACHE_KEY_PREFIX}:chatbot:conversation-context"
 
 class CACHE_KEY(str, Enum):
     CONVERSATION_CHAT_HISTORY = "conversation"
