@@ -5,6 +5,7 @@ import json
 from typing import Dict, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date, timedelta
+from difflib import SequenceMatcher
 
 from src.app.common.llm_factory import get_default_chat_model
 from src.app.core.langsmith_trace import LangSmithTrace
@@ -96,6 +97,19 @@ class PastVisitIntentChain:
                 prov_tokens = set(prov_lower.split())
                 if q_tokens and prov_tokens:
                     if q_tokens.issubset(prov_tokens) or prov_tokens.issubset(q_tokens):
+                        return True
+                # Fuzzy match: handles misspellings (e.g., "Roberta" vs "Roberto")
+                # Check per-token fuzzy match — each query token must fuzzy-match
+                # at least one stored token (ratio >= 0.8)
+                if q_tokens and prov_tokens:
+                    all_match = all(
+                        any(
+                            SequenceMatcher(None, qt, pt).ratio() >= 0.8
+                            for pt in prov_tokens
+                        )
+                        for qt in q_tokens
+                    )
+                    if all_match:
                         return True
                 return False
 
