@@ -75,13 +75,31 @@ class PastVisitIntentChain:
         """Filter enriched summaries based on query parameters."""
         filtered = list(summaries)
 
-        # --- Provider name (fuzzy, case-insensitive) ---
+        # --- Provider name (fuzzy, case-insensitive, bidirectional) ---
         if query.provider_name:
-            q_name = query.provider_name.lower()
-            filtered = [
-                s for s in filtered
-                if s.get("providerName") and q_name in s["providerName"].lower()
-            ]
+            q_name = query.provider_name.lower().strip()
+            # Strip common titles from query for better matching
+            for title in ["dr.", "dr ", "doctor "]:
+                if q_name.startswith(title):
+                    q_name = q_name[len(title):].strip()
+            q_tokens = set(q_name.split())
+
+            def matches_provider(s: Dict[str, Any]) -> bool:
+                prov = s.get("providerName")
+                if not prov:
+                    return False
+                prov_lower = prov.lower().strip()
+                # Bidirectional substring: query in stored OR stored in query
+                if q_name in prov_lower or prov_lower in q_name:
+                    return True
+                # Token overlap: all query tokens found in stored name or vice versa
+                prov_tokens = set(prov_lower.split())
+                if q_tokens and prov_tokens:
+                    if q_tokens.issubset(prov_tokens) or prov_tokens.issubset(q_tokens):
+                        return True
+                return False
+
+            filtered = [s for s in filtered if matches_provider(s)]
 
         # --- NPI ---
         if query.npi:
@@ -90,13 +108,30 @@ class PastVisitIntentChain:
                 if s.get("npi") == query.npi
             ]
 
-        # --- Specialty (fuzzy) ---
+        # --- Specialty (fuzzy, bidirectional + stem matching) ---
         if query.specialty:
-            q_spec = query.specialty.lower()
-            filtered = [
-                s for s in filtered
-                if s.get("providerSpecialty") and q_spec in s["providerSpecialty"].lower()
-            ]
+            q_spec = query.specialty.lower().strip()
+
+            def matches_specialty(s: Dict[str, Any]) -> bool:
+                spec = s.get("providerSpecialty")
+                if not spec:
+                    return False
+                spec_lower = spec.lower()
+                # Bidirectional substring
+                if q_spec in spec_lower or spec_lower in q_spec:
+                    return True
+                # Token overlap for multi-word specialties
+                q_tokens = set(q_spec.split())
+                spec_tokens = set(spec_lower.replace("(", "").replace(")", "").split())
+                if q_tokens & spec_tokens:
+                    return True
+                # Stem matching: "cardiologist" → "cardio" matches "cardiology"
+                q_stem = q_spec[:6] if len(q_spec) >= 6 else q_spec
+                if q_stem and q_stem in spec_lower:
+                    return True
+                return False
+
+            filtered = [s for s in filtered if matches_specialty(s)]
 
         # --- Purpose ---
         if query.purpose:
