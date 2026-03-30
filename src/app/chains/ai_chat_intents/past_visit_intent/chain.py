@@ -2,7 +2,8 @@ from langchain.prompts import ChatPromptTemplate
 from langsmith import traceable
 from langchain_core.output_parsers import PydanticOutputParser, StrOutputParser
 import json
-from typing import Dict, Any, List
+import re
+from typing import Dict, Any, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date, timedelta
 from difflib import SequenceMatcher
@@ -65,6 +66,60 @@ class PastVisitIntentChain:
 
         self._query_chain = None
         self._response_content_chain = None
+
+    # ------------------------------------------------------------------ #
+    #  Follow-up detection and context resolution                         #
+    # ------------------------------------------------------------------ #
+
+    _FOLLOWUP_PATTERNS = re.compile(
+        r"\b("
+        r"what was|what were|tell me more|more about|"
+        r"how about|and the|what about|"
+        r"any other|anything else|"
+        r"that visit|that appointment|that doctor|that provider|"
+        r"the same visit|the same doctor|the same provider|"
+        r"during that|from that|in that"
+        r")\b",
+        re.IGNORECASE,
+    )
+
+    def _is_followup(self, text: str, conversation_context: Dict[str, Any]) -> bool:
+        """Detect whether the user query is a follow-up to a previous turn."""
+        if not conversation_context or not conversation_context.get("lastProvider"):
+            return False
+        return bool(self._FOLLOWUP_PATTERNS.search(text))
+
+    def _resolve_followup_context(
+        self,
+        query: "PastVisitQuery",
+        conversation_context: Dict[str, Any],
+    ) -> "PastVisitQuery":
+        """Override LLM-extracted provider/date with conversation context for follow-ups."""
+        last_provider = conversation_context.get("lastProvider")
+        last_date_str = conversation_context.get("lastAppointmentDate")
+
+        if last_provider:
+            query.provider_name = last_provider
+        if last_date_str:
+            try:
+                query.start_date = date.fromisoformat(last_date_str)
+                query.timeframe = VisitTimeframe.SPECIFIC_DATE
+            except (ValueError, TypeError):
+                pass
+        return query
+
+    @staticmethod
+    def _condense_summaries(summaries: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+        """Create a lightweight provider/date list for query extraction LLM."""
+        return [
+            {
+                "providerName": s.get("providerName", ""),
+                "providerSpecialty": s.get("providerSpecialty", ""),
+                "appointmentDate": s.get("appointmentDate", ""),
+                "appointmentPurpose": s.get("appointmentPurpose", ""),
+            }
+            for s in summaries
+        ]
 
     # ------------------------------------------------------------------ #
     #  Filtering — operates on enriched summaries (not raw appointments)  #
@@ -175,11 +230,19 @@ class PastVisitIntentChain:
                 if s.get("appointmentPurpose") and q_purpose in s["appointmentPurpose"].lower()
             ]
 
-        # --- Keywords (match any keyword in summaryText) ---
+        # --- Keywords (match any keyword across all text content) ---
         if query.keywords:
             def matches_keywords(s: Dict[str, Any]) -> bool:
-                text = (s.get("summaryText") or "").lower()
-                return any(kw.lower() in text for kw in query.keywords)
+                searchable = " ".join([
+                    s.get("summaryText") or "",
+                    json.dumps(s.get("medications") or []),
+                    json.dumps(s.get("keyPoints") or []),
+                    json.dumps(s.get("diagnoses") or []),
+                    json.dumps(s.get("instructions") or []),
+                    json.dumps(s.get("recommendations") or []),
+                    s.get("appointmentPurpose") or "",
+                ]).lower()
+                return any(kw.lower() in searchable for kw in query.keywords)
             filtered = [s for s in filtered if matches_keywords(s)]
 
         # --- Date filters ---
@@ -296,13 +359,18 @@ class PastVisitIntentChain:
             )
 
         try:
+            is_followup = self._is_followup(text, conversation_context)
+
             # --- Stage 1: Extract query params ---
-            print(f"Extracting query parameters for query: {text}")
+            # Pass condensed summaries to reduce noise — LLM only needs
+            # provider names/dates/specialties for query extraction
+            condensed = self._condense_summaries(enriched_summaries)
+            print(f"Extracting query parameters for query: {text} (followup={is_followup})")
             query_params = self.query_chain.invoke(
                 {
                     "text": text,
                     "user_profile": json.dumps(user_profile, default=str),
-                    "enriched_summaries": json.dumps(enriched_summaries, default=str),
+                    "enriched_summaries": json.dumps(condensed, default=str),
                     "conversation_history": json.dumps(chat_history, default=str),
                     "conversation_context": json.dumps(conversation_context, default=str),
                     "query_format": self.query_parser.get_format_instructions(),
@@ -311,9 +379,24 @@ class PastVisitIntentChain:
             )
             print(f"Extracted query parameters: {query_params}")
 
+            # --- Stage 1a: Override with conversation context for follow-ups ---
+            if is_followup:
+                query_params = self._resolve_followup_context(
+                    query_params, conversation_context
+                )
+                print(f"Follow-up resolved params: {query_params}")
+
             # --- Stage 1b: Filter enriched summaries ---
             matched = self.filter_summaries(query_params, enriched_summaries)
             print(f"Found {len(matched)} matched summaries")
+
+            # --- Stage 1c: Fallback — relax provider filter if keywords exist ---
+            if not matched and query_params.provider_name and query_params.keywords:
+                print(f"Provider+keywords yielded 0 results, retrying without provider filter")
+                relaxed = query_params.model_copy()
+                relaxed.provider_name = None
+                matched = self.filter_summaries(relaxed, enriched_summaries)
+                print(f"Relaxed filter found {len(matched)} matched summaries")
 
             if not matched:
                 search_details = self._create_search_details(query_params)
