@@ -70,7 +70,9 @@ async def ai_chat(chat_request: AiChatRequest, db: AsyncSession = Depends(get_db
             print(f"Warning: No enriched summary cache for user {user_id}. Node API has not populated it yet.")
 
         # --- Load conversation messages (managed by Node API) ---
-        raw_conversation_history_items = redis_client.lrange(conversation_messages_key, 0, -2)
+        # Keep last 30 items (≈15 user+AI pairs) to bound context size
+        MAX_CONVERSATION_ITEMS = 30
+        raw_conversation_history_items = redis_client.lrange(conversation_messages_key, -MAX_CONVERSATION_ITEMS, -2)
         conversation_messages = []
         if raw_conversation_history_items:
             for item_str in raw_conversation_history_items:

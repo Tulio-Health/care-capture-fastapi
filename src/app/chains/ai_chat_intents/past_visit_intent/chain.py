@@ -89,25 +89,6 @@ class PastVisitIntentChain:
             return False
         return bool(self._FOLLOWUP_PATTERNS.search(text))
 
-    def _resolve_followup_context(
-        self,
-        query: "PastVisitQuery",
-        conversation_context: Dict[str, Any],
-    ) -> "PastVisitQuery":
-        """Override LLM-extracted provider/date with conversation context for follow-ups."""
-        last_provider = conversation_context.get("lastProvider")
-        last_date_str = conversation_context.get("lastAppointmentDate")
-
-        if last_provider:
-            query.provider_name = last_provider
-        if last_date_str:
-            try:
-                query.start_date = date.fromisoformat(last_date_str)
-                query.timeframe = VisitTimeframe.SPECIFIC_DATE
-            except (ValueError, TypeError):
-                pass
-        return query
-
     @staticmethod
     def _condense_summaries(summaries: List[Dict[str, Any]]) -> List[Dict[str, str]]:
         """Create a lightweight provider/date list for query extraction LLM."""
@@ -318,7 +299,7 @@ class PastVisitIntentChain:
             first = matched_summaries[0]
             ctx["lastProvider"] = first.get("providerName")
             ctx["lastAppointmentDate"] = first.get("appointmentDate")
-            ctx["lastMatchedSummaryIds"] = [s["id"] for s in matched_summaries[:5]]
+            ctx["lastMatchedSummaryIds"] = [s["id"] for s in matched_summaries[:MAX_SUMMARIES_FOR_LLM]]
 
         # Merge with existing context to increment turnCount
         try:
@@ -341,6 +322,20 @@ class PastVisitIntentChain:
     #  Main handler                                                       #
     # ------------------------------------------------------------------ #
 
+    def _resolve_followup_summaries(
+        self,
+        conversation_context: Dict[str, Any],
+        enriched_summaries: List[Dict[str, Any]],
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Retrieve previously matched summaries for follow-up questions.
+        Returns None if no context or IDs don't match."""
+        last_ids = conversation_context.get("lastMatchedSummaryIds", [])
+        if not last_ids:
+            return None
+        last_id_set = set(last_ids)
+        matched = [s for s in enriched_summaries if s.get("id") in last_id_set]
+        return matched if matched else None
+
     @traceable(name="handle_intent")
     async def handle_intent(self, **kwargs) -> IntentResponse[None]:
         text = kwargs["text"]
@@ -361,11 +356,37 @@ class PastVisitIntentChain:
         try:
             is_followup = self._is_followup(text, conversation_context)
 
-            # --- Stage 1: Extract query params ---
-            # Pass condensed summaries to reduce noise — LLM only needs
-            # provider names/dates/specialties for query extraction
+            # --- Follow-up fast path ---
+            # Reuse previously matched summaries — the conversation history
+            # already gives the response LLM full context for the follow-up.
+            if is_followup:
+                matched = self._resolve_followup_summaries(
+                    conversation_context, enriched_summaries
+                )
+                if matched:
+                    print(f"Follow-up: reusing {len(matched)} summaries from previous turn")
+
+                    ai_content = await self.response_content_chain.ainvoke(
+                        {
+                            "text": text,
+                            "conversation_history": json.dumps(chat_history, default=str),
+                            "matched_summaries": json.dumps(matched, default=str),
+                            "today_date": date.today().isoformat(),
+                        },
+                        config={"callbacks": get_callbacks()},
+                    )
+
+                    # Keep the same context for further follow-ups
+                    self._write_conversation_context(conversation_id, matched)
+
+                    return IntentResponse[None](
+                        intent="past_visits",
+                        responses=[IntentAiResponse(type="text", content=ai_content, data=None)],
+                    )
+
+            # --- Stage 1: Extract query params (new questions only) ---
             condensed = self._condense_summaries(enriched_summaries)
-            print(f"Extracting query parameters for query: {text} (followup={is_followup})")
+            print(f"Extracting query parameters for query: {text}")
             query_params = self.query_chain.invoke(
                 {
                     "text": text,
@@ -379,24 +400,9 @@ class PastVisitIntentChain:
             )
             print(f"Extracted query parameters: {query_params}")
 
-            # --- Stage 1a: Override with conversation context for follow-ups ---
-            if is_followup:
-                query_params = self._resolve_followup_context(
-                    query_params, conversation_context
-                )
-                print(f"Follow-up resolved params: {query_params}")
-
             # --- Stage 1b: Filter enriched summaries ---
             matched = self.filter_summaries(query_params, enriched_summaries)
             print(f"Found {len(matched)} matched summaries")
-
-            # --- Stage 1c: Fallback — relax provider filter if keywords exist ---
-            if not matched and query_params.provider_name and query_params.keywords:
-                print(f"Provider+keywords yielded 0 results, retrying without provider filter")
-                relaxed = query_params.model_copy()
-                relaxed.provider_name = None
-                matched = self.filter_summaries(relaxed, enriched_summaries)
-                print(f"Relaxed filter found {len(matched)} matched summaries")
 
             if not matched:
                 search_details = self._create_search_details(query_params)
