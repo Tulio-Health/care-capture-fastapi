@@ -22,6 +22,8 @@ class PastVisitQuery(BaseModel):
     """
     provider_name: Optional[str] = Field(None, description="Name of the healthcare provider to filter by")
     npi: Optional[str] = Field(None, description="NPI of the healthcare provider to filter by")
+    specialty: Optional[str] = Field(None, description="Provider specialty to filter by (e.g., 'Orthopedic Surgery', 'Cardiology')")
+    keywords: Optional[List[str]] = Field(None, description="Keywords to search for in summary text (e.g., ['shoulder', 'pain', 'injection'])")
     timeframe: VisitTimeframe = Field(VisitTimeframe.ALL, description="Timeframe to filter visits by")
     start_date: Optional[date] = Field(None, description="Start date for date range queries")
     end_date: Optional[date] = Field(None, description="End date for date range queries")
@@ -35,9 +37,11 @@ class PastVisitQuery(BaseModel):
         json_schema_extra = {
             "example": {
                 "provider_name": "Dr. Sarah Johnson",
+                "specialty": "Orthopedic Surgery",
+                "keywords": ["shoulder", "follow-up"],
                 "timeframe": "last_6_months",
                 "sort_by": "date",
                 "sort_order": "desc",
                 "limit": 5
             }
-        } 
+        }
