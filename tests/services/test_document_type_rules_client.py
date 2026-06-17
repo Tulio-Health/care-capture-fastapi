@@ -25,6 +25,18 @@ from src.app.services.document_type_rules_client import (
 
 
 # ---------------------------------------------------------------------------
+# Module-level settings mock (prevents ValidationError from extra env vars)
+# ---------------------------------------------------------------------------
+
+class _FakeSettings:
+    NODE_API_URL = "http://fake-nodeapi"
+    INTERNAL_SERVICE_KEY = "test-key"
+
+
+_fake_settings = _FakeSettings()
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -56,7 +68,8 @@ async def test_cache_hit():
     mock_resp = _mock_response(rules)
     mock_http = AsyncMock(return_value=mock_resp)
 
-    with patch("httpx.AsyncClient") as MockClient:
+    with patch("src.app.services.document_type_rules_client.get_settings", return_value=_fake_settings), \
+         patch("httpx.AsyncClient") as MockClient:
         instance = AsyncMock()
         instance.get = mock_http
         instance.__aenter__ = AsyncMock(return_value=instance)
@@ -91,7 +104,8 @@ async def test_ttl_expiry():
     mock_resp = _mock_response(rules)
     mock_http = AsyncMock(return_value=mock_resp)
 
-    with patch("httpx.AsyncClient") as MockClient:
+    with patch("src.app.services.document_type_rules_client.get_settings", return_value=_fake_settings), \
+         patch("httpx.AsyncClient") as MockClient:
         instance = AsyncMock()
         instance.get = mock_http
         instance.__aenter__ = AsyncMock(return_value=instance)
@@ -114,7 +128,8 @@ async def test_fallback_to_last_known_good():
     prior_rules = make_rules(4)
     client._last_known_good = prior_rules
 
-    with patch("httpx.AsyncClient") as MockClient:
+    with patch("src.app.services.document_type_rules_client.get_settings", return_value=_fake_settings), \
+         patch("httpx.AsyncClient") as MockClient:
         instance = AsyncMock()
         instance.get = AsyncMock(side_effect=Exception("Connection refused"))
         instance.__aenter__ = AsyncMock(return_value=instance)
@@ -136,7 +151,8 @@ async def test_fallback_to_hardcoded_floor():
     client = DocumentTypeRulesClient()
     assert client._last_known_good is None
 
-    with patch("httpx.AsyncClient") as MockClient:
+    with patch("src.app.services.document_type_rules_client.get_settings", return_value=_fake_settings), \
+         patch("httpx.AsyncClient") as MockClient:
         instance = AsyncMock()
         instance.get = AsyncMock(side_effect=Exception("Timeout"))
         instance.__aenter__ = AsyncMock(return_value=instance)
@@ -160,7 +176,8 @@ async def test_warm_up_success():
 
     mock_resp = _mock_response(rules)
 
-    with patch("httpx.AsyncClient") as MockClient:
+    with patch("src.app.services.document_type_rules_client.get_settings", return_value=_fake_settings), \
+         patch("httpx.AsyncClient") as MockClient:
         instance = AsyncMock()
         instance.get = AsyncMock(return_value=mock_resp)
         instance.__aenter__ = AsyncMock(return_value=instance)
@@ -181,7 +198,8 @@ async def test_warm_up_success():
 async def test_warm_up_failure_does_not_raise():
     client = DocumentTypeRulesClient()
 
-    with patch("httpx.AsyncClient") as MockClient:
+    with patch("src.app.services.document_type_rules_client.get_settings", return_value=_fake_settings), \
+         patch("httpx.AsyncClient") as MockClient:
         instance = AsyncMock()
         instance.get = AsyncMock(side_effect=Exception("Network error"))
         instance.__aenter__ = AsyncMock(return_value=instance)

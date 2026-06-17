@@ -57,7 +57,13 @@ async def lifespan(app: FastAPI):
         redis_client = RedisClient()
         app.state.redis = redis_client.client
         logger.info("Redis client initialized and attached to app state")
-        
+
+        # Initialize DocumentTypeRulesClient and warm up the rule cache (PIPE-04)
+        from .services.document_type_rules_client import get_document_type_rules_client
+        rules_client = get_document_type_rules_client()
+        app.state.rules_client = rules_client
+        await rules_client.warm_up()
+
         # Initialize scheduler
         scheduler = init_scheduler()
         app.state.scheduler = scheduler

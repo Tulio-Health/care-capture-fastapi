@@ -89,6 +89,7 @@ class SSMParameterLoader:
             SSMParameterMapping(
                 "internal/service_key", "INTERNAL_SERVICE_KEY", is_secure=True
             ),
+            SSMParameterMapping("urls/node_api_url", "NODE_API_URL"),
             # Playground (dev-only)
             SSMParameterMapping(
                 "playground/api_key", "PLAYGROUND_API_KEY", is_secure=True

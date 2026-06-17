@@ -76,6 +76,10 @@ class Settings(BaseSettings):
             raise ValueError("DB_PASSWORD is required in production")
         return v
 
+    # Internal Service-to-Service
+    NODE_API_URL: str = Field(default="", description="nodeAPI base URL for internal service calls")
+    INTERNAL_SERVICE_KEY: str = ""
+
     # LangSmith (optional)
     LANGSMITH_TRACING: str = ""
     LANGSMITH_ENDPOINT: str = ""
