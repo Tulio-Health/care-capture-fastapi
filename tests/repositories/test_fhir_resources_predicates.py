@@ -35,9 +35,9 @@ def test_ilike_rule_produces_one_clause():
     ]
     result = _build_exclude_predicates(rules)
     assert len(result) == 1
-    clause_repr = repr(result[0]).lower()
-    # SQLAlchemy ilike / LIKE should appear in the repr
-    assert "like" in clause_repr or "ilike" in clause_repr
+    # SQLAlchemy renders ilike() as "lower(col) LIKE lower(val)" in str()
+    clause_str = str(result[0]).lower()
+    assert "like" in clause_str
 
 
 # ---------------------------------------------------------------------------
@@ -55,10 +55,9 @@ def test_exact_rule_produces_equality_clause():
     ]
     result = _build_exclude_predicates(rules)
     assert len(result) == 1
-    clause_repr = repr(result[0])
-    # Equality operator — repr should not contain LIKE
-    assert "like" not in clause_repr.lower()
-    assert "ilike" not in clause_repr.lower()
+    # Equality operator — str() should contain "=" but not "LIKE"
+    clause_str = str(result[0]).lower()
+    assert "like" not in clause_str
 
 
 # ---------------------------------------------------------------------------
