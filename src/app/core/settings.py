@@ -1,7 +1,7 @@
 import urllib.parse
 from pydantic_settings import BaseSettings
 from pydantic import PostgresDsn, ValidationError, Field, validator
-from functools import lru_cache
+from typing import Optional
 import os
 import logging
 import asyncio
@@ -91,15 +91,15 @@ class Settings(BaseSettings):
         try:
             # First try to get from environment variable
             if db_url := os.getenv("DATABASE_URL"):
-                logger.info("Using DATABASE_URL from environment variable")
+                logger.debug("Using DATABASE_URL from environment variable")
                 return PostgresDsn(db_url)
 
             # If not in env, construct from components
-            logger.info("Constructing DATABASE_URL from components")
-            logger.info(f"DB_HOST: {self.DB_HOST}")
-            logger.info(f"DB_PORT: {self.DB_PORT}")
-            logger.info(f"DB_USER: {self.DB_USER}")
-            logger.info(f"DB_NAME: {self.DB_NAME}")
+            logger.debug("Constructing DATABASE_URL from components")
+            logger.debug(f"DB_HOST: {self.DB_HOST}")
+            logger.debug(f"DB_PORT: {self.DB_PORT}")
+            logger.debug(f"DB_USER: {self.DB_USER}")
+            logger.debug(f"DB_NAME: {self.DB_NAME}")
 
             encoded_password = urllib.parse.quote_plus(self.DB_PASSWORD)
 
@@ -110,7 +110,7 @@ class Settings(BaseSettings):
             # Validate the URL
             url = PostgresDsn(url_str)
 
-            logger.info("Database URL constructed successfully")
+            logger.debug("Database URL constructed successfully")
             return url
 
         except ValidationError as e:
@@ -126,6 +126,32 @@ class Settings(BaseSettings):
         case_sensitive = True
 
 
-@lru_cache()
+# ---------------------------------------------------------------------------
+# Invalidatable module-level singleton (replaces @lru_cache).
+#
+# @lru_cache() permanently froze the Settings object the first time
+# get_settings() was called — which could happen during configure_logging()
+# BEFORE initialize_environment_sync() wrote SSM values into os.environ.
+# The result: NODE_API_URL and INTERNAL_SERVICE_KEY are blank strings for the
+# entire process lifetime, causing DocumentTypeRulesClient to fail every fetch
+# silently and always serve the hardcoded floor.
+#
+# reset_settings() is called inside ssm_loader.set_environment_variables()
+# immediately after SSM params are injected, ensuring the next get_settings()
+# call builds a fresh Settings from the now-populated environment.
+# ---------------------------------------------------------------------------
+
+_settings: Optional[Settings] = None
+
+
 def get_settings() -> Settings:
-    return Settings()
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings
+
+
+def reset_settings() -> None:
+    """Call immediately after SSM parameters are injected into os.environ."""
+    global _settings
+    _settings = None
