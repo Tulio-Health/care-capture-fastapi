@@ -1,6 +1,7 @@
+import re
 from uuid import UUID
 
-from sqlalchemy import String, and_, cast, func, literal_column, or_, select
+from sqlalchemy import String, and_, cast, func, literal_column, or_, select, true
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,6 +55,22 @@ def _build_exclude_predicates(rules: list) -> list:
         elif strategy == "exact":
             clauses.append(type_col == value)
         elif strategy == "regex":
+            # CR-03: guard against ReDoS and invalid POSIX regex values.
+            # An oversized or malformed pattern would stall or crash the PostgreSQL
+            # regex engine, or raise an unhandled 500 on every affected request.
+            if not value or len(value) > 200:
+                logger.warning(
+                    "[_build_exclude_predicates] skipping regex rule — "
+                    "value absent or exceeds 200 chars"
+                )
+                continue
+            try:
+                re.compile(value)  # POSIX-compatible syntax pre-check
+            except re.error as exc:
+                logger.warning(
+                    f"[_build_exclude_predicates] skipping invalid regex rule value: {exc}"
+                )
+                continue
             clauses.append(type_col.op("~")(value))
         # unknown strategy: skip silently (defensive)
 
@@ -366,10 +383,11 @@ class FhirResourcesRepository:
                 ),
                 and_(
                     # Dynamic exclude predicates from DocumentTypeRulesClient (PIPE-05).
-                    # If exclude_clauses is empty (zero exclude rules loaded), this
-                    # evaluates to and_(True) — a no-op that lets all documents pass
-                    # (qualify-all behavior, consistent with D-04).
-                    ~or_(*exclude_clauses) if exclude_clauses else True,
+                    # If exclude_clauses is empty (zero exclude rules loaded), use
+                    # sqlalchemy.true() — a documented no-op literal that lets all
+                    # documents pass (qualify-all behavior, consistent with D-04).
+                    # WR-05: avoids undocumented bool coercion in and_(True).
+                    ~or_(*exclude_clauses) if exclude_clauses else true(),
                 ),
             )
 
