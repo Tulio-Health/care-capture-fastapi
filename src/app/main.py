@@ -29,7 +29,6 @@ from .db.config.database import get_engine
 from .db.objects.entities.users import Base
 from .cache.redis import RedisClient
 from .core.scheduler import init_scheduler
-from .config.environment import initialize_environment
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
