@@ -14,6 +14,7 @@ Security note (T-04-01): the x-internal-service-key header value is NEVER
 logged at any log level.
 """
 
+import threading
 import time
 from typing import Optional
 
@@ -243,7 +244,7 @@ class DocumentTypeRulesClient:
                 logger.error(
                     "[DocumentTypeRulesClient] fetch failed; no prior fetch — serving HARDCODED floor (15 rules)"
                 )
-                return HARDCODED_DOCREF_EXCLUDES
+                return list(HARDCODED_DOCREF_EXCLUDES)  # IN-01: return a copy to prevent mutation
 
     async def warm_up(self) -> None:
         """
@@ -259,16 +260,21 @@ class DocumentTypeRulesClient:
                 f"[DocumentTypeRulesClient] Startup warm-up: {len(rules)} rules loaded"
             )
         except Exception:
+            # WR-06: accurate message — floor is not loaded here; it will be served
+            # on-demand when get_active_rules_with_fallback() is first called.
             logger.warning(
-                "[DocumentTypeRulesClient] Startup warm-up failed — using hardcoded floor (15 rules)"
+                "[DocumentTypeRulesClient] Startup warm-up failed — "
+                "floor rules will be served on-demand when first request arrives (15 rules)"
             )
 
 
 # ---------------------------------------------------------------------------
 # Module-level lazy singleton (Pitfall 7 — created after SSM loads)
+# CR-04: double-checked locking ensures thread-safe singleton construction.
 # ---------------------------------------------------------------------------
 
 _client: Optional[DocumentTypeRulesClient] = None
+_client_lock = threading.Lock()
 
 
 def get_document_type_rules_client() -> DocumentTypeRulesClient:
@@ -277,8 +283,14 @@ def get_document_type_rules_client() -> DocumentTypeRulesClient:
 
     Lazy construction ensures the client is created AFTER SSM parameters are
     loaded into the environment (Pitfall 7).
+
+    Thread-safe via double-checked locking (CR-04): two concurrent callers
+    (e.g. lifespan warm_up() and an early request) can no longer each
+    construct a separate instance with an independent cache.
     """
     global _client
     if _client is None:
-        _client = DocumentTypeRulesClient()
+        with _client_lock:
+            if _client is None:
+                _client = DocumentTypeRulesClient()
     return _client
