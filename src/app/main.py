@@ -14,7 +14,7 @@ logger.info("Loading environment configuration before route imports...")
 initialize_environment_sync()
 
 # Now import routes after SSM parameters are loaded
-from .routes import health_router, root_router, care_capture_router, ai_chat_router, users_router, schedule_visit_router, translation_router, auth_test_router
+from .routes import health_router, root_router, care_capture_router, ai_chat_router, users_router, schedule_visit_router, translation_router, auth_test_router, enterprise_router
 from .routes.version import router as version_router
 from .common.exception import (
     HealthCheckError,
@@ -129,6 +129,7 @@ def get_application() -> FastAPI:
     app.include_router(schedule_visit_router)
     app.include_router(translation_router)
     app.include_router(auth_test_router)
+    app.include_router(enterprise_router)
 
     # Playground routes — only available in development
     if os.getenv("APP_ENV", "development") == "development":

@@ -6,6 +6,7 @@ from .ai_chat import router as ai_chat_router
 from .schedule_visit import router as schedule_visit_router
 from .translation import router as translation_router
 from .auth_test import router as auth_test_router
+from .enterprise import enterprise_router
 
-__all__ = ["health_router", "root_router", "care_capture_router", "users_router", "ai_chat_router", "schedule_visit_router", "translation_router", "auth_test_router"]
+__all__ = ["health_router", "root_router", "care_capture_router", "users_router", "ai_chat_router", "schedule_visit_router", "translation_router", "auth_test_router", "enterprise_router"]
 
