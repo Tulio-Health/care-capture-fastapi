@@ -2,27 +2,23 @@
 Enterprise router aggregator.
 
 Registers sub-routers for each enterprise endpoint group.
-Sub-routers for Plans 02-03 (profiles) and 02-04 (chat) are imported with
-try/except guards so this package is importable before those plans are executed.
+The chat sub-router (Plan 02-04) is still behind a try/except guard because
+chat.py does not exist until that plan runs.
 """
 
 from fastapi import APIRouter
 
+from .profiles import router as profiles_router
 from .signals import router as signals_router
 
 enterprise_router = APIRouter(prefix="/enterprise", tags=["enterprise"])
 
-# Always-present sub-router (Plan 02-02)
+# Sub-routers registered in route order
 enterprise_router.include_router(signals_router)
+enterprise_router.include_router(profiles_router)
 
-# Optional sub-routers — added by later plans; guarded so this file remains
-# importable while Plans 02-03 and 02-04 have not yet run.
-try:
-    from .profiles import router as profiles_router  # noqa: F401 (Plan 02-03)
-    enterprise_router.include_router(profiles_router)
-except ImportError:
-    pass
-
+# Optional sub-router — added by Plan 02-04; guarded so this file remains
+# importable while that plan has not yet run.
 try:
     from .chat import router as chat_router  # noqa: F401 (Plan 02-04)
     enterprise_router.include_router(chat_router)
