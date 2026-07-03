@@ -115,8 +115,17 @@ async def upsert_profile(
         return
     except Exception as primary_exc:
         exc_msg = str(primary_exc).lower()
-        if "vector" not in exc_msg:
-            # Not a pgvector codec error — re-raise immediately
+        # Trigger fallback on any likely pgvector codec / type-binding error:
+        # - "vector" = explicit type-not-found error
+        # - "could not convert" = asyncpg DataError when codec missing (list passed as string)
+        # - "dataerror" = asyncpg DataError class name
+        is_codec_error = (
+            "vector" in exc_msg
+            or "could not convert" in exc_msg
+            or "dataerror" in type(primary_exc).__name__.lower()
+        )
+        if not is_codec_error:
+            # Not a codec issue — re-raise immediately
             raise
 
         logger.warning(
@@ -132,17 +141,19 @@ async def upsert_profile(
             (enterprise_account_id, patient_user_id, embedding,
              profile_summary, embedding_model, last_rebuilt_at)
         VALUES
-            (:eid, :pid, CAST(:emb AS vector),
+            (:eid, :pid, CAST(CAST(:emb AS TEXT) AS vector),
              :summary, :model, :rebuilt_at)
         ON CONFLICT ON CONSTRAINT uq_enterprise_patient_profiles_account_patient
         DO UPDATE SET
-            embedding       = CAST(EXCLUDED.embedding AS vector),
+            embedding       = CAST(CAST(EXCLUDED.embedding AS TEXT) AS vector),
             profile_summary = EXCLUDED.profile_summary,
             embedding_model = EXCLUDED.embedding_model,
             last_rebuilt_at = EXCLUDED.last_rebuilt_at,
             updated_at      = now()
         """
     )
+    # Pass embedding as JSON string — CAST(CAST(:emb AS TEXT) AS vector) avoids both
+    # asyncpg codec issue AND SQLAlchemy's :: parser conflict with named params
     await db.execute(
         raw_sql,
         {
