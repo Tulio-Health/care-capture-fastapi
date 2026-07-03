@@ -9,13 +9,14 @@ run — no additional per-route auth decorator is needed (D-12).
 
 Threat mitigations:
 - T-CHAT-01: population_chat enforces WHERE enterprise_account_id = :eid in SQL
-  before ORDER BY; SET LOCAL app.enterprise_account_id = :eid issued inside
-  the same db.begin() transaction for RLS defense-in-depth (RESEARCH.md Pitfall 2).
+  before ORDER BY; set_config('app.enterprise_account_id', :eid, true) issued
+  inside the same db.begin() transaction for RLS defense-in-depth (RESEARCH.md
+  Pitfall 2). set_config() is used instead of SET LOCAL because SET/SET LOCAL
+  do not accept bind parameters over the extended query protocol.
 - T-CHAT-02: FHIR resources pass through prepare_fhir_context() which caps at
   8,000 chars before reaching the agent prompt (SIG-02/D-03).
 """
 
-import json
 import logging
 from uuid import UUID
 
@@ -208,14 +209,13 @@ async def population_chat(
     try:
         # Step 1 — embed the coordinator's query
         query_embedding: list[float] = await embed_text(request.query)
-        query_vec_json: str = json.dumps(query_embedding)
 
         # Step 2 — vector search with SET LOCAL inside a single transaction so
         # that the RLS session variable is visible to the subsequent SELECT.
         # D-09: WHERE enterprise_account_id = :eid MUST appear before ORDER BY.
         async with db.begin():
             await db.execute(
-                text("SET LOCAL app.enterprise_account_id = :eid"),
+                text("SELECT set_config('app.enterprise_account_id', :eid, true)"),
                 {"eid": str(request.enterprise_account_id)},
             )
             rows_result = await db.execute(
@@ -228,7 +228,7 @@ async def population_chat(
                     "LIMIT :top_k"
                 ),
                 {
-                    "vec": query_vec_json,
+                    "vec": query_embedding,
                     "eid": str(request.enterprise_account_id),
                     "top_k": POPULATION_TOP_K,
                 },
