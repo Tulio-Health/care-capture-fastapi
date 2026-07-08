@@ -73,7 +73,11 @@ async def infer_document_types(
 
     for item in batch.items:
         key = _cache_key(item)
-        cached_raw = redis_client.get(key)
+        try:
+            cached_raw = redis_client.get(key)
+        except Exception as e:
+            logger.warning(f"Redis get failed for doctype-infer cache key, treating as cache miss: {e}")
+            cached_raw = None
         if not cached_raw:
             cache_misses.append(item)
             continue
@@ -103,11 +107,14 @@ async def infer_document_types(
                 continue
             inferred_by_id[response.id] = response
             if response.confidence >= _CACHE_CONFIDENCE_THRESHOLD:
-                redis_client.set(
-                    _cache_key(originating_item),
-                    response.model_dump_json(),
-                    expiry=_CACHE_TTL_SECONDS,
-                )
+                try:
+                    redis_client.set(
+                        _cache_key(originating_item),
+                        response.model_dump_json(),
+                        expiry=_CACHE_TTL_SECONDS,
+                    )
+                except Exception as e:
+                    logger.warning(f"Redis set failed for doctype-infer cache key, continuing without caching: {e}")
 
     # Order-preserving, id-keyed remerge — independent of whatever order the LLM itself
     # returned items in (RESEARCH.md §7a's reorder-risk framing).

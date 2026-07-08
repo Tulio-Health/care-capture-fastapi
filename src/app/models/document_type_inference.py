@@ -67,7 +67,8 @@ class DocumentTypeInferenceBatchResponse(BaseModel):
         ...,
         description=(
             "One classification per input item that was successfully resolved (cache hit or "
-            "fresh inference). Order is not guaranteed to match request order — correlate via id. "
-            "An item may be absent if the model dropped/conflated its id during a batch LLM call."
+            "fresh inference). Response order matches request order — an item may be absent "
+            "if the model dropped/conflated its id during a batch LLM call, but any items "
+            "present preserve their original request-order position."
         ),
     )
