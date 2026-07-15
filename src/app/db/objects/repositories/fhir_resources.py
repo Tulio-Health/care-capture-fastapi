@@ -1,13 +1,80 @@
+import re
 from uuid import UUID
 
-from sqlalchemy import String, and_, cast, func, literal_column, or_, select
+from sqlalchemy import String, and_, cast, func, literal_column, or_, select, true
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.app.common.logging import get_logger
 from src.app.db.models.fhir_resources import FhirResource
+from src.app.services.document_type_rules_client import (
+    HARDCODED_DOCREF_EXCLUDES,
+    get_document_type_rules_client,
+)
 
 logger = get_logger(__name__)
+
+
+def _build_exclude_predicates(rules: list) -> list:
+    """
+    Build a list of SQLAlchemy WHERE predicates from document-type exclude rules.
+
+    Rules processing (PIPE-05):
+    - Only rules with action="exclude" are processed (D-07: include rules are inert).
+    - Rules with matchTarget="loinc_code" are skipped (D-09: no LOINC support in FastAPI).
+    - Supported matchStrategy values: "ilike", "exact", "regex".
+    - Unknown strategies are silently skipped (defensive default).
+
+    If the returned list is empty (no exclude rules), the caller should treat
+    this as a no-op (qualify-all behavior, consistent with D-04).
+
+    Args:
+        rules: List of document-type rule dicts (matchValue, matchStrategy,
+               matchTarget, action, sourceEmr).
+
+    Returns:
+        List of SQLAlchemy column expressions, one per applicable exclude rule.
+    """
+    clauses = []
+    type_col = FhirResource.data["type"].astext
+
+    for rule in rules:
+        # D-07: only exclude rules
+        if rule.get("action") != "exclude":
+            continue
+
+        # D-09: skip loinc_code rules — no LOINC field path established in FastAPI
+        if rule.get("matchTarget") == "loinc_code":
+            continue
+
+        value = rule.get("matchValue", "")
+        strategy = rule.get("matchStrategy", "ilike")
+
+        if strategy == "ilike":
+            clauses.append(type_col.ilike(f"%{value}%"))
+        elif strategy == "exact":
+            clauses.append(type_col == value)
+        elif strategy == "regex":
+            # CR-03: guard against ReDoS and invalid POSIX regex values.
+            # An oversized or malformed pattern would stall or crash the PostgreSQL
+            # regex engine, or raise an unhandled 500 on every affected request.
+            if not value or len(value) > 200:
+                logger.warning(
+                    "[_build_exclude_predicates] skipping regex rule — "
+                    "value absent or exceeds 200 chars"
+                )
+                continue
+            try:
+                re.compile(value)  # POSIX-compatible syntax pre-check
+            except re.error as exc:
+                logger.warning(
+                    f"[_build_exclude_predicates] skipping invalid regex rule value: {exc}"
+                )
+                continue
+            clauses.append(type_col.op("~")(value))
+        # unknown strategy: skip silently (defensive)
+
+    return clauses
 
 
 class FhirResourcesRepository:
@@ -274,6 +341,7 @@ class FhirResourcesRepository:
         - resource_type = 'DocumentReference'
         - data->'attachments' exists and is not empty
         - encounterReference matches the encounter_id
+        - document type is not excluded by active document-type rules (PIPE-05)
 
         Args:
             user_id: The user's ID (Clerk ID)
@@ -287,6 +355,13 @@ class FhirResourcesRepository:
             # Normalize encounter ID - remove "Encounter/" prefix if present
             normalized_id = encounter_id.replace("Encounter/", "")
             encounter_reference = f"Encounter/{normalized_id}"
+
+            # Fetch active exclude rules from DocumentTypeRulesClient (PIPE-05).
+            # Uses three-tier fallback: live → stale → HARDCODED_DOCREF_EXCLUDES floor.
+            # D-04: if exclude_clauses is empty, ~or_() is not applied (qualify-all).
+            rules_client = get_document_type_rules_client()
+            exclude_rules = await rules_client.get_active_rules_with_fallback()
+            exclude_clauses = _build_exclude_predicates(exclude_rules)
 
             # Query for DocumentReferences with attachments
             # data ? 'attachments' checks if the key exists
@@ -307,32 +382,12 @@ class FhirResourcesRepository:
                     == encounter_reference,
                 ),
                 and_(
-                    # or_(
-                    #     FhirResource.data["type"].astext.ilike("%Progress%"),
-                    #     FhirResource.data["type"].astext.ilike("%Consult%"),
-                    #     FhirResource.data["type"].astext.ilike("%Ambulatory%"),
-                    #     FhirResource.data["type"].astext.ilike("%Note%"),
-                    #     FhirResource.data["type"].astext.ilike("%Summary%"),
-                    #     FhirResource.data["type"].astext.ilike("%Clinic%"),
-                    #     FhirResource.data["type"].astext.ilike("%CCD%"),
-                    # ),
-                    ~or_(
-                        FhirResource.data["type"].astext.ilike("%Education%"),
-                        FhirResource.data["type"].astext.ilike("%Waveform%"),
-                        FhirResource.data["type"].astext.ilike("%Consent%"),
-                        FhirResource.data["type"].astext.ilike("%Insurance%"),
-                        FhirResource.data["type"].astext.ilike("%License%"),
-                        FhirResource.data["type"].astext.ilike("%Billing%"),
-                        FhirResource.data["type"].astext.ilike("%HIPAA%"),
-                        FhirResource.data["type"].astext.ilike("%Reminder%"),
-                        FhirResource.data["type"].astext.ilike("%Phone Msg%"),
-                        FhirResource.data["type"].astext.ilike("%Letter%"),
-                        FhirResource.data["type"].astext.ilike("%Conversation%"),
-                        FhirResource.data["type"].astext.ilike("%Advance Directive%"),
-                        FhirResource.data["type"].astext.ilike("%Checklist%"),
-                        FhirResource.data["type"].astext.ilike("%Authorization%"),
-                        FhirResource.data["type"].astext.ilike("%Intake%"),
-                    ),
+                    # Dynamic exclude predicates from DocumentTypeRulesClient (PIPE-05).
+                    # If exclude_clauses is empty (zero exclude rules loaded), use
+                    # sqlalchemy.true() — a documented no-op literal that lets all
+                    # documents pass (qualify-all behavior, consistent with D-04).
+                    # WR-05: avoids undocumented bool coercion in and_(True).
+                    ~or_(*exclude_clauses) if exclude_clauses else true(),
                 ),
             )
 
