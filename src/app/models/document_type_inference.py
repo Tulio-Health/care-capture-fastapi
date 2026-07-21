@@ -4,9 +4,9 @@ A single item is just a batch of 1 — there is no separate single-item
 request/response model or route (RESEARCH.md §7a).
 """
 
-from typing import List, Optional
+from typing import Any, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class DocumentTypeInferenceRequest(BaseModel):
@@ -24,6 +24,13 @@ class DocumentTypeInferenceRequest(BaseModel):
     type_system: Optional[str] = Field(None, description="$.type.coding[0].system")
     category_text: Optional[str] = Field(None, description="$.category[*].text, joined if multiple")
     category_codes: List[str] = Field(default_factory=list, description="$.category[*].coding[*].code")
+
+    @field_validator("category_text", mode="before")
+    @classmethod
+    def coerce_category_text(cls, v: Any) -> Optional[str]:
+        if isinstance(v, list):
+            return v[0] if v else None
+        return v
     content_title: Optional[str] = Field(None, description="$.content[0].attachment.title")
     content_type: Optional[str] = Field(None, description="$.content[0].attachment.contentType (MIME)")
     raw_display: Optional[str] = Field(
