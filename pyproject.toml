@@ -32,6 +32,7 @@ dependencies = [
     "python-docx>=1.1.0,<2",  # DOCX text extraction
     "python-multipart>=0.0.9",  # Required for multipart/form-data file uploads
     "pydantic-ai-slim[openai]>=1.0,<2",
+    "pgvector>=0.4.2",
 ]
 
 [project.scripts]
