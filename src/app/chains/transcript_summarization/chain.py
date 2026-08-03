@@ -38,6 +38,10 @@ class TranscriptSummarizationChain:
             - Include specific details for medications and diagnoses
             - Categorize instructions and recommendations clearly
             - Override the latest summary if the latest information is more current
+            - For each diagnosis, preserve official_diagnosis exactly as the clinician said it (verbatim, not translated or simplified); put the plain-language version only in lay_explanation
+            - Capture procedures/interventions performed during the visit (e.g., injections) in procedures_mentioned, even if also mentioned in the summary
+            - Recommendations may include lifestyle counseling (diet, exercise) and in-progress medication adjustments discussed by the provider — do not omit these
+            - Keep provider_patient_discussion_summary_text to a brief 2-3 sentence overview only; put exam/history/objective specifics in provider_patient_discussion_key_points instead
 
             Output Format Requirements:{output_format}"""),
             ("user", 

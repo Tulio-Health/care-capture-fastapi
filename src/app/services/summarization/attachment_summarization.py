@@ -490,7 +490,7 @@ class AttachmentSummarizationService:
             "updated_by": request.user_id,
             "key_points": analysis_result.key_insights,
             "medications": [{"name": med} for med in analysis_result.medications_mentioned],
-            "diagnoses": analysis_result.diagnoses_mentioned,
+            "diagnoses": [d.model_dump() for d in analysis_result.diagnoses_mentioned],
             "instructions": analysis_result.instructions,
             "recommendations": [{"recommendation": rec} for rec in analysis_result.recommendations],
             "summary_metadata": {
@@ -508,5 +508,6 @@ class AttachmentSummarizationService:
                 ),
                 "lab_results": analysis_result.lab_results,
                 "risk_factors": analysis_result.risk_factors,
+                "procedures_mentioned": analysis_result.procedures_mentioned,
             },
         }

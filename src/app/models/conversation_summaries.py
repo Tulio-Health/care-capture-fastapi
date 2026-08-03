@@ -16,7 +16,13 @@ class ConversationSummary(BaseModel):
     summary_text: str = Field(..., alias="summaryText", description="The main summary text of the conversation")
     key_points: Optional[List[str]] = Field(None, alias="keyPoints", description="Key points extracted from the conversation")
     medications: Optional[List[Dict[str, Any]]] = Field(None, description="Medications mentioned in the conversation")
-    diagnoses: Optional[List[str]] = Field(None, description="Diagnoses discussed in the conversation")
+    diagnoses: Optional[List[Union[str, Dict[str, Any]]]] = Field(
+        None,
+        description=(
+            "Diagnoses discussed in the conversation. Older records are plain strings; newer records are "
+            "{'official_diagnosis': ..., 'lay_explanation': ...} objects."
+        ),
+    )
     instructions: Optional[List[str]] = Field(None, description="Instructions provided during the conversation")
     recommendations: Optional[List[Dict[str, Any]]] = Field(None, description="Recommendations made during the conversation")
     metadata: Optional[Dict[str, Any]] = Field(None, alias="summaryMetadata", description="Additional metadata about the summary (e.g., source, analysis version)")
