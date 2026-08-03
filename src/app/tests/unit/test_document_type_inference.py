@@ -51,19 +51,62 @@ def test_response_confidence_outside_unit_interval_is_rejected():
     """A DocumentTypeInferenceResponse with confidence outside [0.0, 1.0] is rejected."""
     with pytest.raises(ValidationError):
         DocumentTypeInferenceResponse(
-            id="doc-1", normalized_type="Progress Note", include_for_summary=True, confidence=1.5
+            id="doc-1",
+            normalized_type="Progress Note",
+            include_for_summary=True,
+            is_procedure_document=False,
+            confidence=1.5,
         )
     with pytest.raises(ValidationError):
         DocumentTypeInferenceResponse(
-            id="doc-1", normalized_type="Progress Note", include_for_summary=True, confidence=-0.1
+            id="doc-1",
+            normalized_type="Progress Note",
+            include_for_summary=True,
+            is_procedure_document=False,
+            confidence=-0.1,
         )
     # Boundary values are valid.
     DocumentTypeInferenceResponse(
-        id="doc-1", normalized_type="Progress Note", include_for_summary=True, confidence=0.0
+        id="doc-1",
+        normalized_type="Progress Note",
+        include_for_summary=True,
+        is_procedure_document=False,
+        confidence=0.0,
     )
     DocumentTypeInferenceResponse(
-        id="doc-1", normalized_type="Progress Note", include_for_summary=True, confidence=1.0
+        id="doc-1",
+        normalized_type="Progress Note",
+        include_for_summary=True,
+        is_procedure_document=False,
+        confidence=1.0,
     )
+
+
+def test_response_is_procedure_document_true_for_cardiac_catheterization():
+    """A DocumentTypeInferenceResponse for a cardiac-catheterization-flavored document sets
+    is_procedure_document=True."""
+    response = DocumentTypeInferenceResponse(
+        id="doc-3",
+        normalized_type="Procedure Note",
+        include_for_summary=True,
+        is_procedure_document=True,
+        confidence=0.95,
+    )
+
+    assert response.is_procedure_document is True
+
+
+def test_response_is_procedure_document_false_for_plain_progress_note():
+    """A DocumentTypeInferenceResponse for a plain progress note sets is_procedure_document=False."""
+    response = DocumentTypeInferenceResponse(
+        id="doc-2",
+        normalized_type="Progress Note",
+        include_for_summary=True,
+        is_procedure_document=False,
+        confidence=0.98,
+    )
+
+    assert response.is_procedure_document is False
 
 
 def test_batch_request_validates_with_multiple_distinct_ids():
@@ -109,6 +152,7 @@ def test_all_cache_hit_overwrites_id_and_never_invokes_infer_batch(
         id="stale-id-from-a-different-original-request",
         normalized_type="Progress Note",
         include_for_summary=True,
+        is_procedure_document=False,
         confidence=0.9,
     )
     cached_json = cached_response.model_dump_json()
@@ -161,6 +205,7 @@ def test_mixed_cache_hit_and_miss_remerges_by_id_and_gates_cache_write_on_confid
         id="stale-id-irrelevant",
         normalized_type="Insurance Card",
         include_for_summary=False,
+        is_procedure_document=False,
         confidence=0.95,
     )
     cached_json = cached_response.model_dump_json()
@@ -169,6 +214,7 @@ def test_mixed_cache_hit_and_miss_remerges_by_id_and_gates_cache_write_on_confid
         id="item-b",
         normalized_type="Consult Note",
         include_for_summary=True,
+        is_procedure_document=False,
         confidence=fresh_confidence,
     )
 
@@ -226,6 +272,7 @@ def test_infer_batch_returning_fewer_items_degrades_gracefully(
         id="item-x",
         normalized_type="Lab Report",
         include_for_summary=True,
+        is_procedure_document=False,
         confidence=0.9,
     )
 

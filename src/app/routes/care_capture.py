@@ -16,6 +16,7 @@ from ..models.playground_summarization import (
     PlaygroundSummarizationRequest,
     PlaygroundSummarizationResponse,
 )
+from ..models.procedure_summarization import ProcedureSummarizationRequest
 from ..models.transcript_summarization import TranscriptSummarizationRequest
 from ..services.summarization import (
     ComprehensiveSummarizationService,
@@ -24,6 +25,7 @@ from ..services.summarization import (
     TranscriptSummarizationService,
 )
 from ..services.summarization.attachment_summarization import AttachmentSummarizationService
+from ..services.summarization.procedure_summarization import ProcedureSummarizationService
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/care-capture", tags=["care-capture"])
@@ -389,6 +391,39 @@ async def attachment_summary(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail=f"Attachment summarization failed: {str(e)}")
+
+
+@router.post(
+    "/procedure-summary",
+    response_model=ConversationSummary,
+    summary="Procedure Document Summarization",
+    description=(
+        "Extract structured, patient-facing summaries (type, date, who performed it, reason, "
+        "what was performed, outcome, follow-up) from procedure documents (cardiac catheterization, "
+        "TEE, operative/surgery reports, etc.) for a patient appointment, and persist the result "
+        "into conversation_summaries (summary_metadata.source='procedure_summary'), mirroring "
+        "/attachment-summary. The full structured per-procedure list is available in "
+        "metadata.procedures. Persists an empty-procedures summary when the appointment has no "
+        "documents flagged as procedure documents."
+    ),
+)
+async def procedure_summary(
+    request: ProcedureSummarizationRequest,
+    db: AsyncSession = Depends(get_db),
+) -> ConversationSummary:
+    try:
+        service = ProcedureSummarizationService(db)
+        return await service.analyze_procedures(request)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Procedure summarization failed - appointment_id: {request.appointment_id}: {str(e)}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=f"Procedure summarization failed: {str(e)}")
 
 
 @router.post(
