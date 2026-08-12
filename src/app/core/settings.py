@@ -124,6 +124,7 @@ class Settings(BaseSettings):
         env_file = (".env", ".env.development")
         env_file_encoding = "utf-8"
         case_sensitive = True
+        extra = "ignore"  # Permit extra env vars (e.g. LOG_LEVEL) without validation error
 
 
 # ---------------------------------------------------------------------------
