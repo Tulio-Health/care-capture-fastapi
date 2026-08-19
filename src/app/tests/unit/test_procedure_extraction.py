@@ -7,6 +7,9 @@ whole point is to prove the extraction is factually accurate on real report text
 
 Requires a configured OPENAI_API_KEY (via SSM or env) — skipped otherwise, matching this
 repo's settings-driven `get_pydantic_ai_model()` which raises without one.
+
+Runs N=5 times (real, non-deterministic LLM calls) and asserts a pass-rate threshold
+rather than 100%: see PASS_THRESHOLD below.
 """
 
 import os
@@ -15,9 +18,21 @@ from pathlib import Path
 
 import pytest
 
-from src.app.chains.procedure_extraction.chain import ProcedureExtractionChain
+from src.app.chains.procedure_extraction.chain import (
+    ProcedureExtractionChain,
+    _quote_supported,
+)
 from src.app.models.attachment_summarization import DocumentAttachment
-from src.app.models.procedure_summarization import NOT_DOCUMENTED_FOLLOW_UP
+from src.app.models.procedure_summarization import (
+    NOT_DOCUMENTED_FOLLOW_UP,
+    ProcedureSummary,
+)
+
+N_RUNS = 5
+# Real-LLM test: tolerate 1 flaky run out of 5 rather than demanding 100%, since a single
+# transient omission/hallucination on a genuinely ambiguous phrasing is a model-quality signal
+# to watch, not necessarily a regression. Tighten to 5/5 if this proves too lenient in practice.
+PASS_THRESHOLD = 4
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "procedure_reports"
 
@@ -77,39 +92,118 @@ def procedure_documents() -> list[DocumentAttachment]:
     ]
 
 
-@requires_llm
-async def test_procedure_extraction_against_ground_truth(procedure_documents):
-    """Runs the real chain against the 3 sample procedure reports and checks the output
-    against manually-verified ground truth (see samples/procedure-ground-truth.md in
-    care-capture-nodeapi) for type/date/performer, and checks follow_up's critical
-    documented-vs-not-documented distinction exactly."""
-    chain = ProcedureExtractionChain()
-    results = await chain.extract(procedure_documents)
+def _check_follow_up_grounding(
+    label: str, summary: ProcedureSummary, source_text: str
+) -> list[str]:
+    """Checks the validator's guarantee directly on a single ProcedureSummary: real follow_up
+    content must carry a quote-verified follow_up_source_quote, sentinel follow_up must have a
+    null quote. Returns a list of human-readable failure descriptions (empty = all good).
+    """
+    issues = []
+    if summary.follow_up == NOT_DOCUMENTED_FOLLOW_UP:
+        if summary.follow_up_source_quote is not None:
+            issues.append(
+                f"{label}: follow_up is the sentinel but follow_up_source_quote is not null "
+                f"({summary.follow_up_source_quote!r})"
+            )
+    else:
+        if not summary.follow_up_source_quote:
+            issues.append(
+                f"{label}: follow_up is real content but follow_up_source_quote is empty"
+            )
+        elif not _quote_supported(summary.follow_up_source_quote, source_text):
+            issues.append(
+                f"{label}: follow_up_source_quote {summary.follow_up_source_quote!r} not found "
+                "(verbatim/fuzzy) in the source document"
+            )
+    return issues
 
-    assert len(results) == 3
+
+def _check_run(
+    results: list[ProcedureSummary], procedure_documents: list[DocumentAttachment]
+) -> list[str]:
+    """Checks one extraction run against ground truth. Returns a list of failure descriptions
+    (empty = the run fully passed)."""
+    issues = []
+    if len(results) != 3:
+        return [f"expected 3 results, got {len(results)}"]
 
     cath, tee, surgery = results
+    cath_src, tee_src, surgery_src = (doc.extracted_text for doc in procedure_documents)
 
     # --- Document 1: cardiac catheterization ---
-    assert "cath" in cath.procedure_type.lower() or "angioplasty" in cath.procedure_type.lower()
-    assert cath.procedure_date == "2026-06-29"
-    assert any("ullah" in name.lower() for name in cath.performed_by)
+    if not (
+        "cath" in cath.procedure_type.lower()
+        or "angioplasty" in cath.procedure_type.lower()
+    ):
+        issues.append(f"cath: unexpected procedure_type {cath.procedure_type!r}")
+    if cath.procedure_date != "2026-06-29":
+        issues.append(f"cath: unexpected procedure_date {cath.procedure_date!r}")
+    if not any("ullah" in name.lower() for name in cath.performed_by):
+        issues.append(f"cath: performed_by missing Ullah: {cath.performed_by!r}")
     # This report HAS an explicit recommendation/disposition section -> must NOT be the sentinel.
-    assert cath.follow_up != NOT_DOCUMENTED_FOLLOW_UP
-    assert len(cath.follow_up) > 0
+    if cath.follow_up == NOT_DOCUMENTED_FOLLOW_UP or not cath.follow_up:
+        issues.append(
+            f"cath: follow_up wrongly omitted (sentinel/empty): {cath.follow_up!r}"
+        )
+    issues.extend(_check_follow_up_grounding("cath", cath, cath_src))
 
     # --- Document 2: TEE ---
-    assert "tee" in tee.procedure_type.lower() or "echocardiogram" in tee.procedure_type.lower()
-    assert tee.procedure_date == "2026-07-06"
-    assert any("strimel" in name.lower() for name in tee.performed_by)
+    if not (
+        "tee" in tee.procedure_type.lower()
+        or "echocardiogram" in tee.procedure_type.lower()
+    ):
+        issues.append(f"tee: unexpected procedure_type {tee.procedure_type!r}")
+    if tee.procedure_date != "2026-07-06":
+        issues.append(f"tee: unexpected procedure_date {tee.procedure_date!r}")
+    if not any("strimel" in name.lower() for name in tee.performed_by):
+        issues.append(f"tee: performed_by missing Strimel: {tee.performed_by!r}")
     # This report has NO follow-up/recommendation section -> must be exactly the sentinel.
-    assert tee.follow_up == NOT_DOCUMENTED_FOLLOW_UP
+    if tee.follow_up != NOT_DOCUMENTED_FOLLOW_UP:
+        issues.append(f"tee: follow_up wrongly fabricated: {tee.follow_up!r}")
+    issues.extend(_check_follow_up_grounding("tee", tee, tee_src))
 
     # --- Document 3: AVR surgery ---
-    assert any(
-        term in surgery.procedure_type.lower() for term in ["aortic valve", "avr", "surgery", "valve replacement"]
-    )
-    assert surgery.procedure_date == "2026-07-14"
-    assert any("choi" in name.lower() for name in surgery.performed_by)
+    if not any(
+        term in surgery.procedure_type.lower()
+        for term in ["aortic valve", "avr", "surgery", "valve replacement"]
+    ):
+        issues.append(f"surgery: unexpected procedure_type {surgery.procedure_type!r}")
+    if surgery.procedure_date != "2026-07-14":
+        issues.append(f"surgery: unexpected procedure_date {surgery.procedure_date!r}")
+    if not any("choi" in name.lower() for name in surgery.performed_by):
+        issues.append(f"surgery: performed_by missing Choi: {surgery.performed_by!r}")
     # This report has NO follow-up/recommendation section -> must be exactly the sentinel.
-    assert surgery.follow_up == NOT_DOCUMENTED_FOLLOW_UP
+    if surgery.follow_up != NOT_DOCUMENTED_FOLLOW_UP:
+        issues.append(f"surgery: follow_up wrongly fabricated: {surgery.follow_up!r}")
+    issues.extend(_check_follow_up_grounding("surgery", surgery, surgery_src))
+
+    return issues
+
+
+@requires_llm
+async def test_procedure_extraction_against_ground_truth(procedure_documents):
+    """Runs the real chain N_RUNS times against the 3 sample procedure reports and checks each
+    run's output against manually-verified ground truth (see samples/procedure-ground-truth.md
+    in care-capture-nodeapi) for type/date/performer, follow_up's critical documented-vs-not
+    distinction, and the new quote-grounding guarantee (follow_up_source_quote must be present
+    and verifiable whenever follow_up is real content, and null exactly when follow_up is the
+    sentinel). Asserts an aggregate pass rate >= PASS_THRESHOLD/N_RUNS rather than requiring
+    every single run to be perfect, since this is a real non-deterministic LLM call."""
+    chain = ProcedureExtractionChain()
+
+    passed = 0
+    run_reports = []
+    for run_idx in range(N_RUNS):
+        results = await chain.extract(procedure_documents)
+        issues = _check_run(results, procedure_documents)
+        if not issues:
+            passed += 1
+        run_reports.append(
+            f"run {run_idx + 1}: " + ("PASS" if not issues else "; ".join(issues))
+        )
+
+    report = "\n".join(run_reports)
+    assert (
+        passed >= PASS_THRESHOLD
+    ), f"Only {passed}/{N_RUNS} runs passed (threshold: {PASS_THRESHOLD}/{N_RUNS}):\n{report}"

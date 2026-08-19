@@ -9,11 +9,16 @@ the way attachment_summarization merges general visit notes.
 """
 
 import asyncio
+import difflib
 import logging
+import re
 from typing import List
 
-from pydantic_ai import Agent
+from pydantic_ai import Agent, ModelRetry, RunContext
+from pydantic_ai.exceptions import UnexpectedModelBehavior
+from pydantic_ai.settings import ModelSettings
 
+from src.app.common.constants.llm import LLM_MODEL
 from src.app.common.llm_factory import get_pydantic_ai_model
 from src.app.models.attachment_summarization import DocumentAttachment
 from src.app.models.procedure_summarization import (
@@ -22,6 +27,29 @@ from src.app.models.procedure_summarization import (
 )
 
 logger = logging.getLogger(__name__)
+
+_FOLLOWUP_SECTION_PATTERN = re.compile(
+    r"\b(recommendation|follow[\s-]?up|disposition|discharge instruction|plan)\b",
+    re.IGNORECASE,
+)
+
+
+def _normalize(s: str) -> str:
+    return re.sub(r"\s+", " ", s).strip().lower()
+
+
+def _quote_supported(quote: str, source: str, threshold: float = 0.85) -> bool:
+    """Fuzzy-checks that `quote` is (close to) a verbatim substring of `source`, tolerating
+    whitespace/case differences and minor transcription noise from the model."""
+    q, src = _normalize(quote), _normalize(source)
+    if not q:
+        return False
+    if q in src:
+        return True
+    matcher = difflib.SequenceMatcher(None, q, src)
+    match = matcher.find_longest_match(0, len(q), 0, len(src))
+    return match.size / max(len(q), 1) >= threshold
+
 
 _SYSTEM_PROMPT = f"""You are an AI Clinical Summarizer (Non-Advisory) that turns procedure documents
 (cardiac catheterization reports, transesophageal echocardiogram/TEE reports, operative/surgery
@@ -53,11 +81,26 @@ It has these fields:
 CRITICAL RULES (non-negotiable):
 1. NEVER fabricate, infer, or guess clinical facts, names, dates, or outcomes that are not explicitly
    stated in the source text.
-2. follow_up is the most safety-critical field: if — and only if — the source document has NO
-   explicit follow-up/recommendation/disposition/next-steps section, you MUST set follow_up to
-   EXACTLY this literal string, verbatim, with no changes: {NOT_DOCUMENTED_FOLLOW_UP!r}
+2. follow_up is the most safety-critical field. Follow this two-step process:
+   a. FIRST, locate and copy the exact sentence(s) from the source document's follow-up/
+      recommendation/disposition/discharge-instructions section into follow_up_source_quote,
+      copied character-for-character verbatim from the source.
+      Follow-up content is STILL follow-up even when it's phrased as clinician-directed orders
+      rather than text addressed directly to the patient — e.g. "Integrilin gtt x 6 hours",
+      "TR band wean per protocol", "Monitor vitals q4h", "f/u with cardiology in 2 weeks" all
+      COUNT as follow-up content. Do NOT skip a section just because it reads like a clinical
+      order instead of a sentence addressed to "you" — that phrasing is fixed in step b below.
+      If no such section exists anywhere in the document, follow_up_source_quote MUST be null.
+   b. THEN, if you copied a quote in step (a), paraphrase it into follow_up in plain,
+      patient-facing, second-person language (e.g. "TR band wean per protocol" becomes
+      "You will have the compression band on your wrist gradually loosened according to the
+      standard protocol"; "f/u with cardiology in 2 weeks" becomes "You were told to follow up
+      with cardiology in 2 weeks").
+      If follow_up_source_quote is null (no such section exists), follow_up MUST be set to
+      EXACTLY this literal string, verbatim, with no changes: {NOT_DOCUMENTED_FOLLOW_UP!r}
    Do NOT infer follow-up from what "would normally" happen after such a procedure. Do NOT leave it
    blank or write something like "none mentioned" — use the exact sentinel string above.
+   follow_up_source_quote is null if and only if follow_up is the exact sentinel string above.
 3. Use second person ("you"/"your") in reason, what_was_performed, outcome, and follow_up (when real
    content exists). Do not use imperative/command language — attribute instructions to the provider
    (e.g. "You were told to..." not "Take...").
@@ -101,27 +144,70 @@ class ProcedureExtractionChain:
     @property
     def model(self):
         if self._model is None:
-            self._model = get_pydantic_ai_model()
+            self._model = get_pydantic_ai_model(LLM_MODEL.GPT_4_1_MINI)
         return self._model
 
     @property
-    def agent(self) -> Agent:
+    def agent(self) -> Agent[str, ProcedureSummary]:
         if self._agent is None:
             self._agent = Agent(
                 self.model,
                 output_type=ProcedureSummary,
                 system_prompt=_SYSTEM_PROMPT,
+                model_settings=ModelSettings(
+                    temperature=0.0, timeout=30.0, max_tokens=1500
+                ),
+                retries=2,
+                deps_type=str,
             )
+
+            @self._agent.output_validator
+            async def _validate_follow_up_grounding(
+                ctx: RunContext[str], output: ProcedureSummary
+            ) -> ProcedureSummary:
+                """Enforces the quote-grounding contract from _SYSTEM_PROMPT rule 2: every real
+                follow_up must be traceable to a verbatim quote from the source (anti-fabrication),
+                and a sentinel follow_up is challenged once if the source looks like it has a
+                follow-up section the model may have missed (anti-omission)."""
+                source = ctx.deps
+
+                if output.follow_up == NOT_DOCUMENTED_FOLLOW_UP:
+                    match = _FOLLOWUP_SECTION_PATTERN.search(source)
+                    if match and not output.follow_up_source_quote:
+                        raise ModelRetry(
+                            "The source document appears to contain a follow-up/recommendation/"
+                            f"disposition section (matched keyword: {match.group(0)!r}). Re-check it "
+                            "carefully — if it truly contains no follow-up instructions for the "
+                            "patient, keep the sentinel, but if you find relevant content, extract "
+                            "it into follow_up_source_quote and follow_up."
+                        )
+                    output.follow_up_source_quote = None
+                    return output
+
+                if not output.follow_up_source_quote or not _quote_supported(
+                    output.follow_up_source_quote, source
+                ):
+                    raise ModelRetry(
+                        "follow_up must be supported by follow_up_source_quote copied VERBATIM "
+                        "from the document. Your quote was missing or not found in the source. "
+                        "Either provide the exact quote, or set follow_up to exactly "
+                        f"{NOT_DOCUMENTED_FOLLOW_UP!r} with a null quote."
+                    )
+                return output
+
         return self._agent
 
     async def _extract_one(self, doc: DocumentAttachment) -> ProcedureSummary:
         prompt = _format_document_prompt(doc)
-        result = await self.agent.run(prompt)
+        result = await self.agent.run(prompt, deps=doc.extracted_text)
         return result.output
 
-    async def extract(self, documents: List[DocumentAttachment]) -> List[ProcedureSummary]:
+    async def extract(
+        self, documents: List[DocumentAttachment]
+    ) -> List[ProcedureSummary]:
         """Extract a structured procedure summary for each document, concurrently. A failed
-        individual document is logged and dropped rather than failing the whole batch."""
+        individual document is logged and dropped rather than failing the whole batch.
+        """
         if not documents:
             return []
 
@@ -132,9 +218,17 @@ class ProcedureExtractionChain:
         summaries: List[ProcedureSummary] = []
         for doc, result in zip(documents, results):
             if isinstance(result, Exception):
-                logger.error(
-                    f"Procedure extraction failed for document '{doc.title}': {result}", exc_info=result
-                )
+                if isinstance(result, UnexpectedModelBehavior):
+                    logger.error(
+                        f"Procedure extraction failed for document '{doc.title}': model exhausted "
+                        f"retries against the follow_up quote-grounding validator: {result}",
+                        exc_info=result,
+                    )
+                else:
+                    logger.error(
+                        f"Procedure extraction failed for document '{doc.title}': {result}",
+                        exc_info=result,
+                    )
                 continue
             summaries.append(result)
         return summaries

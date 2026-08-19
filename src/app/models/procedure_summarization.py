@@ -20,28 +20,6 @@ class ProcedureSummary(BaseModel):
     """Structured, patient-facing summary of a single procedure document. Only include
     information explicitly stated in the source text — never infer or fabricate."""
 
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "source_document_title": "Cardiac Catheterization Report",
-                "procedure_type": "Cardiac catheterization with coronary angioplasty and stent placement",
-                "procedure_date": "2026-06-29",
-                "performed_by": ["Waqas Ullah, MD (interventional cardiologist)"],
-                "reason": "You had a heart attack, and this procedure was done to find and open the blocked artery causing it.",
-                "what_was_performed": (
-                    "Your doctor accessed an artery in your right wrist and took X-ray pictures of "
-                    "your heart's blood vessels. Two blocked vessels were found and opened using a "
-                    "balloon and a stent (a small mesh tube) was placed in one of them to keep it open."
-                ),
-                "outcome": "The blocked arteries were successfully reopened and blood flow was restored.",
-                "follow_up": (
-                    "You were told to take blood-thinning medication, follow up with cardiology, and "
-                    "call your cardiologist right away if your symptoms come back."
-                ),
-            }
-        }
-    )
-
     source_document_title: str = Field(
         ..., description="Title of the source document as provided in the metadata"
     )
@@ -54,7 +32,8 @@ class ProcedureSummary(BaseModel):
         ),
     )
     procedure_date: Optional[str] = Field(
-        None, description="Date the procedure was performed, in ISO format (YYYY-MM-DD), if stated"
+        None,
+        description="Date the procedure was performed, in ISO format (YYYY-MM-DD), if stated",
     )
     performed_by: List[str] = Field(
         default_factory=list,
@@ -95,6 +74,15 @@ class ProcedureSummary(BaseModel):
             "never left blank."
         ),
     )
+    follow_up_source_quote: Optional[str] = Field(
+        None,
+        description=(
+            "EXACT verbatim text copied character-for-character from the source document's "
+            "follow-up/recommendation/disposition/discharge-instructions section that follow_up "
+            "is based on. MUST be a literal substring of the source document. null if and only "
+            f"if follow_up is {NOT_DOCUMENTED_FOLLOW_UP!r}."
+        ),
+    )
 
 
 class ProcedureSummarizationRequest(BaseModel):
@@ -115,5 +103,3 @@ class ProcedureSummarizationRequest(BaseModel):
     encounter_id: Optional[str] = Field(
         None, description="Optional encounter ID to filter DocumentReferences"
     )
-
-
