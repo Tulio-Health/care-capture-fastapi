@@ -17,6 +17,7 @@ class TranslatedSummary(BaseModel):
     diagnoses: Optional[List[Union[str, Dict[str, Any]]]] = None
     instructions: Optional[List[str]] = None
     recommendations: Optional[List[Dict[str, Any]]] = None
+    procedures: Optional[List[Dict[str, Any]]] = None
 
 
 class TranslationRequest(BaseModel):
@@ -73,6 +74,7 @@ class TranslationResponse(BaseModel):
     diagnoses: Optional[List[Union[str, Dict[str, Any]]]] = Field(alias="diagnoses")
     instructions: Optional[List[str]] = Field(alias="instructions")
     recommendations: Optional[List[Dict[str, Any]]] = Field(alias="recommendations")
+    procedures: Optional[List[Dict[str, Any]]] = Field(default=None, alias="procedures")
     original_language: str = Field(default="en", alias="originalLanguage")
     translated_language: str = Field(alias="translatedLanguage")
     created_at: datetime = Field(alias="createdAt")

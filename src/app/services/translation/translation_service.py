@@ -9,6 +9,45 @@ from src.app.common.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Only these keys are ever taken from the LLM output. Everything else
+# (procedure_date, performed_by, procedure_type, source_document_title,
+# follow_up_source_quote) is copied from the original — corruption of
+# passthrough fields is structurally impossible, not prompt-dependent.
+_TRANSLATABLE_PROCEDURE_KEYS = {"reason", "procedure_details", "outcome", "follow_up"}
+
+
+def _merge_translated_procedures(
+    original: list, llm: list | None, summary_id
+) -> list | None:
+    """Whitelist-merge LLM-translated procedure fields onto the originals, by index.
+
+    Returns None (=> English fallback downstream) on count mismatch or on a
+    per-index procedure_date anchor mismatch (reorder detection).
+    """
+    if llm is None:
+        return None
+    if len(llm) != len(original):
+        logger.warning(
+            f"Procedure count mismatch for summary {summary_id}: "
+            f"{len(original)} original vs {len(llm)} translated — dropping translated procedures"
+        )
+        return None
+    merged = []
+    for orig, t in zip(original, llm):
+        t = t or {}
+        # Anchor (MAJOR-2): the echoed procedure_date must match by index; a
+        # mismatch means the model reordered elements — drop everything.
+        if t.get("procedure_date") != orig.get("procedure_date"):
+            logger.warning(
+                f"Procedure order/anchor mismatch for summary {summary_id} — dropping translated procedures"
+            )
+            return None
+        merged.append(
+            {**orig, **{k: v for k, v in t.items() if k in _TRANSLATABLE_PROCEDURE_KEYS}}
+        )
+    return merged
+
+
 class TranslationService:
     """
     Service for translating conversation summaries to different languages.
@@ -63,6 +102,7 @@ class TranslationService:
                 "diagnoses": summary.diagnoses,
                 "instructions": summary.instructions,
                 "recommendations": summary.recommendations,
+                "procedures": (summary.summary_metadata or {}).get("procedures"),
                 "created_at": summary.created_at.isoformat(),
                 "updated_at": summary.updated_at.isoformat(),
                 "created_by": str(summary.created_by),
@@ -73,7 +113,13 @@ class TranslationService:
             translated_summary = await self.translation_chain.translate_conversation_summary(
                 summary_dict, language_code
             )
-            
+
+            translated_procedures = _merge_translated_procedures(
+                summary_dict.get("procedures") or [],
+                translated_summary.get("procedures"),
+                summary_id,
+            )
+
             # Add translation metadata
             translated_summary["original_language"] = "en"
             translated_summary["translated_language"] = language_code
@@ -101,6 +147,7 @@ class TranslationService:
                 diagnoses=translated_summary.get("diagnoses"),
                 instructions=translated_summary.get("instructions"),
                 recommendations=translated_summary.get("recommendations"),
+                procedures=translated_procedures,
                 original_language=translated_summary["original_language"],
                 translated_language=translated_summary["translated_language"],
                 created_at=translated_summary["created_at"],

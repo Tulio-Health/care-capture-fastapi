@@ -30,7 +30,10 @@ CRITICAL TRANSLATION RULES:
 TRANSLATION SCOPE:
 - Translate: summary_text, key_points, diagnoses, instructions, recommendation descriptions
 - Translate medication names, dosage instructions, and frequency descriptions to local terminology
+- For each entry in procedures: translate reason, procedure_details, outcome, and follow_up
 - Do NOT translate: field names (name, dosage, frequency keys), UUIDs, numeric values, units
+- In procedures entries, return procedure_date, performed_by, procedure_type, source_document_title, and follow_up_source_quote exactly as given
+- Preserve the exact number and order of procedures entries and their keys
 
 Return only the translatable fields as a structured output."""
 
@@ -93,6 +96,8 @@ class TranslationChain:
                 "instructions": summary_data.get("instructions"),
                 "recommendations": summary_data.get("recommendations"),
             }
+            if summary_data.get("procedures"):
+                translatable["procedures"] = summary_data["procedures"]
 
             user_prompt = (
                 f"Translate the following medical summary fields to {language_name} ({target_language}).\n\n"
@@ -116,6 +121,7 @@ class TranslationChain:
                 "diagnoses": translated.diagnoses,
                 "instructions": translated.instructions,
                 "recommendations": translated.recommendations,
+                "procedures": translated.procedures,
             })
 
             logger.info(f"Successfully translated summary to {target_language}")
