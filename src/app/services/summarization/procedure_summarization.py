@@ -106,7 +106,11 @@ class ProcedureSummarizationService:
             )
 
         chain = ProcedureExtractionChain()
-        procedures = await chain.extract(valid_documents)
+        procedures, chain_failures = await chain.extract(valid_documents)
+        # Merge chain-level LLM validation failures into the SAME extraction_errors list as
+        # the S3/text-extraction failures above, so a document that downloaded fine but failed
+        # LLM validation is no longer silently missing from both `procedures` and this list.
+        extraction_errors.extend(chain_failures)
 
         self.logger.info(
             f"Procedure summarization completed - appointment_id: {request.appointment_id}, "

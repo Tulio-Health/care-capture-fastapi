@@ -12,7 +12,7 @@ import asyncio
 import difflib
 import logging
 import re
-from typing import List
+from typing import List, Tuple
 
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.exceptions import UnexpectedModelBehavior
@@ -32,6 +32,24 @@ _FOLLOWUP_SECTION_PATTERN = re.compile(
     r"\b(recommendation|follow[\s-]?up|disposition|discharge instruction|plan)\b",
     re.IGNORECASE,
 )
+
+# Was 20_000 (an unexamined leftover doubled from attachment_summarization's per-doc cap,
+# which was sized for a smaller-context model). gpt-4.1-mini has a ~1M token context window;
+# 100k chars ~= 25k tokens gives 5x headroom over any realistic procedure report while keeping
+# cost and spurious-retry exposure bounded. Deliberately NOT 200k: at that length, common
+# section-header keywords (recommendation/follow-up/plan/etc.) appear in almost every document
+# somewhere, making the anti-omission validator (see _validate_follow_up_grounding) fire a
+# near-guaranteed extra round-trip on most long documents, for ~10x the cost per document with
+# no diagnosed benefit.
+_MAX_DOC_CHARS = 100_000
+
+# Process-wide cap on concurrent LLM calls from this chain. ProcedureExtractionChain is
+# instantiated fresh per HTTP request, so this MUST be a module-level semaphore (not an
+# instance attribute) to actually bound cross-request concurrency rather than giving every
+# request its own private budget. 8 is a conservative default (this org's actual OpenAI TPM
+# tier isn't known from this repo) and is per-process: with N uvicorn workers, the effective
+# cross-process cap is 8 x N.
+_LLM_SEMAPHORE = asyncio.Semaphore(8)
 
 
 def _normalize(s: str) -> str:
@@ -125,8 +143,8 @@ def _format_document_prompt(doc: DocumentAttachment) -> str:
     header += f"Content-Type: {doc.content_type}\n"
     header += "---\n\n"
 
-    content = doc.extracted_text[:20_000]
-    if len(doc.extracted_text) > 20_000:
+    content = doc.extracted_text[:_MAX_DOC_CHARS]
+    if len(doc.extracted_text) > _MAX_DOC_CHARS:
         content += f"\n\n[... truncated, total: {len(doc.extracted_text)} chars]"
 
     return header + content
@@ -199,23 +217,36 @@ class ProcedureExtractionChain:
 
     async def _extract_one(self, doc: DocumentAttachment) -> ProcedureSummary:
         prompt = _format_document_prompt(doc)
-        result = await self.agent.run(prompt, deps=doc.extracted_text)
+        # deps must match exactly what the model was shown in `prompt` (both capped at
+        # _MAX_DOC_CHARS) — the output_validator reads ctx.deps to check quote-grounding and
+        # the anti-omission challenge, so a deps/prompt mismatch lets the validator demand
+        # content the model was never shown, causing an unwinnable ModelRetry loop.
+        async with _LLM_SEMAPHORE:
+            result = await self.agent.run(
+                prompt, deps=doc.extracted_text[:_MAX_DOC_CHARS]
+            )
         return result.output
 
     async def extract(
         self, documents: List[DocumentAttachment]
-    ) -> List[ProcedureSummary]:
-        """Extract a structured procedure summary for each document, concurrently. A failed
-        individual document is logged and dropped rather than failing the whole batch.
+    ) -> Tuple[List[ProcedureSummary], List[dict]]:
+        """Extract a structured procedure summary for each document, concurrently.
+
+        Returns (summaries, failures): a failed individual document is logged, dropped from
+        `summaries`, and recorded in `failures` using the SAME {"file_path", "error"} shape
+        already used by ProcedureSummarizationService for S3/extraction failures, so callers
+        can merge both into one `extraction_errors` list instead of silently losing documents
+        that downloaded fine but failed LLM validation.
         """
         if not documents:
-            return []
+            return [], []
 
         results = await asyncio.gather(
             *(self._extract_one(doc) for doc in documents), return_exceptions=True
         )
 
         summaries: List[ProcedureSummary] = []
+        failures: List[dict] = []
         for doc, result in zip(documents, results):
             if isinstance(result, Exception):
                 if isinstance(result, UnexpectedModelBehavior):
@@ -229,6 +260,7 @@ class ProcedureExtractionChain:
                         f"Procedure extraction failed for document '{doc.title}': {result}",
                         exc_info=result,
                     )
+                failures.append({"file_path": doc.file_path, "error": str(result)})
                 continue
             summaries.append(result)
-        return summaries
+        return summaries, failures

@@ -60,6 +60,24 @@ requires_llm = pytest.mark.skipif(
 
 
 @pytest.fixture
+def long_cardiac_cath_document() -> DocumentAttachment:
+    """Same cath-report shape as the `cardiac_cath` fixture, but padded with a plausible
+    recovery-unit vitals flowsheet so the Recommendation/Disposition section starts past the
+    OLD 20,000-char truncation point (verified in the fixture text itself) while staying well
+    under the new `_MAX_DOC_CHARS` cap. Regression fixture for the deps/prompt truncation-
+    mismatch bug."""
+    return DocumentAttachment(
+        file_path="s3://fake/samples/Sample-cardiac-cath-long.pdf",
+        content_type="application/pdf",
+        title="Cardiac Catheterization Report (Extended Recovery Flowsheet)",
+        date=datetime(2026, 6, 29),
+        document_type="Procedure Note",
+        file_name="Sample-cardiac-cath-long.pdf",
+        extracted_text=_load_fixture_text("cardiac_cath_long.txt"),
+    )
+
+
+@pytest.fixture
 def procedure_documents() -> list[DocumentAttachment]:
     return [
         DocumentAttachment(
@@ -195,8 +213,11 @@ async def test_procedure_extraction_against_ground_truth(procedure_documents):
     passed = 0
     run_reports = []
     for run_idx in range(N_RUNS):
-        results = await chain.extract(procedure_documents)
-        issues = _check_run(results, procedure_documents)
+        results, failures = await chain.extract(procedure_documents)
+        if failures:
+            issues = [f"unexpected chain failures: {failures}"]
+        else:
+            issues = _check_run(results, procedure_documents)
         if not issues:
             passed += 1
         run_reports.append(
@@ -207,3 +228,35 @@ async def test_procedure_extraction_against_ground_truth(procedure_documents):
     assert (
         passed >= PASS_THRESHOLD
     ), f"Only {passed}/{N_RUNS} runs passed (threshold: {PASS_THRESHOLD}/{N_RUNS}):\n{report}"
+
+
+@requires_llm
+async def test_procedure_extraction_follow_up_past_old_truncation_point(
+    long_cardiac_cath_document,
+):
+    """Regression test for the deps/prompt truncation-mismatch bug: this fixture's
+    Recommendation/Disposition section starts past the OLD 20,000-char truncation point but
+    within the new `_MAX_DOC_CHARS` cap. Before the fix, the output_validator's `ctx.deps` held
+    the FULL untruncated text while the prompt sent to the model was capped at 20,000 chars, so
+    the validator would demand a follow_up the model was never shown for documents like this one
+    -> an unwinnable ModelRetry loop that exhausted retries and silently dropped the document.
+    Asserts the document is NOT dropped and follow_up is correctly extracted (non-sentinel,
+    quote-grounded)."""
+    source_text = long_cardiac_cath_document.extracted_text
+    assert len(source_text) > 20_000, "fixture must exceed the old truncation point"
+    assert (
+        source_text.index("Recommendation:") > 20_000
+    ), "fixture's follow-up section must start past the old truncation point"
+
+    chain = ProcedureExtractionChain()
+    summaries, failures = await chain.extract([long_cardiac_cath_document])
+
+    assert not failures, f"document was wrongly dropped as a failure: {failures}"
+    assert len(summaries) == 1, f"expected 1 result, got {len(summaries)}"
+
+    summary = summaries[0]
+    assert (
+        summary.follow_up != NOT_DOCUMENTED_FOLLOW_UP
+    ), f"follow_up was wrongly omitted (sentinel): {summary.follow_up!r}"
+    issues = _check_follow_up_grounding("long_cardiac_cath", summary, source_text)
+    assert not issues, "; ".join(issues)

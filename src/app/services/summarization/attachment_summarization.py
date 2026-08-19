@@ -351,48 +351,6 @@ class AttachmentSummarizationService:
 
         return extracted_documents
 
-    def _format_documents_for_prompt(self, extracted_documents: List[DocumentAttachment]) -> str:
-        """
-        Format extracted documents for AI prompt.
-
-        Orders documents by date (oldest → newest) and formats with metadata.
-
-        Args:
-            extracted_documents: List of DocumentAttachment objects
-
-        Returns:
-            Formatted text with document metadata and content
-        """
-        # Filter out documents with extraction errors
-        valid_documents = [doc for doc in extracted_documents if not doc.extraction_error]
-
-        if not valid_documents:
-            return "No documents successfully extracted."
-
-        # Sort by date (oldest first for chronological narrative)
-        valid_documents.sort(key=lambda doc: doc.date or datetime.min)
-
-        formatted_parts = []
-
-        for idx, doc in enumerate(valid_documents, 1):
-            doc_header = f"\n{'=' * 80}\n"
-            doc_header += f"DOCUMENT {idx} of {len(valid_documents)}\n"
-            doc_header += f"Title: {doc.title}\n"
-            if doc.date:
-                doc_header += f"Date: {doc.date.strftime('%Y-%m-%d')}\n"
-            doc_header += f"Type: {doc.content_type}\n"
-            if doc.file_name:
-                doc_header += f"Filename: {doc.file_name}\n"
-            doc_header += f"{'=' * 80}\n\n"
-
-            doc_content = doc.extracted_text[:10000]  # Limit to 10K chars per doc
-            if len(doc.extracted_text) > 10000:
-                doc_content += f"\n\n[... truncated, total length: {len(doc.extracted_text)} characters]"
-
-            formatted_parts.append(doc_header + doc_content)
-
-        return "\n\n".join(formatted_parts)
-
     def _build_appointment_context(self, appointment: Appointment, provider_name: str) -> Dict[str, str]:
         """
         Build appointment context for AI analysis.

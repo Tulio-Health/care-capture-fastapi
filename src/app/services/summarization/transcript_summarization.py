@@ -98,7 +98,10 @@ class TranscriptSummarizationService:
         """
         try:
             summarization_chain = TranscriptSummarizationChain()
-            summary = summarization_chain.summarize(request)
+            # Pass the actual transcript text, not the request object itself (that leaked
+            # UUIDs and field names into the prompt via `request`'s Python repr).
+            transcript_text = "\n\n".join(t.text for t in request.transcripts)
+            summary = await summarization_chain.summarize(transcript_text)
             
             # Validate and parse the response
             summary_model = TranscriptSummarizationResponse.model_validate_json(

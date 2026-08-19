@@ -64,6 +64,6 @@ class TranscriptSummarizationChain:
         return self._chain
 
     @traceable(name="summarize")
-    def summarize(self, text) -> TranscriptSummarizationResponse:
-        result = self.chain.invoke({"text": text, "output_format": self.parser.get_format_instructions()}, config={"callbacks": get_callbacks()})
+    async def summarize(self, text) -> TranscriptSummarizationResponse:
+        result = await self.chain.ainvoke({"text": text, "output_format": self.parser.get_format_instructions()}, config={"callbacks": get_callbacks()})
         return result
