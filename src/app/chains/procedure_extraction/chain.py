@@ -89,7 +89,7 @@ It has these fields:
   Do NOT include referring, ordering, or primary-care physicians who did not themselves perform it.
 - reason: plain-language, patient-facing ("you"/"your") explanation of WHY the procedure was done —
   based only on the documented indication/reason for study/pre-op diagnosis/history of present illness.
-- what_was_performed: plain-language, patient-facing explanation of WHAT was actually done — the key
+- procedure_details: plain-language, patient-facing explanation of WHAT was actually done — the key
   steps and findings, translated from clinical jargon into language a patient can understand.
 - outcome: plain-language, patient-facing explanation of the RESULT (success/complications, key
   findings, impression/conclusions).
@@ -119,7 +119,7 @@ CRITICAL RULES (non-negotiable):
    Do NOT infer follow-up from what "would normally" happen after such a procedure. Do NOT leave it
    blank or write something like "none mentioned" — use the exact sentinel string above.
    follow_up_source_quote is null if and only if follow_up is the exact sentinel string above.
-3. Use second person ("you"/"your") in reason, what_was_performed, outcome, and follow_up (when real
+3. Use second person ("you"/"your") in reason, procedure_details, outcome, and follow_up (when real
    content exists). Do not use imperative/command language — attribute instructions to the provider
    (e.g. "You were told to..." not "Take...").
 4. Translate medical terminology into plain language while preserving clinical accuracy (e.g.

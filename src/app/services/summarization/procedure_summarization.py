@@ -140,7 +140,7 @@ class ProcedureSummarizationService:
             summary_text = "\n\n".join(
                 f"{p.procedure_type}"
                 + (f" ({p.procedure_date})" if p.procedure_date else "")
-                + f": {p.what_was_performed} {p.outcome}"
+                + f": {p.procedure_details} {p.outcome}"
                 for p in procedures
             )
             key_points = [f"{p.procedure_type}: {p.outcome}" for p in procedures]

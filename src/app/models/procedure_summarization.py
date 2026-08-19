@@ -50,7 +50,7 @@ class ProcedureSummary(BaseModel):
             "was done — based only on the documented indication/reason/pre-op diagnosis/HPI."
         ),
     )
-    what_was_performed: str = Field(
+    procedure_details: str = Field(
         ...,
         description=(
             "Plain-language explanation, addressed to the patient ('you'/'your'), of WHAT was actually "
