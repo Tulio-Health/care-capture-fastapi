@@ -7,6 +7,7 @@ from typing import List
 
 from langsmith import traceable
 from pydantic_ai import Agent
+from pydantic_ai.settings import ModelSettings
 
 from src.app.common.llm_factory import get_pydantic_ai_model
 from src.app.models.attachment_summarization import (
@@ -344,6 +345,7 @@ class AttachmentSummarizationChain:
                 self.model,
                 output_type=list[DocumentSummary],
                 system_prompt=self._extraction_system_prompt,
+                model_settings=ModelSettings(timeout=60.0),
             )
         return self._extraction_agent
 
@@ -354,6 +356,7 @@ class AttachmentSummarizationChain:
                 self.model,
                 output_type=AttachmentSummarizationResponse,
                 system_prompt=self._synthesis_system_prompt,
+                model_settings=ModelSettings(timeout=60.0),
             )
         return self._synthesis_agent
 
