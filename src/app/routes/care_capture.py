@@ -1,3 +1,5 @@
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -395,22 +397,25 @@ async def attachment_summary(
 
 @router.post(
     "/procedure-summary",
-    response_model=ConversationSummary,
+    response_model=List[ConversationSummary],
     summary="Procedure Document Summarization",
     description=(
         "Extract structured, patient-facing summaries (type, date, who performed it, reason, "
         "what was performed, outcome, follow-up) from procedure documents (cardiac catheterization, "
-        "TEE, operative/surgery reports, etc.) for a patient appointment, and persist the result "
-        "into conversation_summaries (summary_metadata.source='procedure_summary'), mirroring "
-        "/attachment-summary. The full structured per-procedure list is available in "
-        "metadata.procedures. Persists an empty-procedures summary when the appointment has no "
-        "documents flagged as procedure documents."
+        "TEE, operative/surgery reports, etc.) for a patient appointment. Extractions that describe "
+        "the SAME real-world procedure event across multiple source documents are consolidated into "
+        "one entry. Persists ONE conversation_summaries row per (consolidated) procedure "
+        "(summary_metadata.source='procedure_summary'), each with summary_text=procedure_type and "
+        "the translatable reason/procedure_details/outcome/follow_up fields in the 'data' column - "
+        "replacing the old single-row-per-appointment/metadata.procedures[] shape. Returns an empty "
+        "list (and prunes any previously-persisted rows) when the appointment has no documents "
+        "flagged as procedure documents, or every extraction was consolidated away as a duplicate."
     ),
 )
 async def procedure_summary(
     request: ProcedureSummarizationRequest,
     db: AsyncSession = Depends(get_db),
-) -> ConversationSummary:
+) -> List[ConversationSummary]:
     try:
         service = ProcedureSummarizationService(db)
         return await service.analyze_procedures(request)
