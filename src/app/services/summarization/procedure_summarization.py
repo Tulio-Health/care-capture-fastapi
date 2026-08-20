@@ -43,25 +43,15 @@ _SOURCE = "procedure_summary"
 
 
 def _build_summary_text(p: ProcedureSummary) -> str:
-    """Build the patient-facing narrative sentence for a procedure row's `summary_text`,
+    """The patient-facing narrative for a procedure row's `summary_text` is exactly
+    `procedure_details` - it's already real second-person narrative prose on its own,
     matching the single-paragraph prose convention every other `conversation_summaries`
-    row uses (never a bare title). Deliberately omits `outcome` - it's already exposed
-    separately as `data.outcome` and folding it in here was considered and rejected.
-    `procedure_date` stays ISO format everywhere else (metadata, `data`); only this
-    sentence gets a human-readable reformat, and only when parsing succeeds.
+    row uses (never a bare title). `procedure_type` and `procedure_date` are deliberately
+    left out - they're available separately as `data.procedure_type`/`summary_metadata.
+    procedure_date` for callers to compose their own header. `outcome` stays excluded too -
+    it's already exposed separately as `data.outcome`.
     """
-    date_clause = ""
-    if p.procedure_date:
-        try:
-            formatted_date = datetime.strptime(p.procedure_date, "%Y-%m-%d").strftime("%B %d, %Y")
-            date_clause = f" on {formatted_date}"
-        except ValueError:
-            pass  # malformed date - fall back to omitting the date clause
-
-    summary_text = f"You had a {p.procedure_type}{date_clause}."
-    if p.procedure_details:
-        summary_text += f" {p.procedure_details}"
-    return summary_text
+    return p.procedure_details
 
 
 class ProcedureSummarizationService:
@@ -212,6 +202,7 @@ class ProcedureSummarizationService:
                     "updated_by": request.user_id,
                     "summary_text": _build_summary_text(p),
                     "data": {
+                        "procedure_type": p.procedure_type,
                         "reason": p.reason,
                         "procedure_details": p.procedure_details,
                         "outcome": p.outcome,

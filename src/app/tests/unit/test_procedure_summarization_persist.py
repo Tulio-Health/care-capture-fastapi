@@ -7,14 +7,22 @@ Uses a lightweight fake AsyncSession (no real DB/engine) so these stay true unit
 directly without a DB connection as long as nothing actually executes SQL against it.
 """
 
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 
+from src.app.chains.procedure_extraction.consolidation import ConsolidatedProcedure
 from src.app.db.objects.entities.conversation_summaries import ConversationSummaries
 from src.app.db.objects.repositories.conversation_summaries import (
     ConversationSummariesRepository,
 )
+from src.app.models.procedure_summarization import (
+    NOT_DOCUMENTED_FOLLOW_UP,
+    ProcedureSummarizationRequest,
+    ProcedureSummary,
+)
+from src.app.services.summarization.procedure_summarization import ProcedureSummarizationService
 
 pytestmark = pytest.mark.asyncio
 
@@ -163,6 +171,38 @@ async def test_consolidation_prunes_the_now_redundant_second_row():
     ]
     assert sorted(session.deleted, key=id) == sorted([existing_a, existing_b], key=id)
     assert len(session.added) == 1  # neither existing row's key matched -> a fresh row
+
+
+async def test_persist_includes_procedure_type_as_its_own_data_key():
+    """`_persist`'s row-building must surface `procedure_type` in `data` (translatable content,
+    same as reason/procedure_details/outcome/follow_up) alongside - not instead of - the rest."""
+    service = ProcedureSummarizationService.__new__(ProcedureSummarizationService)
+    service.logger = MagicMock()
+    service.summaries_repo = MagicMock()
+    service.summaries_repo.upsert_many_for_source = AsyncMock(return_value=[])
+
+    summary = ProcedureSummary(
+        source_document_title="Procedure Note",
+        procedure_type="Cardiac catheterization with coronary angioplasty",
+        procedure_date="2026-06-29",
+        performed_by=["Dr. A"],
+        reason="You had chest pain.",
+        procedure_details="A catheter was inserted through your wrist to check your arteries.",
+        outcome="The procedure went well with no complications.",
+        follow_up=NOT_DOCUMENTED_FOLLOW_UP,
+        follow_up_source_quote=None,
+    )
+    consolidated = ConsolidatedProcedure(summary=summary, document_ids=["doc-1"])
+    request = ProcedureSummarizationRequest(appointment_id=uuid4(), user_id=uuid4())
+
+    await service._persist(
+        request, consolidated=[consolidated], documents_analyzed=1, extraction_errors=[]
+    )
+
+    rows = service.summaries_repo.upsert_many_for_source.call_args.kwargs["rows"]
+    assert rows[0]["data"]["procedure_type"] == "Cardiac catheterization with coronary angioplasty"
+    assert rows[0]["data"]["reason"] == "You had chest pain."
+    assert rows[0]["summary_text"] == "A catheter was inserted through your wrist to check your arteries."
 
 
 async def test_zero_procedures_deletes_all_existing_rows_and_creates_nothing():

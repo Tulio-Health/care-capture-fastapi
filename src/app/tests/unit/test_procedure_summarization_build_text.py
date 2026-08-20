@@ -1,7 +1,9 @@
 """Unit tests for `_build_summary_text` in `procedure_summarization.py`, which builds the
-patient-facing narrative sentence used as a procedure row's `summary_text` - replacing the
-old bare `procedure_type` title so these rows match the single-paragraph prose convention
-every other `conversation_summaries` row (attachment_summary/transcript/fhir_analysis) uses.
+patient-facing narrative used as a procedure row's `summary_text` - just `procedure_details`,
+which is already real second-person narrative prose on its own, matching the single-paragraph
+prose convention every other `conversation_summaries` row (attachment_summary/transcript/
+fhir_analysis) uses. `procedure_type` and `procedure_date` are surfaced separately (`data.
+procedure_type`, `summary_metadata.procedure_date`) rather than folded into this sentence.
 """
 
 from src.app.models.procedure_summarization import NOT_DOCUMENTED_FOLLOW_UP, ProcedureSummary
@@ -24,29 +26,18 @@ def _summary(**overrides) -> ProcedureSummary:
     return ProcedureSummary(**defaults)
 
 
-def test_summary_text_includes_human_readable_date_and_details():
+def test_summary_text_is_procedure_details():
     text = _build_summary_text(_summary())
 
-    assert text.startswith("You had a Cardiac catheterization with coronary angioplasty")
-    assert "on June 29, 2026." in text
-    assert "2026-06-29" not in text  # ISO form must not leak into the narrative
-    assert text.endswith("A catheter was inserted through your wrist to check your arteries.")
+    assert text == "A catheter was inserted through your wrist to check your arteries."
 
 
-def test_null_date_omits_date_clause_with_no_punctuation_artifacts():
-    text = _build_summary_text(_summary(procedure_date=None))
+def test_summary_text_excludes_procedure_type_and_date():
+    text = _build_summary_text(_summary())
 
-    assert text.startswith("You had a Cardiac catheterization with coronary angioplasty. ")
-    assert " on " not in text
-    assert " on ." not in text
-    assert " on None" not in text
-
-
-def test_malformed_date_falls_back_to_omitting_date_clause():
-    text = _build_summary_text(_summary(procedure_date="not-a-date"))
-
-    assert text.startswith("You had a Cardiac catheterization with coronary angioplasty. ")
-    assert " on " not in text
+    assert "Cardiac catheterization" not in text
+    assert "2026-06-29" not in text
+    assert "June 29, 2026" not in text
 
 
 def test_outcome_is_never_included_in_summary_text():
@@ -62,11 +53,9 @@ def test_no_embedded_newlines():
     assert "\n" not in text
 
 
-def test_no_trailing_space_or_none_when_details_are_falsy():
-    # procedure_details is a required field per the Pydantic model, but the construction
-    # must not degrade to a trailing space or literal "None" if it were ever empty.
+def test_empty_procedure_details_passes_through_as_is():
+    # procedure_details is a required field per the Pydantic model, but the empty-string
+    # edge case must not be silently rewritten (e.g. to "None" or padded with a fallback).
     text = _build_summary_text(_summary(procedure_details=""))
 
-    assert text == "You had a Cardiac catheterization with coronary angioplasty on June 29, 2026."
-    assert not text.endswith(" ")
-    assert "None" not in text
+    assert text == ""
