@@ -32,6 +32,7 @@ from src.app.models.attachment_summarization import DocumentAttachment
 from src.app.models.conversation_summaries import ConversationSummary
 from src.app.models.procedure_summarization import (
     ProcedureSummarizationRequest,
+    ProcedureSummary,
 )
 from src.app.services.document_extraction import DocumentTextExtractor
 from src.app.utils.s3_client import S3DocumentClient
@@ -39,6 +40,28 @@ from src.app.utils.s3_client import S3DocumentClient
 logger = get_logger(__name__)
 
 _SOURCE = "procedure_summary"
+
+
+def _build_summary_text(p: ProcedureSummary) -> str:
+    """Build the patient-facing narrative sentence for a procedure row's `summary_text`,
+    matching the single-paragraph prose convention every other `conversation_summaries`
+    row uses (never a bare title). Deliberately omits `outcome` - it's already exposed
+    separately as `data.outcome` and folding it in here was considered and rejected.
+    `procedure_date` stays ISO format everywhere else (metadata, `data`); only this
+    sentence gets a human-readable reformat, and only when parsing succeeds.
+    """
+    date_clause = ""
+    if p.procedure_date:
+        try:
+            formatted_date = datetime.strptime(p.procedure_date, "%Y-%m-%d").strftime("%B %d, %Y")
+            date_clause = f" on {formatted_date}"
+        except ValueError:
+            pass  # malformed date - fall back to omitting the date clause
+
+    summary_text = f"You had a {p.procedure_type}{date_clause}."
+    if p.procedure_details:
+        summary_text += f" {p.procedure_details}"
+    return summary_text
 
 
 class ProcedureSummarizationService:
@@ -187,7 +210,7 @@ class ProcedureSummarizationService:
                     "user_id": request.user_id,
                     "created_by": request.user_id,
                     "updated_by": request.user_id,
-                    "summary_text": p.procedure_type,
+                    "summary_text": _build_summary_text(p),
                     "data": {
                         "reason": p.reason,
                         "procedure_details": p.procedure_details,
