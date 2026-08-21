@@ -17,6 +17,7 @@ class TranslatedSummary(BaseModel):
     diagnoses: Optional[List[Union[str, Dict[str, Any]]]] = None
     instructions: Optional[List[str]] = None
     recommendations: Optional[List[Dict[str, Any]]] = None
+    data: Optional[Dict[str, Any]] = None
 
 
 class TranslationRequest(BaseModel):
@@ -35,6 +36,7 @@ class PlaygroundConversationSummary(BaseModel):
     diagnoses: Optional[List[Union[str, Dict[str, Any]]]] = Field(None, alias="diagnoses", description="Diagnoses discussed in the conversation")
     instructions: Optional[List[str]] = Field(None, alias="instructions", description="Instructions provided during the conversation")
     recommendations: Optional[List[Dict[str, Any]]] = Field(None, alias="recommendations", description="Recommendations made during the conversation")
+    data: Optional[Dict[str, Any]] = Field(None, alias="data", description="Free-form, translatable content for summary types whose fields don't fit the named columns above")
     
     # Auto-generated fields with sensible defaults
     id: UUID = Field(default_factory=uuid4, description="Auto-generated unique identifier")
@@ -73,6 +75,7 @@ class TranslationResponse(BaseModel):
     diagnoses: Optional[List[Union[str, Dict[str, Any]]]] = Field(alias="diagnoses")
     instructions: Optional[List[str]] = Field(alias="instructions")
     recommendations: Optional[List[Dict[str, Any]]] = Field(alias="recommendations")
+    data: Optional[Dict[str, Any]] = Field(default=None, alias="data")
     original_language: str = Field(default="en", alias="originalLanguage")
     translated_language: str = Field(alias="translatedLanguage")
     created_at: datetime = Field(alias="createdAt")

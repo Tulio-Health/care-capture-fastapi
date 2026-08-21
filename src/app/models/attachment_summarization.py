@@ -42,6 +42,16 @@ class DocumentAttachment(BaseModel):
         None,
         description="Error message if extraction failed (for partial success scenarios)",
     )
+    resource_id: Optional[str] = Field(
+        None,
+        description=(
+            "Stable FHIR resource id (ehr_resource_id) of the source DocumentReference this "
+            "attachment was downloaded from. Structural metadata set programmatically by the "
+            "caller after fetching the DocumentReference — never populated from or shown to an "
+            "LLM. Used as a dedup/persistence key (e.g. procedure-summary consolidation), not "
+            "as free-text document identification."
+        ),
+    )
 
 
 class DiagnosisDetail(BaseModel):

@@ -30,9 +30,37 @@ CRITICAL TRANSLATION RULES:
 TRANSLATION SCOPE:
 - Translate: summary_text, key_points, diagnoses, instructions, recommendation descriptions
 - Translate medication names, dosage instructions, and frequency descriptions to local terminology
+- If a `data` object is present: recursively translate EVERY string value found anywhere inside it
+  (at any nesting depth), while preserving every key name and the exact object/array structure
+  unchanged. Do NOT add, remove, or rename keys. Do NOT translate non-string values (numbers,
+  booleans, null) - copy them through exactly as given.
 - Do NOT translate: field names (name, dosage, frequency keys), UUIDs, numeric values, units
 
 Return only the translatable fields as a structured output."""
+
+
+def _same_structure(original: Any, translated: Any) -> bool:
+    """Cheap structural-corruption guard for `data`: dicts must have the identical key set
+    (checked recursively into nested dict values), lists must have the identical length
+    (checked recursively into each item) - matching the structure-preservation contract from
+    the system prompt above. A fixed-schema Pydantic output field can't force an LLM to keep a
+    `Dict[str, Any]` sub-schema's keys/shape unchanged the way a named field's own shape is
+    enforced, so this is checked in code instead of trusted from the prompt alone."""
+    if isinstance(original, dict) or isinstance(translated, dict):
+        return (
+            isinstance(original, dict)
+            and isinstance(translated, dict)
+            and original.keys() == translated.keys()
+            and all(_same_structure(original[k], translated[k]) for k in original)
+        )
+    if isinstance(original, list) or isinstance(translated, list):
+        return (
+            isinstance(original, list)
+            and isinstance(translated, list)
+            and len(original) == len(translated)
+            and all(_same_structure(o, t) for o, t in zip(original, translated))
+        )
+    return True
 
 
 class TranslationChain:
@@ -92,6 +120,7 @@ class TranslationChain:
                 "diagnoses": summary_data.get("diagnoses"),
                 "instructions": summary_data.get("instructions"),
                 "recommendations": summary_data.get("recommendations"),
+                "data": summary_data.get("data"),
             }
 
             user_prompt = (
@@ -107,6 +136,16 @@ class TranslationChain:
             result = await self.agent.run(user_prompt)
             translated: TranslatedSummary = result.output
 
+            original_data = summary_data.get("data")
+            if original_data is not None and not _same_structure(original_data, translated.data):
+                logger.warning(
+                    "Translated 'data' failed the structure-preservation guard (keys/shape "
+                    "changed) - falling back to the untranslated original for this field."
+                )
+                translated_data = original_data
+            else:
+                translated_data = translated.data
+
             # Merge translated fields back with original metadata
             merged = dict(summary_data)
             merged.update({
@@ -116,6 +155,7 @@ class TranslationChain:
                 "diagnoses": translated.diagnoses,
                 "instructions": translated.instructions,
                 "recommendations": translated.recommendations,
+                "data": translated_data,
             })
 
             logger.info(f"Successfully translated summary to {target_language}")

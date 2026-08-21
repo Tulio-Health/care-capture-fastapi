@@ -25,6 +25,14 @@ class ConversationSummary(BaseModel):
     )
     instructions: Optional[List[str]] = Field(None, description="Instructions provided during the conversation")
     recommendations: Optional[List[Dict[str, Any]]] = Field(None, description="Recommendations made during the conversation")
+    data: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Free-form, translatable content for summary types whose fields don't fit the named "
+            "columns above (e.g. procedure_summary rows: reason, procedure_details, outcome, "
+            "follow_up). Maps 1:1 to the ORM entity's 'data' column - no alias needed."
+        ),
+    )
     metadata: Optional[Dict[str, Any]] = Field(None, alias="summaryMetadata", description="Additional metadata about the summary (e.g., source, analysis version)")
     created_at: datetime = Field(..., alias="createdAt", description="Timestamp when the summary was created")
     updated_at: datetime = Field(..., alias="updatedAt", description="Timestamp when the summary was last updated")

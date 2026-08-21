@@ -3,15 +3,17 @@ summaries from procedure documents (cardiac catheterization, TEE, operative/surg
 reports, etc.).
 
 Batch-shaped like `document_type_inference` (list in, list out, one call) rather than
-`attachment_summarization`'s map-reduce+synthesis shape: each procedure document
-describes its OWN distinct event and must NOT be merged/deduplicated across documents
-the way attachment_summarization merges general visit notes.
+`attachment_summarization`'s map-reduce+synthesis shape: this chain still produces ONE
+ProcedureSummary per source document, one LLM call each. It deliberately does NOT merge or
+deduplicate across documents itself — that is `procedure_extraction.consolidation`'s job,
+run as a separate step over this chain's output (see `ExtractedProcedure`/`extract()` below).
 """
 
 import asyncio
 import difflib
 import logging
 import re
+from dataclasses import dataclass
 from typing import List, Tuple
 
 from pydantic_ai import Agent, ModelRetry, RunContext
@@ -50,6 +52,20 @@ _MAX_DOC_CHARS = 100_000
 # tier isn't known from this repo) and is per-process: with N uvicorn workers, the effective
 # cross-process cap is 8 x N.
 _LLM_SEMAPHORE = asyncio.Semaphore(8)
+
+
+@dataclass
+class ExtractedProcedure:
+    """Pairs one extracted ProcedureSummary with its source document's stable identifier.
+
+    `document_id` is structural metadata (the source DocumentAttachment's `resource_id`,
+    falling back to `file_path` if a resource_id was never set) attached AFTER `result.output`
+    is obtained from the LLM — the model never sees or produces this field, avoiding a
+    hallucination surface on an id the LLM has no reliable way to know.
+    """
+
+    document_id: str
+    summary: ProcedureSummary
 
 
 def _normalize(s: str) -> str:
@@ -229,14 +245,16 @@ class ProcedureExtractionChain:
 
     async def extract(
         self, documents: List[DocumentAttachment]
-    ) -> Tuple[List[ProcedureSummary], List[dict]]:
+    ) -> Tuple[List[ExtractedProcedure], List[dict]]:
         """Extract a structured procedure summary for each document, concurrently.
 
-        Returns (summaries, failures): a failed individual document is logged, dropped from
-        `summaries`, and recorded in `failures` using the SAME {"file_path", "error"} shape
+        Returns (extracted, failures): a failed individual document is logged, dropped from
+        `extracted`, and recorded in `failures` using the SAME {"file_path", "error"} shape
         already used by ProcedureSummarizationService for S3/extraction failures, so callers
         can merge both into one `extraction_errors` list instead of silently losing documents
-        that downloaded fine but failed LLM validation.
+        that downloaded fine but failed LLM validation. Each successful result is paired with
+        its source document's stable id via `ExtractedProcedure` (see its docstring) so callers
+        can consolidate/persist per-document rather than per-appointment.
         """
         if not documents:
             return [], []
@@ -245,7 +263,7 @@ class ProcedureExtractionChain:
             *(self._extract_one(doc) for doc in documents), return_exceptions=True
         )
 
-        summaries: List[ProcedureSummary] = []
+        extracted: List[ExtractedProcedure] = []
         failures: List[dict] = []
         for doc, result in zip(documents, results):
             if isinstance(result, Exception):
@@ -262,5 +280,6 @@ class ProcedureExtractionChain:
                     )
                 failures.append({"file_path": doc.file_path, "error": str(result)})
                 continue
-            summaries.append(result)
-        return summaries, failures
+            document_id = doc.resource_id or doc.file_path
+            extracted.append(ExtractedProcedure(document_id=document_id, summary=result))
+        return extracted, failures

@@ -213,7 +213,8 @@ async def test_procedure_extraction_against_ground_truth(procedure_documents):
     passed = 0
     run_reports = []
     for run_idx in range(N_RUNS):
-        results, failures = await chain.extract(procedure_documents)
+        extracted, failures = await chain.extract(procedure_documents)
+        results = [item.summary for item in extracted]
         if failures:
             issues = [f"unexpected chain failures: {failures}"]
         else:
@@ -249,12 +250,12 @@ async def test_procedure_extraction_follow_up_past_old_truncation_point(
     ), "fixture's follow-up section must start past the old truncation point"
 
     chain = ProcedureExtractionChain()
-    summaries, failures = await chain.extract([long_cardiac_cath_document])
+    extracted, failures = await chain.extract([long_cardiac_cath_document])
 
     assert not failures, f"document was wrongly dropped as a failure: {failures}"
-    assert len(summaries) == 1, f"expected 1 result, got {len(summaries)}"
+    assert len(extracted) == 1, f"expected 1 result, got {len(extracted)}"
 
-    summary = summaries[0]
+    summary = extracted[0].summary
     assert (
         summary.follow_up != NOT_DOCUMENTED_FOLLOW_UP
     ), f"follow_up was wrongly omitted (sentinel): {summary.follow_up!r}"

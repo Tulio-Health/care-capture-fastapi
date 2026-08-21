@@ -5,8 +5,10 @@ Mirrors `AttachmentSummarizationService`'s fetch/download/extract pattern, but f
 DocumentReferences down to only those flagged `isProcedureDocument` (set by
 care-capture-emr-connector from care-capture-fastapi's document-type-inference response)
 and runs the batch-shaped `ProcedureExtractionChain` instead of the map-reduce
-attachment_summarization chain. Produces ONE ProcedureSummary per procedure document —
-no cross-document synthesis/deduplication, since each procedure is its own distinct event.
+attachment_summarization chain. Produces one ProcedureSummary per procedure document, then
+runs `ProcedureConsolidator` (see `chains/procedure_extraction/consolidation.py`) to collapse
+extractions that describe the SAME real-world procedure event across multiple source
+documents before persisting one `conversation_summaries` row per CONSOLIDATED procedure.
 """
 
 from datetime import datetime
@@ -16,6 +18,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.app.chains.procedure_extraction.chain import ProcedureExtractionChain
+from src.app.chains.procedure_extraction.consolidation import (
+    ConsolidatedProcedure,
+    ProcedureConsolidator,
+)
 from src.app.common.logging import get_logger
 from src.app.db.models.appointments import Appointment
 from src.app.db.objects.repositories.conversation_summaries import (
@@ -26,11 +32,26 @@ from src.app.models.attachment_summarization import DocumentAttachment
 from src.app.models.conversation_summaries import ConversationSummary
 from src.app.models.procedure_summarization import (
     ProcedureSummarizationRequest,
+    ProcedureSummary,
 )
 from src.app.services.document_extraction import DocumentTextExtractor
 from src.app.utils.s3_client import S3DocumentClient
 
 logger = get_logger(__name__)
+
+_SOURCE = "procedure_summary"
+
+
+def _build_summary_text(p: ProcedureSummary) -> str:
+    """The patient-facing narrative for a procedure row's `summary_text` is exactly
+    `procedure_details` - it's already real second-person narrative prose on its own,
+    matching the single-paragraph prose convention every other `conversation_summaries`
+    row uses (never a bare title). `procedure_type` and `procedure_date` are deliberately
+    left out - they're available separately as `data.procedure_type`/`summary_metadata.
+    procedure_date` for callers to compose their own header. `outcome` stays excluded too -
+    it's already exposed separately as `data.outcome`.
+    """
+    return p.procedure_details
 
 
 class ProcedureSummarizationService:
@@ -42,11 +63,12 @@ class ProcedureSummarizationService:
     - Filtering to only documents flagged as procedure documents (isProcedureDocument=True)
     - Downloading documents from S3 and extracting text
     - Running the procedure-extraction chain
-    - Returning one ProcedureSummary per procedure document
+    - Consolidating extractions that describe the same real-world procedure event
+    - Persisting one conversation_summaries row per consolidated procedure (see `_persist`)
 
-    Follows the same architectural pattern as AttachmentSummarizationService, minus
-    database persistence (the caller — care-capture-nodeapi — owns persistence via
-    ConversationSummaryEntity).
+    Follows the same fetch/download/extract architectural pattern as
+    AttachmentSummarizationService, including owning its own persistence via
+    ConversationSummariesRepository.
     """
 
     def __init__(self, db: AsyncSession):
@@ -59,18 +81,22 @@ class ProcedureSummarizationService:
 
     async def analyze_procedures(
         self, request: ProcedureSummarizationRequest
-    ) -> ConversationSummary:
+    ) -> List[ConversationSummary]:
         """
-        Extract structured procedure summaries for a patient appointment and persist them via
-        `ConversationSummariesRepository.upsert` (same shared `conversation_summaries` table
-        and appointment_id+source upsert key as `AttachmentSummarizationService`), keyed on
-        `summary_metadata.source = 'procedure_summary'` so it coexists with the transcript and
-        fhir_analysis/attachment_summary rows for the same appointment.
+        Extract structured procedure summaries for a patient appointment, consolidate
+        extractions that describe the same real-world procedure event across multiple source
+        documents, and persist one `conversation_summaries` row per CONSOLIDATED procedure via
+        `ConversationSummariesRepository.upsert_many_for_source` - keyed on
+        `summary_metadata.source = 'procedure_summary'` so these rows coexist with the
+        transcript and fhir_analysis/attachment_summary rows for the same appointment.
 
-        Returns a ConversationSummary with an empty procedures list in metadata (not an error)
-        when the appointment has no procedure documents - this endpoint degrades gracefully so
-        callers that already gate on "does this appointment have a procedure doc" never see a
-        hard failure just because that gate raced or a document was reclassified between calls.
+        Returns an empty list (NOT an error, and NOT a placeholder row) when the appointment
+        has no procedure documents, or all documents failed extraction, or every extracted
+        procedure got consolidated away as a duplicate of another - an empty list is itself the
+        correct "no procedures" signal for callers (nodeapi's procedure count check, mobile's
+        "don't show the tab" behavior), and this endpoint degrades gracefully so callers that
+        already gate on "does this appointment have a procedure doc" never see a hard failure
+        just because that gate raced or a document was reclassified between calls.
         """
         self.logger.info(
             f"Starting procedure summarization - appointment_id: {request.appointment_id}, "
@@ -84,9 +110,9 @@ class ProcedureSummarizationService:
         if not doc_references:
             self.logger.info(
                 f"No procedure documents found for appointment {request.appointment_id} - "
-                "persisting empty procedure summary"
+                "pruning any previously-persisted procedure_summary rows"
             )
-            return await self._persist(request, procedures=[], documents_analyzed=0, extraction_errors=[])
+            return await self._persist(request, consolidated=[], documents_analyzed=0, extraction_errors=[])
 
         extracted_documents = await self._process_attachments(doc_references)
 
@@ -102,24 +128,27 @@ class ProcedureSummarizationService:
                 f"All procedure document extractions failed for appointment {request.appointment_id}"
             )
             return await self._persist(
-                request, procedures=[], documents_analyzed=0, extraction_errors=extraction_errors
+                request, consolidated=[], documents_analyzed=0, extraction_errors=extraction_errors
             )
 
         chain = ProcedureExtractionChain()
-        procedures, chain_failures = await chain.extract(valid_documents)
+        extracted, chain_failures = await chain.extract(valid_documents)
         # Merge chain-level LLM validation failures into the SAME extraction_errors list as
         # the S3/text-extraction failures above, so a document that downloaded fine but failed
-        # LLM validation is no longer silently missing from both `procedures` and this list.
+        # LLM validation is no longer silently missing from both `extracted` and this list.
         extraction_errors.extend(chain_failures)
+
+        consolidator = ProcedureConsolidator()
+        consolidated = await consolidator.consolidate(extracted)
 
         self.logger.info(
             f"Procedure summarization completed - appointment_id: {request.appointment_id}, "
-            f"procedures_extracted: {len(procedures)}"
+            f"documents_extracted: {len(extracted)}, consolidated_procedures: {len(consolidated)}"
         )
 
         return await self._persist(
             request,
-            procedures=procedures,
+            consolidated=consolidated,
             documents_analyzed=len(valid_documents),
             extraction_errors=extraction_errors,
         )
@@ -127,52 +156,73 @@ class ProcedureSummarizationService:
     async def _persist(
         self,
         request: ProcedureSummarizationRequest,
-        procedures: list,
+        consolidated: List[ConsolidatedProcedure],
         documents_analyzed: int,
         extraction_errors: list,
-    ) -> ConversationSummary:
-        """Build the patient-facing summary_text/key_points/instructions from the extracted
-        procedures and upsert into conversation_summaries, mirroring
-        AttachmentSummarizationService._prepare_summary_data's shape."""
-        procedure_dicts = [p.model_dump() for p in procedures]
-
-        if procedures:
-            summary_text = "\n\n".join(
-                f"{p.procedure_type}"
-                + (f" ({p.procedure_date})" if p.procedure_date else "")
-                + f": {p.procedure_details} {p.outcome}"
-                for p in procedures
+    ) -> List[ConversationSummary]:
+        """Upsert one conversation_summaries row per consolidated procedure (upsert-then-prune
+        via `ConversationSummariesRepository.upsert_many_for_source` - see its docstring),
+        replacing the old single-row-per-appointment model. `documents_analyzed` and
+        `extraction_errors` are appointment/batch-level facts (not facts about any individual
+        procedure), so they are logged here rather than written into any per-procedure row.
+        This drops them from the HTTP response entirely (the old single-row shape returned them
+        in `metadata.documents_analyzed`/`metadata.extraction_errors`) - confirmed safe for
+        today's only caller, nodeapi's `createProcedureSummaryForAppointment`, which only reads
+        the response's length/count and does not read either field today.
+        """
+        if documents_analyzed or extraction_errors:
+            self.logger.info(
+                f"Procedure summarization batch stats - appointment_id: {request.appointment_id}, "
+                f"documents_analyzed: {documents_analyzed}, extraction_errors: {len(extraction_errors)}"
             )
-            key_points = [f"{p.procedure_type}: {p.outcome}" for p in procedures]
-            instructions = [p.follow_up for p in procedures]
-        else:
-            summary_text = "No procedure documents were found for this appointment."
-            key_points = []
-            instructions = []
+        if extraction_errors:
+            self.logger.warning(
+                f"Procedure extraction errors for appointment {request.appointment_id}: {extraction_errors}"
+            )
 
-        summary_data = {
-            "summary_text": summary_text,
-            "user_id": request.user_id,
-            "created_by": request.user_id,
-            "updated_by": request.user_id,
-            "key_points": key_points,
-            "medications": [],
-            "diagnoses": [],
-            "instructions": instructions,
-            "recommendations": [],
-            "summary_metadata": {
-                "source": "procedure_summary",
+        rows = []
+        for item in consolidated:
+            p = item.summary
+            summary_metadata: dict = {
+                "source": _SOURCE,
                 "summaryType": "procedure",
-                "procedures": procedure_dicts,
-                "documents_analyzed": documents_analyzed,
-                "extraction_errors": extraction_errors,
-            },
-        }
+                "source_document_title": p.source_document_title,
+                "source_document_ids": sorted(item.document_ids),
+                "procedure_date": p.procedure_date,
+                "performed_by": p.performed_by,
+                "follow_up_source_quote": p.follow_up_source_quote,
+            }
+            if item.source_count > 1:
+                summary_metadata["consolidated_from_document_count"] = item.source_count
 
-        db_summary = await self.summaries_repo.upsert(
-            appointment_id=request.appointment_id, summary_data=summary_data
+            rows.append(
+                {
+                    "user_id": request.user_id,
+                    "created_by": request.user_id,
+                    "updated_by": request.user_id,
+                    "summary_text": _build_summary_text(p),
+                    "data": {
+                        "procedure_type": p.procedure_type,
+                        "reason": p.reason,
+                        "procedure_details": p.procedure_details,
+                        "outcome": p.outcome,
+                        "follow_up": p.follow_up,
+                    },
+                    "key_points": None,
+                    "medications": None,
+                    "diagnoses": None,
+                    "instructions": None,
+                    "recommendations": None,
+                    "summary_metadata": summary_metadata,
+                }
+            )
+
+        db_summaries = await self.summaries_repo.upsert_many_for_source(
+            appointment_id=request.appointment_id,
+            source=_SOURCE,
+            rows=rows,
         )
-        return ConversationSummary.model_validate(db_summary)
+        return [ConversationSummary.model_validate(s) for s in db_summaries]
 
     async def _fetch_appointment(self, request: ProcedureSummarizationRequest) -> Appointment:
         appointment_stmt = select(Appointment).where(Appointment.id == request.appointment_id)
@@ -262,6 +312,7 @@ class ProcedureSummarizationService:
                             size=size,
                             extracted_text=text,
                             extraction_error=None,
+                            resource_id=doc_ref.ehr_resource_id,
                         )
                     )
 
@@ -282,6 +333,7 @@ class ProcedureSummarizationService:
                             size=attachment.get("size"),
                             extracted_text="",
                             extraction_error=error_msg,
+                            resource_id=doc_ref.ehr_resource_id,
                         )
                     )
 
