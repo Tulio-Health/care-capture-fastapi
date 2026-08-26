@@ -82,3 +82,55 @@ async def test_translate_conversation_summary_falls_back_on_corrupted_data():
     result = await chain.translate_conversation_summary(summary_data, "es")
 
     assert result["data"] == original_data
+
+
+def _chain_with_mocked_agent_recommendations(
+    translated_recommendations: list[dict] | None,
+) -> TranslationChain:
+    chain = TranslationChain()
+    mock_agent = SimpleNamespace()
+    mock_agent.run = AsyncMock(
+        return_value=SimpleNamespace(
+            output=TranslatedSummary(
+                summary_text="translated text",
+                key_points=None,
+                medications=None,
+                diagnoses=None,
+                instructions=None,
+                recommendations=translated_recommendations,
+                data=None,
+            )
+        )
+    )
+    chain._agent = mock_agent  # type: ignore[assignment]
+    return chain
+
+
+@pytest.mark.asyncio
+async def test_translate_conversation_summary_falls_back_on_renamed_recommendations_key() -> (
+    None
+):
+    original = [{"recommendation": "en recommendation"}]
+    chain = _chain_with_mocked_agent_recommendations(
+        [{"advice": "es recommendation"}]
+    )  # renamed key
+    summary_data = {"summary_text": "text", "recommendations": original}
+
+    result = await chain.translate_conversation_summary(summary_data, "es")
+
+    assert result["recommendations"] == original
+
+
+@pytest.mark.asyncio
+async def test_translate_conversation_summary_falls_back_when_recommendations_nulled_out() -> (
+    None
+):
+    original = [{"recommendation": "en recommendation"}]
+    chain = _chain_with_mocked_agent_recommendations(
+        None
+    )  # invented None from a non-None original
+    summary_data = {"summary_text": "text", "recommendations": original}
+
+    result = await chain.translate_conversation_summary(summary_data, "es")
+
+    assert result["recommendations"] == original

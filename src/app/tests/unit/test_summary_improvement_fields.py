@@ -10,6 +10,7 @@ from src.app.models.attachment_summarization import (
     AttachmentSummarizationResponse,
     DiagnosisDetail,
     DocumentSummary,
+    RecommendationDetail,
 )
 from src.app.models.transcript_summarization import TranscriptSummarizationResponse
 
@@ -37,6 +38,15 @@ def test_transcript_summarization_response_has_procedures_and_split_diagnoses():
     fields = TranscriptSummarizationResponse.model_fields
     assert "procedures_mentioned" in fields
     assert fields["medical_diagnoses_discussed"].annotation == list[DiagnosisDetail]
+
+
+def test_transcript_recommendations_use_recommendation_detail() -> None:
+    assert (
+        TranscriptSummarizationResponse.model_fields[
+            "recommendations_provided_by_provider"
+        ].annotation
+        == list[RecommendationDetail]
+    )
 
 
 def test_recommendations_guardrail_no_longer_bans_lifestyle_counseling():

@@ -147,11 +147,15 @@ class TranscriptSummarizationService:
             "medications": summary.medications_prescribed_by_provider,
             "diagnoses": [d.model_dump() for d in summary.medical_diagnoses_discussed],
             "instructions": summary.instructions_provided_by_provider,
-            "recommendations": summary.recommendations_provided_by_provider,
+            "recommendations": [
+                r.model_dump() for r in summary.recommendations_provided_by_provider
+            ],
+            "data": {
+                "procedures_mentioned": summary.procedures_mentioned,
+            },
             "summary_metadata": {
                 "source": "transcript",
                 "transcript_count": len(request.transcripts),
                 "analysis_version": "1.0",
-                "procedures_mentioned": summary.procedures_mentioned,
             },
         }

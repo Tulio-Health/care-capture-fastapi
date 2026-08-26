@@ -315,7 +315,7 @@ class ConversationSummariesRepository:
     async def create_with_metadata(
         self, 
         summary_data: dict, 
-        source: str = "fhir_analysis"
+        source: str
     ) -> ConversationSummaries:
         """
         Create a conversation summary with metadata indicating the source

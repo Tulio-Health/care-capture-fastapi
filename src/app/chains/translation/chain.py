@@ -63,6 +63,16 @@ def _same_structure(original: Any, translated: Any) -> bool:
     return True
 
 
+_GUARDED_FIELDS = (
+    "key_points",
+    "medications",
+    "diagnoses",
+    "instructions",
+    "recommendations",
+    "data",
+)
+
+
 class TranslationChain:
     """
     PydanticAI-based translation chain for medical conversation summaries.
@@ -136,27 +146,33 @@ class TranslationChain:
             result = await self.agent.run(user_prompt)
             translated: TranslatedSummary = result.output
 
-            original_data = summary_data.get("data")
-            if original_data is not None and not _same_structure(original_data, translated.data):
-                logger.warning(
-                    "Translated 'data' failed the structure-preservation guard (keys/shape "
-                    "changed) - falling back to the untranslated original for this field."
+            # ponytail: whole-field fallback - one corrupted item reverts the entire field to
+            # English (complete-in-English beats silently-truncated-in-translation); for
+            # List[str] fields the guard is length-only, it cannot detect same-length
+            # placeholder/untranslated items
+            guarded: Dict[str, Any] = {}
+            for field in _GUARDED_FIELDS:
+                original_value = summary_data.get(field)
+                translated_value = getattr(translated, field)
+                corrupted = (
+                    original_value is None and translated_value is not None
+                ) or (
+                    original_value is not None
+                    and not _same_structure(original_value, translated_value)
                 )
-                translated_data = original_data
-            else:
-                translated_data = translated.data
+                if corrupted:
+                    logger.warning(
+                        "Translated %r failed the structure-preservation guard - falling back to "
+                        "the untranslated original for this field.",
+                        field,
+                    )
+                    guarded[field] = original_value
+                else:
+                    guarded[field] = translated_value
 
             # Merge translated fields back with original metadata
             merged = dict(summary_data)
-            merged.update({
-                "summary_text": translated.summary_text,
-                "key_points": translated.key_points,
-                "medications": translated.medications,
-                "diagnoses": translated.diagnoses,
-                "instructions": translated.instructions,
-                "recommendations": translated.recommendations,
-                "data": translated_data,
-            })
+            merged.update({"summary_text": translated.summary_text, **guarded})
 
             logger.info(f"Successfully translated summary to {target_language}")
             return merged

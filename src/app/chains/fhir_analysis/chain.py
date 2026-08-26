@@ -52,7 +52,7 @@ class FhirAnalysisChain:
             - Reconcile, normalize, prioritize, or resolve conflicting records or values
             - Override, modify, reword, or correct clinician-entered information
             - Predict outcomes, risks, disease progression, or treatment effectiveness
-            - Recommend actions, treatments, follow-ups, lifestyle changes, or care decisions
+            - Originate your own recommendations, treatments, follow-ups, lifestyle advice, or care decisions — provider-documented or EHR-documented recommendations (including lifestyle counseling such as diet/exercise, in-progress medication adjustments, and PT referrals) MUST be surfaced and attributed to the provider, never invented
             - Act as clinical decision support in any form
             - Assume relationships between resources unless explicitly linked in the EHR (e.g., Condition ↔ Medication)
             - Assume completion, adherence, success, or patient compliance for orders or plans

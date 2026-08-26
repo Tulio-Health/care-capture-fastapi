@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from src.app.models.attachment_summarization import RecommendationDetail
+
 
 class FhirAnalysisRequest(BaseModel):
     """Request model for FHIR resource analysis"""
@@ -30,7 +32,7 @@ class FhirAnalysisResponse(BaseModel):
         None, description="Summary of lab results and vital signs from observations"
     )
     risk_factors: list[str] = Field(default_factory=list, description="Identified clinical risk factors")
-    recommendations: list[dict[str, str]] = Field(
+    recommendations: list[RecommendationDetail] = Field(
         default_factory=list, description="Clinical recommendations for follow-up care"
     )
     resource_counts: dict[str, int] = Field(default_factory=dict, description="Count of FHIR resources by type")

@@ -1,7 +1,10 @@
 from uuid import UUID
 from pydantic import BaseModel, Field
 
-from src.app.models.attachment_summarization import DiagnosisDetail
+from src.app.models.attachment_summarization import (
+    DiagnosisDetail,
+    RecommendationDetail,
+)
 
 class Transcript(BaseModel):
     text: str
@@ -43,11 +46,11 @@ class TranscriptSummarizationResponse(BaseModel):
     instructions_provided_by_provider: list[str] = Field(
         ..., description="Direct instructions the provider gave the patient to follow."
     )
-    recommendations_provided_by_provider: list[dict[str, str]] = Field(
+    recommendations_provided_by_provider: list[RecommendationDetail] = Field(
         ...,
         description=(
             "Clinical recommendations, including lifestyle counseling (diet, exercise, activity) and "
-            "in-progress medication adjustments discussed by the provider, each as {'recommendation': ...}."
+            "in-progress medication adjustments discussed by the provider."
         ),
     )
     procedures_mentioned: list[str] = Field(

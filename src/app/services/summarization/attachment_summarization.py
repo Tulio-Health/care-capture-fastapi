@@ -451,6 +451,9 @@ class AttachmentSummarizationService:
             "diagnoses": [d.model_dump() for d in analysis_result.diagnoses_mentioned],
             "instructions": analysis_result.instructions,
             "recommendations": [{"recommendation": rec} for rec in analysis_result.recommendations],
+            "data": {
+                "procedures_mentioned": analysis_result.procedures_mentioned,
+            },
             "summary_metadata": {
                 "source": "attachment_summary",
                 "analysis_version": "2.0",
@@ -466,6 +469,5 @@ class AttachmentSummarizationService:
                 ),
                 "lab_results": analysis_result.lab_results,
                 "risk_factors": analysis_result.risk_factors,
-                "procedures_mentioned": analysis_result.procedures_mentioned,
             },
         }

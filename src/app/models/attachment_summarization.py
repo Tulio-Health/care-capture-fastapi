@@ -70,6 +70,18 @@ class DiagnosisDetail(BaseModel):
     )
 
 
+class RecommendationDetail(BaseModel):
+    """A single provider-attributed recommendation."""
+
+    recommendation: str = Field(
+        ...,
+        description=(
+            "One clinical recommendation, lifestyle counseling item, or in-progress medication "
+            "adjustment, attributed to the provider."
+        ),
+    )
+
+
 class DocumentSummary(BaseModel):
     """Structured clinical data extracted from a single medical document. Only include information explicitly stated in the source text."""
 
