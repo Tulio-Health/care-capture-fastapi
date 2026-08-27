@@ -63,6 +63,13 @@ def _same_structure(original: Any, translated: Any) -> bool:
     return True
 
 
+# Mirrored independently in care-capture-nodeapi's translation fingerprint field list
+# (src/modules/conversation-summaries/helpers/summary-translation.helper.ts:
+# TRANSLATABLE_SUMMARY_FIELDS) - these two lists cover the same concept in different
+# repos/languages and are maintained by hand; update both together when a summary field
+# is added or removed. New translatable content is expected to land as new keys inside
+# the existing `data` field (already listed here) rather than as a new top-level field,
+# which is why both lists are expected to stay small and stable.
 _GUARDED_FIELDS = (
     "key_points",
     "medications",
