@@ -1,6 +1,6 @@
 [project]
 name = "care-capture-ai"
-version = "0.1.0"
+version = "0.2.0"
 description = "API for Care Capture AI - Making healthcare patient data more meaningful for patients and caregivers"
 authors = [{name = "Vishwanath Sinha", email = "vsinhaa@tuliohealth.com"}]
 readme = "README.md"
