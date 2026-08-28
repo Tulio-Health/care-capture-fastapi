@@ -42,6 +42,44 @@ class DocumentAttachment(BaseModel):
         None,
         description="Error message if extraction failed (for partial success scenarios)",
     )
+    resource_id: Optional[str] = Field(
+        None,
+        description=(
+            "Stable FHIR resource id (ehr_resource_id) of the source DocumentReference this "
+            "attachment was downloaded from. Structural metadata set programmatically by the "
+            "caller after fetching the DocumentReference — never populated from or shown to an "
+            "LLM. Used as a dedup/persistence key (e.g. procedure-summary consolidation), not "
+            "as free-text document identification."
+        ),
+    )
+
+
+class DiagnosisDetail(BaseModel):
+    """A single diagnosis preserved in the clinician's own wording, with a plain-language gloss underneath."""
+
+    official_diagnosis: str = Field(
+        ...,
+        description=(
+            "The diagnosis exactly as the clinician documented it (verbatim wording from Assessment/Impression/"
+            "Diagnosis sections). Remove ICD-10 codes only — do NOT translate, simplify, or generalize this field."
+        ),
+    )
+    lay_explanation: str = Field(
+        ...,
+        description="One short plain-language sentence explaining what this diagnosis means for the patient.",
+    )
+
+
+class RecommendationDetail(BaseModel):
+    """A single provider-attributed recommendation."""
+
+    recommendation: str = Field(
+        ...,
+        description=(
+            "One clinical recommendation, lifestyle counseling item, or in-progress medication "
+            "adjustment, attributed to the provider."
+        ),
+    )
 
 
 class DocumentSummary(BaseModel):
@@ -66,11 +104,12 @@ class DocumentSummary(BaseModel):
         default_factory=list,
         description="Clinical observations, examination findings, and notable results explicitly stated in the document",
     )
-    diagnoses: List[str] = Field(
+    diagnoses: List[DiagnosisDetail] = Field(
         default_factory=list,
         description=(
-            "Confirmed diagnoses and active conditions. Convert medical abbreviations to patient-friendly language "
-            "(e.g., 'HTN' → 'High blood pressure'). Remove ICD-10 codes. Combine related diagnoses for the same condition."
+            "Confirmed diagnoses and active conditions from Assessment/Impression/Diagnosis sections. For each, "
+            "return official_diagnosis (verbatim clinician wording, ICD-10 codes stripped but not translated) "
+            "and lay_explanation (one plain-language line). Combine related diagnoses for the same condition."
         ),
     )
     medications: List[str] = Field(
@@ -91,7 +130,12 @@ class DocumentSummary(BaseModel):
     )
     recommendations: List[str] = Field(
         default_factory=list,
-        description="Clinical suggestions, advice, and follow-up plans (e.g., 'consider increasing dosage', 'repeat HbA1c in 3 months'). Do not include direct patient instructions.",
+        description=(
+            "Clinical suggestions, advice, follow-up plans, lifestyle counseling (diet, exercise, activity), and "
+            "in-progress medication adjustments discussed by the provider (e.g., 'consider increasing dosage', "
+            "'repeat HbA1c in 3 months', 'discussed adjusting hormone replacement therapy', 'advised on diet and "
+            "exercise'). Do not include direct patient instructions (those go in instructions)."
+        ),
     )
     instructions: List[str] = Field(
         default_factory=list,
@@ -150,9 +194,17 @@ class AttachmentSummarizationResponse(BaseModel):
                 ],
                 "documents_analyzed": 3,
                 "diagnoses_mentioned": [
-                    "Type 2 Diabetes Mellitus",
-                    "Essential Hypertension",
-                    "Hyperlipidemia",
+                    {
+                        "official_diagnosis": "Type 2 Diabetes Mellitus",
+                        "lay_explanation": "Type 2 diabetes, a condition where blood sugar runs high",
+                    },
+                    {
+                        "official_diagnosis": "Essential Hypertension",
+                        "lay_explanation": "High blood pressure with no other identified cause",
+                    },
+                ],
+                "procedures_mentioned": [
+                    "You received a flu vaccination during this visit",
                 ],
                 "medications_mentioned": [
                     "Metformin 1000mg twice daily",
@@ -197,9 +249,9 @@ class AttachmentSummarizationResponse(BaseModel):
     clinical_summary: str = Field(
         ...,
         description=(
-            "Patient-facing clinical summary. Begin with appointment date, purpose, and provider. "
-            "Answer: Why did you visit? What was found? What was done? What is the diagnosis? "
-            "What should you do next? Use 'you'/'your'."
+            "Patient-facing overview only — 2-3 sentences: reason for visit, what was done, the diagnosis cited "
+            "from diagnoses_mentioned's official_diagnosis, and the single most important next step. Use 'you'/'your'. "
+            "Do NOT restate individual exam findings, measurements, or lab values — those belong only in key_insights."
         ),
     )
 
@@ -215,9 +267,22 @@ class AttachmentSummarizationResponse(BaseModel):
         ..., description="Number of documents successfully analyzed"
     )
 
-    diagnoses_mentioned: List[str] = Field(
+    diagnoses_mentioned: List[DiagnosisDetail] = Field(
         default_factory=list,
-        description="Deduplicated list of all diagnoses and active conditions across all documents in patient-friendly language",
+        description=(
+            "Deduplicated list of diagnoses across all documents. Each entry has official_diagnosis (the "
+            "clinician's own verbatim wording — do NOT translate or simplify this field) and lay_explanation "
+            "(one plain-language sentence). Combine near-duplicates only when they clearly refer to the same condition."
+        ),
+    )
+
+    procedures_mentioned: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Deduplicated list of procedures/interventions performed during the visit (e.g., injections, "
+            "aspirations, minor in-office procedures), drawn from each document's procedures field. Use second "
+            "person where natural (e.g., 'You received a shoulder injection during this visit')."
+        ),
     )
 
     medications_mentioned: List[str] = Field(
@@ -244,7 +309,11 @@ class AttachmentSummarizationResponse(BaseModel):
 
     recommendations: List[str] = Field(
         default_factory=list,
-        description="Deduplicated list of all clinical recommendations and follow-up plans across all documents. Do not include direct patient instructions.",
+        description=(
+            "Deduplicated list of all clinical recommendations and follow-up plans across all documents, "
+            "including lifestyle counseling (diet, exercise, activity) and in-progress medication adjustments "
+            "discussed by the provider. Do not include direct patient instructions."
+        ),
     )
 
     risk_factors: List[str] = Field(

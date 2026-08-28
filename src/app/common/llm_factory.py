@@ -35,6 +35,11 @@ def get_chat_model(model_name: str = LLM_MODEL.GPT_4O_MINI, temperature: float =
         model_provider=LLM_PROVIDER.OPENAI,
         openai_api_key=settings.OPENAI_API_KEY,
         temperature=temperature,
+        # Without an explicit timeout, init_chat_model/ChatOpenAI ends up with
+        # httpx Timeout(timeout=None) - a stalled connection hangs forever. Bound
+        # it and cap retries so a stall fails within a predictable window instead.
+        timeout=45,
+        max_retries=1,
     )
     
     return model

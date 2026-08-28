@@ -209,6 +209,7 @@ def _serialize_conversation_summary(summary) -> Dict[str, Any]:
         "diagnoses": summary.diagnoses,
         "instructions": summary.instructions,
         "recommendations": summary.recommendations,
+        "data": summary.data,
         "created_at": summary.created_at.isoformat(),
         "updated_at": summary.updated_at.isoformat(),
         "created_by": str(summary.created_by),

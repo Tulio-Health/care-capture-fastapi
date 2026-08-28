@@ -1,0 +1,76 @@
+Card Cath
+* Final Report *
+
+Result Type: Card Cath
+Result Date: June 29, 2026 1:25 PM EDT
+Result Status: Auth (Verified)
+Result Title: CARD CATH
+Performed By: Ullah MD, Waqas on June 29, 2026 3:22 PM EDT
+Verified By: Ullah MD, Waqas on June 29, 2026 1:25 PM EDT
+AtlantiCare Encounter: M26180000654
+
+CARD CATH
+Cardiac Catheterization Report
+
+Date of Birth: 8/4/1959   Gender: MALE
+Height: 72(in)  Weight: 239.7(lb) BSA: 2.29
+Procedure Date: 6/29/2026  Procedure Number: ACCHM000670
+Cath Physician: Ullah, Waqas MD
+Referring Physician: Gotimer, Patrick MD
+
+History of Present Illness: 66 year old male presenting with anterolateral STEMI
+
+The risks, benefits and alternatives of procedure were explained to the patient and
+appropriate consent was obtained. The procedure was done in the Cath Lab under aseptic
+technique using Lidocaine local anesthetic, appropriate guide wire, catheters, sheaths and
+dilators. Following the procedure, the sheath(s) was/were removed and hemostasis was
+obtained. Moderate sedation was given by interventional cardiologist and monitored by
+trained independent observers for the duration of the procedure (including the first 15
+minutes).
+
+Procedure Name: Acute MI PCI, Coronary PTCA (initial), IVUS/OCT (initial), IVUS/OCT (addl)
+
+ACCESS SITE: Sheath was inserted into the RIGHT radial artery
+
+Left Main: No significant coronary artery disease.
+LAD: 20% Mid lesion in LAD; 100% Mid lesion in DIAG1
+Circumflex: 100% Mid lesion in OM 1
+Right: No significant coronary artery disease.
+
+LV FINDINGS: Elevated EDP pre angio
+VALVE FINDINGS: No aortic stenosis
+
+INTERVENTION:
+Lesion Site #1 - First diagonal branch segment - 1st Diag. Pre stenosis 100%, post stenosis
+20%. PRE TIMI flow 0, POST TIMI flow 2.
+Lesion Site #2 - First obtuse marginal branch segment - 1st OM. Pre stenosis 100%, post
+stenosis 20%. PRE TIMI flow 0, POST TIMI flow 2.
+
+Estimated Total Blood Loss: 5 mL's
+Complications: No Complications
+
+Impression:
+Total thrombotic occlusion of the D1 and OM1 causing STEMI that is anterolateral.
+6F, Right radial access. EBU 3.75 6F guide, Runthrough wire. IVUS showing thrombus in both
+vessels but minimal D1 plaque only with reference vessel diameter of 2.5mm.
+Severe mid D1 stenosis s/p IVUS guided 2.0mm compliant balloon angioplasty, 2.25mm NC
+balloon angioplasty followed by 2.5x12mm XIENCE stent placement. PTCA of OM with 2mm
+balloon. Good final angiographic results with TIMI 2 flow.
+
+Recommendation:
+Integrilin for 6 hours
+TR band wean as per protocol
+Monitor vitals, rhythm and vascular access site
+Follow up with cardiology
+Aggressive risk factor modification
+Aspirin, ticagrelor and high intensity statin
+Echo and potential TEE for ruling out clot and cardioembolic phenomena, also consider
+hypercoagulable work up
+
+Disposition:
+The patient will be returned to their room after the procedure, following bedrest and
+subsequent ambulation, provided the recovery parameters are appropriate.
+The patient has been instructed to call the procedural cardiologist immediately if symptoms
+recur.
+
+Signed By Ullah, Waqas MD On 6/29/2026 3:22:29 PM

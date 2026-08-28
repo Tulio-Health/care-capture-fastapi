@@ -1,3 +1,5 @@
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +18,7 @@ from ..models.playground_summarization import (
     PlaygroundSummarizationRequest,
     PlaygroundSummarizationResponse,
 )
+from ..models.procedure_summarization import ProcedureSummarizationRequest
 from ..models.transcript_summarization import TranscriptSummarizationRequest
 from ..services.summarization import (
     ComprehensiveSummarizationService,
@@ -24,6 +27,7 @@ from ..services.summarization import (
     TranscriptSummarizationService,
 )
 from ..services.summarization.attachment_summarization import AttachmentSummarizationService
+from ..services.summarization.procedure_summarization import ProcedureSummarizationService
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/care-capture", tags=["care-capture"])
@@ -389,6 +393,43 @@ async def attachment_summary(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail=f"Attachment summarization failed: {str(e)}")
+
+
+@router.post(
+    "/procedure-summary",
+    response_model=List[ConversationSummary],
+    summary="Procedure Document Summarization",
+    description=(
+        "Extract structured, patient-facing summaries (type, date, who performed it, reason, "
+        "what was performed, outcome, follow-up) from procedure documents (cardiac catheterization, "
+        "TEE, operative/surgery reports, etc.) for a patient appointment. Extractions that describe "
+        "the SAME real-world procedure event across multiple source documents are consolidated into "
+        "one entry. Persists ONE conversation_summaries row per (consolidated) procedure "
+        "(summary_metadata.source='procedure_summary'), each with a narrative summary_text ('You had "
+        "a {procedure_type} on {date}. {procedure_details}') and the translatable "
+        "reason/procedure_details/outcome/follow_up fields in the 'data' column - "
+        "replacing the old single-row-per-appointment/metadata.procedures[] shape. Returns an empty "
+        "list (and prunes any previously-persisted rows) when the appointment has no documents "
+        "flagged as procedure documents, or every extraction was consolidated away as a duplicate."
+    ),
+)
+async def procedure_summary(
+    request: ProcedureSummarizationRequest,
+    db: AsyncSession = Depends(get_db),
+) -> List[ConversationSummary]:
+    try:
+        service = ProcedureSummarizationService(db)
+        return await service.analyze_procedures(request)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Procedure summarization failed - appointment_id: {request.appointment_id}: {str(e)}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=f"Procedure summarization failed: {str(e)}")
 
 
 @router.post(

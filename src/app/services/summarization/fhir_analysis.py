@@ -432,7 +432,9 @@ class FhirAnalysisService:
             "medications": medications_list,
             "diagnoses": conditions_list,
             "instructions": [],  # FHIR analysis doesn't have instructions
-            "recommendations": analysis_result.recommendations,
+            "recommendations": [
+                r.model_dump() for r in analysis_result.recommendations
+            ],
             "summary_metadata": {
                 "source": "fhir_analysis",
                 "analysis_version": "1.0",

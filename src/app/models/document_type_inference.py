@@ -56,6 +56,15 @@ class DocumentTypeInferenceResponse(BaseModel):
     include_for_summary: bool = Field(
         ..., description="True only for clinically substantive documents; False for administrative/non-clinical ones"
     )
+    is_procedure_document: bool = Field(
+        ...,
+        description=(
+            "True only when the document describes a specific procedure/intervention PERFORMED ON "
+            "the patient (e.g. cardiac catheterization, transesophageal echocardiogram/TEE, endoscopy, "
+            "biopsy, operative/surgery report) — as opposed to a general visit/progress/consult note or "
+            "an administrative document. False for everything else, including routine visit notes."
+        ),
+    )
     confidence: float = Field(..., ge=0.0, le=1.0, description="Model self-reported confidence in normalized_type")
 
 

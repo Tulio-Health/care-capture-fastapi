@@ -164,7 +164,7 @@ class PlaygroundSummarizationService:
 
         # Generate summary
         try:
-            summary = summarization_chain.summarize(request.plain_text)
+            summary = await summarization_chain.summarize(request.plain_text)
             self.logger.debug(
                 f"Raw summary generated - request_id: {request.request_id}"
             )

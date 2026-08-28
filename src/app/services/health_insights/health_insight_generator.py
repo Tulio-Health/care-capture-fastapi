@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -19,12 +19,23 @@ from ...models.health_insights_extraction import HealthInsightsResponse
 
 logger = logging.getLogger(__name__)
 
+
+def _diagnosis_to_text(diagnosis: Union[str, Dict[str, Any]]) -> str:
+    """Render a diagnosis entry as text, handling both the legacy flat-string shape
+    and the newer {official_diagnosis, lay_explanation} shape."""
+    if isinstance(diagnosis, dict):
+        official = diagnosis.get("official_diagnosis") or diagnosis.get("diagnosis") or ""
+        lay = diagnosis.get("lay_explanation") or ""
+        return f"{official} ({lay})" if lay else official
+    return str(diagnosis)
+
+
 class SimplifiedConversationSummary(BaseModel):
     """Simplified model containing only essential fields from ConversationSummary."""
     summary_text: str = Field(..., description="The main summary text of the conversation")
     key_points: Optional[List[str]] = Field(None, description="Key points extracted from the conversation")
     medications: Optional[List[Dict[str, Any]]] = Field(None, description="Medications mentioned in the conversation")
-    diagnoses: Optional[List[str]] = Field(None, description="Diagnoses discussed in the conversation")
+    diagnoses: Optional[List[Union[str, Dict[str, Any]]]] = Field(None, description="Diagnoses discussed in the conversation")
     instructions: Optional[List[str]] = Field(None, description="Instructions provided during the conversation")
     recommendations: Optional[List[Dict[str, Any]]] = Field(None, description="Recommendations made during the conversation")
 
@@ -132,7 +143,7 @@ class HealthInsightGenerator:
                         f"Summary {i+1}:\n{summary.summary_text}\n"
                         f"Key Points: {', '.join(summary.key_points or [])}\n"
                         f"Medications: {', '.join(str(m) for m in summary.medications or [])}\n"
-                        f"Diagnoses: {', '.join(summary.diagnoses or [])}\n"
+                        f"Diagnoses: {', '.join(_diagnosis_to_text(d) for d in summary.diagnoses or [])}\n"
                         f"Instructions: {', '.join(summary.instructions or [])}\n"
                         f"Recommendations: {', '.join(str(r) for r in summary.recommendations or [])}"
                         for i, summary in enumerate(user_summaries.summaries)

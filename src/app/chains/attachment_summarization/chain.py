@@ -7,6 +7,7 @@ from typing import List
 
 from langsmith import traceable
 from pydantic_ai import Agent
+from pydantic_ai.settings import ModelSettings
 
 from src.app.common.llm_factory import get_pydantic_ai_model
 from src.app.models.attachment_summarization import (
@@ -102,7 +103,7 @@ Section 1: Visit Summary (clinical_summary)
 - Example: "During the visit, you were given oxygen support"
 ----------------------------------------
 
-Section 2: Diagnoses (diagnoses_mentioned)
+Section 2: Diagnoses (diagnoses)
 - Extract from sections like:
   Diagnosis, Assessment, Impression, Problems, Discharge Diagnosis, Active Problems, Ongoing Problems,Impression, Problem List,Past Medical History (if active),Discharge Diagnosis
 -Prioritize all source document sections to look for active and ongoing conditions
@@ -112,9 +113,11 @@ Section 2: Diagnoses (diagnoses_mentioned)
 - Include only confirmed or clearly stated conditions
 - Exclude symptoms unless explicitly documented as diagnosis
 - Include chronic conditions ONLY if active/relevant to this visit
-- Remove ICD codes and retain description
+- For EACH diagnosis return BOTH:
+  - official_diagnosis: the clinician's own wording, verbatim, exactly as written (remove ICD-10 codes only — do NOT translate or simplify this field)
+  - lay_explanation: one short plain-language sentence explaining what it means
 - Merge duplicates referring to same condition
-- Ensure all items listed under "Problems" or "Problem List" that are ongoing and active are included in diagnoses_mentioned unless explicitly excluded.
+- Ensure all items listed under "Problems" or "Problem List" that are ongoing and active are included in diagnoses unless explicitly excluded.
 
 ----------------------------------------
 
@@ -152,14 +155,15 @@ Section 4: Key Insights (key_insights)
 ----------------------------------------
 Section 5: Recommendations (recommendations)
 
-- Include ONLY provider’s clinical plans, future considerations, or suggested next steps
+- Include the provider’s clinical plans, future considerations, suggested next steps, lifestyle counseling (diet, exercise, activity), and in-progress medication adjustments discussed during the visit
 - MUST be explicitly attributed to the provider
-- MUST NOT include general educational statements
-- MUST NOT include direct patient actions (those go to instructions)
+- MUST NOT include direct patient actions phrased as commands (those go to instructions)
 
 Examples:
 - "The doctor recommended reevaluation in 6 weeks"
 - "The doctor advised considering an injection if symptoms persist"
+- "The doctor discussed adjusting your diet and exercise routine"
+- "The doctor discussed adjusting your hormone replacement therapy dose"
 
 ----------------------------------------
 
@@ -212,18 +216,23 @@ Date Authority Rule (CRITICAL):
 clinical_summary field:
 - Begin with a brief sentence referencing the appointment date, purpose, and provider FROM THE APPOINTMENT CONTEXT (not from document dates)
 - Use "you" and "your" throughout — e.g., "On [date], you visited [provider] for [purpose]"
-- Then synthesize to answer: Why did you go to the doctor? What did the doctor find? What did they do? What is your diagnosis? What should you do next?
+- Keep this to 2-3 sentences total: why you went, what was done, the diagnosis cited from diagnoses_mentioned's official_diagnosis, and the single most important next step
+- Do NOT restate individual exam findings, measurements, or lab values here — those belong only in key_insights
 - Do NOT mention document generation dates, export dates, or metadata timestamps as clinical events
 
 key_insights field:
 - Include key findings, trends, and notable observations
-- Fold in procedures and vital_signs from per-document summaries as relevant insights
+- Fold in vital_signs from per-document summaries as relevant insights (procedures now live in procedures_mentioned, not here)
 - Use second person ("your blood pressure was...", "you had...")
 
 diagnoses_mentioned:
-- Deduplicated list of all diagnoses/conditions across all documents
-- Use patient-friendly language for every entry
-- Combine near-duplicate diagnoses (e.g., "Hypertension" and "HTN" → one entry: "High blood pressure")
+- Deduplicated list of diagnoses/conditions across all documents
+- Each entry has official_diagnosis (the clinician's own verbatim wording — do NOT translate or simplify this field) and lay_explanation (one plain-language sentence)
+- Combine near-duplicate diagnoses only when they clearly refer to the same condition (e.g., merge "HTN" and "Hypertension", preferring the fuller documented form as official_diagnosis)
+
+procedures_mentioned:
+- Deduplicated list of procedures/interventions performed during the visit (e.g., injections, aspirations, minor in-office procedures), drawn from each document's procedures field
+- Use second person where natural (e.g., "You received a shoulder injection during this visit")
 
 medications_mentioned:
 - Deduplicated list of drug-based medications with dosages
@@ -233,7 +242,7 @@ medications_mentioned:
 
 lab_results: Deduplicated list of all lab values with units and reference ranges
 instructions: Deduplicated list of all direct patient instructions from the provider
-recommendations: Deduplicated list of all clinical recommendations
+recommendations: Deduplicated list of all clinical recommendations, including lifestyle counseling (diet, exercise, activity) and in-progress medication adjustments discussed by the provider
 risk_factors: Deduplicated list of all risk factors identified
 document_metadata: Build from source_document_title, source_document_date, source_document_type in each DocumentSummary
 
@@ -336,6 +345,7 @@ class AttachmentSummarizationChain:
                 self.model,
                 output_type=list[DocumentSummary],
                 system_prompt=self._extraction_system_prompt,
+                model_settings=ModelSettings(timeout=60.0),
             )
         return self._extraction_agent
 
@@ -346,6 +356,7 @@ class AttachmentSummarizationChain:
                 self.model,
                 output_type=AttachmentSummarizationResponse,
                 system_prompt=self._synthesis_system_prompt,
+                model_settings=ModelSettings(timeout=60.0),
             )
         return self._synthesis_agent
 

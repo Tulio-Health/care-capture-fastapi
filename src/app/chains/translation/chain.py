@@ -30,9 +30,54 @@ CRITICAL TRANSLATION RULES:
 TRANSLATION SCOPE:
 - Translate: summary_text, key_points, diagnoses, instructions, recommendation descriptions
 - Translate medication names, dosage instructions, and frequency descriptions to local terminology
+- If a `data` object is present: recursively translate EVERY string value found anywhere inside it
+  (at any nesting depth), while preserving every key name and the exact object/array structure
+  unchanged. Do NOT add, remove, or rename keys. Do NOT translate non-string values (numbers,
+  booleans, null) - copy them through exactly as given.
 - Do NOT translate: field names (name, dosage, frequency keys), UUIDs, numeric values, units
 
 Return only the translatable fields as a structured output."""
+
+
+def _same_structure(original: Any, translated: Any) -> bool:
+    """Cheap structural-corruption guard for `data`: dicts must have the identical key set
+    (checked recursively into nested dict values), lists must have the identical length
+    (checked recursively into each item) - matching the structure-preservation contract from
+    the system prompt above. A fixed-schema Pydantic output field can't force an LLM to keep a
+    `Dict[str, Any]` sub-schema's keys/shape unchanged the way a named field's own shape is
+    enforced, so this is checked in code instead of trusted from the prompt alone."""
+    if isinstance(original, dict) or isinstance(translated, dict):
+        return (
+            isinstance(original, dict)
+            and isinstance(translated, dict)
+            and original.keys() == translated.keys()
+            and all(_same_structure(original[k], translated[k]) for k in original)
+        )
+    if isinstance(original, list) or isinstance(translated, list):
+        return (
+            isinstance(original, list)
+            and isinstance(translated, list)
+            and len(original) == len(translated)
+            and all(_same_structure(o, t) for o, t in zip(original, translated))
+        )
+    return True
+
+
+# Mirrored independently in care-capture-nodeapi's translation fingerprint field list
+# (src/modules/conversation-summaries/helpers/summary-translation.helper.ts:
+# TRANSLATABLE_SUMMARY_FIELDS) - these two lists cover the same concept in different
+# repos/languages and are maintained by hand; update both together when a summary field
+# is added or removed. New translatable content is expected to land as new keys inside
+# the existing `data` field (already listed here) rather than as a new top-level field,
+# which is why both lists are expected to stay small and stable.
+_GUARDED_FIELDS = (
+    "key_points",
+    "medications",
+    "diagnoses",
+    "instructions",
+    "recommendations",
+    "data",
+)
 
 
 class TranslationChain:
@@ -92,6 +137,7 @@ class TranslationChain:
                 "diagnoses": summary_data.get("diagnoses"),
                 "instructions": summary_data.get("instructions"),
                 "recommendations": summary_data.get("recommendations"),
+                "data": summary_data.get("data"),
             }
 
             user_prompt = (
@@ -107,16 +153,33 @@ class TranslationChain:
             result = await self.agent.run(user_prompt)
             translated: TranslatedSummary = result.output
 
+            # ponytail: whole-field fallback - one corrupted item reverts the entire field to
+            # English (complete-in-English beats silently-truncated-in-translation); for
+            # List[str] fields the guard is length-only, it cannot detect same-length
+            # placeholder/untranslated items
+            guarded: Dict[str, Any] = {}
+            for field in _GUARDED_FIELDS:
+                original_value = summary_data.get(field)
+                translated_value = getattr(translated, field)
+                corrupted = (
+                    original_value is None and translated_value is not None
+                ) or (
+                    original_value is not None
+                    and not _same_structure(original_value, translated_value)
+                )
+                if corrupted:
+                    logger.warning(
+                        "Translated %r failed the structure-preservation guard - falling back to "
+                        "the untranslated original for this field.",
+                        field,
+                    )
+                    guarded[field] = original_value
+                else:
+                    guarded[field] = translated_value
+
             # Merge translated fields back with original metadata
             merged = dict(summary_data)
-            merged.update({
-                "summary_text": translated.summary_text,
-                "key_points": translated.key_points,
-                "medications": translated.medications,
-                "diagnoses": translated.diagnoses,
-                "instructions": translated.instructions,
-                "recommendations": translated.recommendations,
-            })
+            merged.update({"summary_text": translated.summary_text, **guarded})
 
             logger.info(f"Successfully translated summary to {target_language}")
             return merged

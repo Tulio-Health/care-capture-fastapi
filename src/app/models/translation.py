@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 from uuid import UUID, uuid4
 from datetime import datetime
 
@@ -14,9 +14,10 @@ class TranslatedSummary(BaseModel):
     summary_text: str
     key_points: Optional[List[str]] = None
     medications: Optional[List[Dict[str, Any]]] = None
-    diagnoses: Optional[List[str]] = None
+    diagnoses: Optional[List[Union[str, Dict[str, Any]]]] = None
     instructions: Optional[List[str]] = None
     recommendations: Optional[List[Dict[str, Any]]] = None
+    data: Optional[Dict[str, Any]] = None
 
 
 class TranslationRequest(BaseModel):
@@ -32,9 +33,10 @@ class PlaygroundConversationSummary(BaseModel):
     summary_text: str = Field(..., alias="summaryText", description="The main summary text of the conversation")
     key_points: Optional[List[str]] = Field(None, alias="keyPoints", description="Key points extracted from the conversation")
     medications: Optional[List[Dict[str, Any]]] = Field(None, alias="medications", description="Medications mentioned in the conversation")
-    diagnoses: Optional[List[str]] = Field(None, alias="diagnoses", description="Diagnoses discussed in the conversation")
+    diagnoses: Optional[List[Union[str, Dict[str, Any]]]] = Field(None, alias="diagnoses", description="Diagnoses discussed in the conversation")
     instructions: Optional[List[str]] = Field(None, alias="instructions", description="Instructions provided during the conversation")
     recommendations: Optional[List[Dict[str, Any]]] = Field(None, alias="recommendations", description="Recommendations made during the conversation")
+    data: Optional[Dict[str, Any]] = Field(None, alias="data", description="Free-form, translatable content for summary types whose fields don't fit the named columns above")
     
     # Auto-generated fields with sensible defaults
     id: UUID = Field(default_factory=uuid4, description="Auto-generated unique identifier")
@@ -70,9 +72,10 @@ class TranslationResponse(BaseModel):
     summary_text: str = Field(alias="summaryText")
     key_points: Optional[List[str]] = Field(alias="keyPoints")
     medications: Optional[List[Dict[str, Any]]] = Field(alias="medications")
-    diagnoses: Optional[List[str]] = Field(alias="diagnoses")
+    diagnoses: Optional[List[Union[str, Dict[str, Any]]]] = Field(alias="diagnoses")
     instructions: Optional[List[str]] = Field(alias="instructions")
     recommendations: Optional[List[Dict[str, Any]]] = Field(alias="recommendations")
+    data: Optional[Dict[str, Any]] = Field(default=None, alias="data")
     original_language: str = Field(default="en", alias="originalLanguage")
     translated_language: str = Field(alias="translatedLanguage")
     created_at: datetime = Field(alias="createdAt")

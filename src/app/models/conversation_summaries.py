@@ -16,9 +16,23 @@ class ConversationSummary(BaseModel):
     summary_text: str = Field(..., alias="summaryText", description="The main summary text of the conversation")
     key_points: Optional[List[str]] = Field(None, alias="keyPoints", description="Key points extracted from the conversation")
     medications: Optional[List[Dict[str, Any]]] = Field(None, description="Medications mentioned in the conversation")
-    diagnoses: Optional[List[str]] = Field(None, description="Diagnoses discussed in the conversation")
+    diagnoses: Optional[List[Union[str, Dict[str, Any]]]] = Field(
+        None,
+        description=(
+            "Diagnoses discussed in the conversation. Older records are plain strings; newer records are "
+            "{'official_diagnosis': ..., 'lay_explanation': ...} objects."
+        ),
+    )
     instructions: Optional[List[str]] = Field(None, description="Instructions provided during the conversation")
     recommendations: Optional[List[Dict[str, Any]]] = Field(None, description="Recommendations made during the conversation")
+    data: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Free-form, translatable content for summary types whose fields don't fit the named "
+            "columns above (e.g. procedure_summary rows: reason, procedure_details, outcome, "
+            "follow_up). Maps 1:1 to the ORM entity's 'data' column - no alias needed."
+        ),
+    )
     metadata: Optional[Dict[str, Any]] = Field(None, alias="summaryMetadata", description="Additional metadata about the summary (e.g., source, analysis version)")
     created_at: datetime = Field(..., alias="createdAt", description="Timestamp when the summary was created")
     updated_at: datetime = Field(..., alias="updatedAt", description="Timestamp when the summary was last updated")

@@ -98,7 +98,10 @@ class TranscriptSummarizationService:
         """
         try:
             summarization_chain = TranscriptSummarizationChain()
-            summary = summarization_chain.summarize(request)
+            # Pass the actual transcript text, not the request object itself (that leaked
+            # UUIDs and field names into the prompt via `request`'s Python repr).
+            transcript_text = "\n\n".join(t.text for t in request.transcripts)
+            summary = await summarization_chain.summarize(transcript_text)
             
             # Validate and parse the response
             summary_model = TranscriptSummarizationResponse.model_validate_json(
@@ -142,9 +145,14 @@ class TranscriptSummarizationService:
             "updated_by": request.user_id,
             "key_points": summary.provider_patient_discussion_key_points,
             "medications": summary.medications_prescribed_by_provider,
-            "diagnoses": summary.medical_diagnoses_discussed,
+            "diagnoses": [d.model_dump() for d in summary.medical_diagnoses_discussed],
             "instructions": summary.instructions_provided_by_provider,
-            "recommendations": summary.recommendations_provided_by_provider,
+            "recommendations": [
+                r.model_dump() for r in summary.recommendations_provided_by_provider
+            ],
+            "data": {
+                "procedures_mentioned": summary.procedures_mentioned,
+            },
             "summary_metadata": {
                 "source": "transcript",
                 "transcript_count": len(request.transcripts),

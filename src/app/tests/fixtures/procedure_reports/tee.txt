@@ -1,0 +1,81 @@
+TEE w/3D Complete.
+* Final Report *
+
+Result Type: TEE w/3D Complete.
+Result Date: July 06, 2026 11:11 AM EDT
+Result Status: Auth (Verified)
+Result Title: Transesophageal (TEE)
+Performed By: Strimel DO, William Joseph on July 06, 2026 2:35 PM EDT
+Verified By: Strimel DO, William Joseph on July 06, 2026 2:34 PM EDT
+AtlantiCare Encounter: M2618500124, ARMC Mainland, Inpatient, 7/8/2026 - 7/21/2026
+
+The Heart and Lung Institute
+Cardiovascular Services
+
+TRANSESOPHAGEAL ECHOCARDIOGRAM REPORT
+
+Study Date: 07/06/2026
+Gender: Male
+Age: 66 yrs
+Height: 75 in  HR: 68  BP: 104/69 mmHg
+Weight: 300 lb  BSA: 2.61 m2
+Patient Class: Inpatient
+Reason For Study: Aortic Stenosis - TAVR protocol
+Performed By: Christina Muhlbaier, RCS, BSHA
+Ordering Physician: Zia, Shahzad S
+Primary Care Physician: Hutchison MD, Melissa M
+
+Procedure Details: Physician performing the TEE Dr. William Strimel. A complete 2D
+transesophageal echocardiogram with 3D was performed with cardioversion.
+
+Comments:
+
+Left Ventricle: Normal left ventricular cavity size. Hypokinesis of the mid to apical
+anteroseptum, anterior wall, basal to apical anterolateral wall, and apex. The left
+ventricular ejection fraction is visually estimated at 33%.
+
+Left Atrium: The left atrium is normal in size and appearance. No thrombus is detected in
+the left atrial appendage. The interatrial septum is intact with no evidence for an atrial
+septal defect.
+
+Right Atrium: The right atrium is normal in size.
+Right Ventricle: The right ventricle is normal in size and function.
+
+Aortic Valve: Bicuspid aortic valve. The more anterior of the aortic leaflets appears
+calcified especially at the commissures. Additionally, there appears to be an independently
+mobile echodensity in the region of the left main coronary artery which appears above the
+valve plane. This may represent focal calcification or, less likely an atypical vegetation.
+There is Mild aortic regurgitation. Low flow / low gradient moderate to severe aortic
+stenosis. AVA measured at 0.62 cm2 based on 3D stroke volume calculation.
+
+Mitral Valve: Structurally normal mitral valve. There is mild mitral regurgitation. There is
+no mitral valve stenosis.
+
+Tricuspid Valve: Structurally normal tricuspid valve. No evidence of tricuspid
+regurgitation. There is no tricuspid stenosis.
+
+Pulmonic Valve: The pulmonic valve is structurally normal. There is no pulmonic valvular
+regurgitation. No pulmonic valvular stenosis.
+
+Arteries: The aortic root is normal size. Mildly dilated ascending aorta.
+Systemic/Venous: Pulmonary veins in normal position with blunted systolic flow.
+Pericardium/Pleural: There is no pericardial effusion.
+
+Conclusions:
+Normal left ventricular cavity size.
+Hypokinesis of the mid to apical anteroseptum, anterior wall, basal to apical anterolateral
+wall, and apex.
+The left ventricular ejection fraction is visually estimated at 33%.
+The right ventricle is normal in size and function.
+Bicuspid aortic valve.
+Low flow / low gradient moderate to severe aortic stenosis. AVA measured at 0.62 cm2 based
+on 3D stroke volume calculation.
+Mild aortic regurgitation.
+There is mild mitral regurgitation.
+Mildly dilated ascending aorta.
+** The more anterior of the aortic leaflets appears calcified especially at the commissures.
+Additionally, there appears to be an independently mobile echodensity in the region of the
+left main coronary artery which appears above the valve plane. This may represent focal
+calcification or, less likely an atypical vegetation.
+
+Electronically Signed by: William Strimel, DO 07/06/2026 02:34 PM

@@ -1,0 +1,290 @@
+Card Cath
+* Final Report *
+
+Result Type: Card Cath
+Result Date: June 29, 2026 1:25 PM EDT
+Result Status: Auth (Verified)
+Result Title: CARD CATH
+Performed By: Ullah MD, Waqas on June 29, 2026 3:22 PM EDT
+Verified By: Ullah MD, Waqas on June 29, 2026 1:25 PM EDT
+AtlantiCare Encounter: M26180000671
+
+CARD CATH
+Cardiac Catheterization Report
+
+Date of Birth: 3/11/1962   Gender: FEMALE
+Height: 65(in)  Weight: 181.4(lb) BSA: 1.94
+Procedure Date: 6/29/2026  Procedure Number: ACCHM000671
+Cath Physician: Ullah, Waqas MD
+Referring Physician: Gotimer, Patrick MD
+
+History of Present Illness: 64 year old female presenting with inferior STEMI
+
+The risks, benefits and alternatives of procedure were explained to the patient and
+appropriate consent was obtained. The procedure was done in the Cath Lab under aseptic
+technique using Lidocaine local anesthetic, appropriate guide wire, catheters, sheaths and
+dilators. Following the procedure, the sheath(s) was/were removed and hemostasis was
+obtained. Moderate sedation was given by interventional cardiologist and monitored by
+trained independent observers for the duration of the procedure (including the first 15
+minutes).
+
+Procedure Name: Acute MI PCI, Coronary PTCA (initial), IVUS/OCT (initial), IVUS/OCT (addl)
+
+ACCESS SITE: Sheath was inserted into the RIGHT radial artery
+
+Left Main: No significant coronary artery disease.
+LAD: 30% Mid lesion in LAD; 100% Proximal lesion in RCA
+Circumflex: No significant coronary artery disease.
+Right: 100% Proximal lesion in RCA, TIMI 0 flow pre-intervention
+
+LV FINDINGS: Mildly elevated EDP pre angio
+VALVE FINDINGS: No significant valvular disease
+
+INTERVENTION:
+Lesion Site #1 - Proximal right coronary artery segment - Pre stenosis 100%, post stenosis
+10%. PRE TIMI flow 0, POST TIMI flow 3.
+
+Estimated Total Blood Loss: 5 mL's
+Complications: No Complications
+
+Impression:
+Total thrombotic occlusion of the proximal RCA causing inferior STEMI.
+6F, Right radial access. JR4 6F guide, Runthrough wire. IVUS showing large thrombus burden
+in the proximal RCA with reference vessel diameter of 3.5mm.
+Severe proximal RCA stenosis s/p thrombectomy, IVUS guided 3.0mm compliant balloon
+angioplasty, followed by 3.5x18mm XIENCE stent placement. Good final angiographic results
+with TIMI 3 flow.
+
+Post-procedure the patient was transferred to the cardiac recovery unit for extended
+radial access site and hemodynamic monitoring per the post-PCI recovery protocol. The
+following recovery flowsheet documents vital signs, access site checks, and neurovascular
+checks performed at routine intervals during the recovery period.
+
+Cardiac Recovery Unit - Monitoring Flowsheet:
+06/29/2026 15:40 EDT - HR 62, BP 108/62, SpO2 95% on room air, rhythm sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 15:45 EDT - HR 63, BP 109/63, SpO2 96% on room air, rhythm sinus tachycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 15:50 EDT - HR 64, BP 110/64, SpO2 97% on room air, rhythm sinus bradycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 15:55 EDT - HR 65, BP 111/65, SpO2 98% on room air, rhythm normal sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 16:00 EDT - HR 66, BP 112/66, SpO2 99% on room air, rhythm sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 16:05 EDT - HR 67, BP 113/67, SpO2 95% on room air, rhythm sinus tachycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 16:10 EDT - HR 68, BP 114/68, SpO2 96% on room air, rhythm sinus bradycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 16:15 EDT - HR 69, BP 115/69, SpO2 97% on room air, rhythm normal sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 16:20 EDT - HR 70, BP 116/70, SpO2 98% on room air, rhythm sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 16:25 EDT - HR 71, BP 117/71, SpO2 99% on room air, rhythm sinus tachycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 16:30 EDT - HR 72, BP 118/72, SpO2 95% on room air, rhythm sinus bradycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 16:35 EDT - HR 73, BP 119/73, SpO2 96% on room air, rhythm normal sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 16:40 EDT - HR 74, BP 120/74, SpO2 97% on room air, rhythm sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 16:45 EDT - HR 75, BP 121/75, SpO2 98% on room air, rhythm sinus tachycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 16:50 EDT - HR 76, BP 122/62, SpO2 99% on room air, rhythm sinus bradycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 16:55 EDT - HR 77, BP 123/63, SpO2 95% on room air, rhythm normal sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 17:00 EDT - HR 78, BP 124/64, SpO2 96% on room air, rhythm sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 17:05 EDT - HR 79, BP 125/65, SpO2 97% on room air, rhythm sinus tachycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 17:10 EDT - HR 80, BP 126/66, SpO2 98% on room air, rhythm sinus bradycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 17:15 EDT - HR 62, BP 127/67, SpO2 99% on room air, rhythm normal sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 17:20 EDT - HR 63, BP 128/68, SpO2 95% on room air, rhythm sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 17:25 EDT - HR 64, BP 129/69, SpO2 96% on room air, rhythm sinus tachycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 17:30 EDT - HR 65, BP 130/70, SpO2 97% on room air, rhythm sinus bradycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 17:35 EDT - HR 66, BP 131/71, SpO2 98% on room air, rhythm normal sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 17:40 EDT - HR 67, BP 108/72, SpO2 99% on room air, rhythm sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 17:45 EDT - HR 68, BP 109/73, SpO2 95% on room air, rhythm sinus tachycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 17:50 EDT - HR 69, BP 110/74, SpO2 96% on room air, rhythm sinus bradycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 17:55 EDT - HR 70, BP 111/75, SpO2 97% on room air, rhythm normal sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 18:00 EDT - HR 71, BP 112/62, SpO2 98% on room air, rhythm sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 18:05 EDT - HR 72, BP 113/63, SpO2 99% on room air, rhythm sinus tachycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 18:10 EDT - HR 73, BP 114/64, SpO2 95% on room air, rhythm sinus bradycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 18:15 EDT - HR 74, BP 115/65, SpO2 96% on room air, rhythm normal sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 18:20 EDT - HR 75, BP 116/66, SpO2 97% on room air, rhythm sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 18:25 EDT - HR 76, BP 117/67, SpO2 98% on room air, rhythm sinus tachycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 18:30 EDT - HR 77, BP 118/68, SpO2 99% on room air, rhythm sinus bradycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 18:35 EDT - HR 78, BP 119/69, SpO2 95% on room air, rhythm normal sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 18:40 EDT - HR 79, BP 120/70, SpO2 96% on room air, rhythm sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 18:45 EDT - HR 80, BP 121/71, SpO2 97% on room air, rhythm sinus tachycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 18:50 EDT - HR 62, BP 122/72, SpO2 98% on room air, rhythm sinus bradycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 18:55 EDT - HR 63, BP 123/73, SpO2 99% on room air, rhythm normal sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 19:00 EDT - HR 64, BP 124/74, SpO2 95% on room air, rhythm sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 19:05 EDT - HR 65, BP 125/75, SpO2 96% on room air, rhythm sinus tachycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 19:10 EDT - HR 66, BP 126/62, SpO2 97% on room air, rhythm sinus bradycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 19:15 EDT - HR 67, BP 127/63, SpO2 98% on room air, rhythm normal sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 19:20 EDT - HR 68, BP 128/64, SpO2 99% on room air, rhythm sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 19:25 EDT - HR 69, BP 129/65, SpO2 95% on room air, rhythm sinus tachycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 19:30 EDT - HR 70, BP 130/66, SpO2 96% on room air, rhythm sinus bradycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 19:35 EDT - HR 71, BP 131/67, SpO2 97% on room air, rhythm normal sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 19:40 EDT - HR 72, BP 108/68, SpO2 98% on room air, rhythm sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 19:45 EDT - HR 73, BP 109/69, SpO2 99% on room air, rhythm sinus tachycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 19:50 EDT - HR 74, BP 110/70, SpO2 95% on room air, rhythm sinus bradycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 19:55 EDT - HR 75, BP 111/71, SpO2 96% on room air, rhythm normal sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 20:00 EDT - HR 76, BP 112/72, SpO2 97% on room air, rhythm sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 20:05 EDT - HR 77, BP 113/73, SpO2 98% on room air, rhythm sinus tachycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 20:10 EDT - HR 78, BP 114/74, SpO2 99% on room air, rhythm sinus bradycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 20:15 EDT - HR 79, BP 115/75, SpO2 95% on room air, rhythm normal sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 20:20 EDT - HR 80, BP 116/62, SpO2 96% on room air, rhythm sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 20:25 EDT - HR 62, BP 117/63, SpO2 97% on room air, rhythm sinus tachycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 20:30 EDT - HR 63, BP 118/64, SpO2 98% on room air, rhythm sinus bradycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 20:35 EDT - HR 64, BP 119/65, SpO2 99% on room air, rhythm normal sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 20:40 EDT - HR 65, BP 120/66, SpO2 95% on room air, rhythm sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 20:45 EDT - HR 66, BP 121/67, SpO2 96% on room air, rhythm sinus tachycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 20:50 EDT - HR 67, BP 122/68, SpO2 97% on room air, rhythm sinus bradycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 20:55 EDT - HR 68, BP 123/69, SpO2 98% on room air, rhythm normal sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 21:00 EDT - HR 69, BP 124/70, SpO2 99% on room air, rhythm sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 21:05 EDT - HR 70, BP 125/71, SpO2 95% on room air, rhythm sinus tachycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 21:10 EDT - HR 71, BP 126/72, SpO2 96% on room air, rhythm sinus bradycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 21:15 EDT - HR 72, BP 127/73, SpO2 97% on room air, rhythm normal sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 21:20 EDT - HR 73, BP 128/74, SpO2 98% on room air, rhythm sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 21:25 EDT - HR 74, BP 129/75, SpO2 99% on room air, rhythm sinus tachycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 21:30 EDT - HR 75, BP 130/62, SpO2 95% on room air, rhythm sinus bradycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 21:35 EDT - HR 76, BP 131/63, SpO2 96% on room air, rhythm normal sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 21:40 EDT - HR 77, BP 108/64, SpO2 97% on room air, rhythm sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 21:45 EDT - HR 78, BP 109/65, SpO2 98% on room air, rhythm sinus tachycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 21:50 EDT - HR 79, BP 110/66, SpO2 99% on room air, rhythm sinus bradycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 21:55 EDT - HR 80, BP 111/67, SpO2 95% on room air, rhythm normal sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 22:00 EDT - HR 62, BP 112/68, SpO2 96% on room air, rhythm sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 22:05 EDT - HR 63, BP 113/69, SpO2 97% on room air, rhythm sinus tachycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 22:10 EDT - HR 64, BP 114/70, SpO2 98% on room air, rhythm sinus bradycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 22:15 EDT - HR 65, BP 115/71, SpO2 99% on room air, rhythm normal sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 22:20 EDT - HR 66, BP 116/72, SpO2 95% on room air, rhythm sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 22:25 EDT - HR 67, BP 117/73, SpO2 96% on room air, rhythm sinus tachycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 22:30 EDT - HR 68, BP 118/74, SpO2 97% on room air, rhythm sinus bradycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 22:35 EDT - HR 69, BP 119/75, SpO2 98% on room air, rhythm normal sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 22:40 EDT - HR 70, BP 120/62, SpO2 99% on room air, rhythm sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 22:45 EDT - HR 71, BP 121/63, SpO2 95% on room air, rhythm sinus tachycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 22:50 EDT - HR 72, BP 122/64, SpO2 96% on room air, rhythm sinus bradycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 22:55 EDT - HR 73, BP 123/65, SpO2 97% on room air, rhythm normal sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 23:00 EDT - HR 74, BP 124/66, SpO2 98% on room air, rhythm sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 23:05 EDT - HR 75, BP 125/67, SpO2 99% on room air, rhythm sinus tachycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 23:10 EDT - HR 76, BP 126/68, SpO2 95% on room air, rhythm sinus bradycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 23:15 EDT - HR 77, BP 127/69, SpO2 96% on room air, rhythm normal sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 23:20 EDT - HR 78, BP 128/70, SpO2 97% on room air, rhythm sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 23:25 EDT - HR 79, BP 129/71, SpO2 98% on room air, rhythm sinus tachycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 23:30 EDT - HR 80, BP 130/72, SpO2 99% on room air, rhythm sinus bradycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 23:35 EDT - HR 62, BP 131/73, SpO2 95% on room air, rhythm normal sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 23:40 EDT - HR 63, BP 108/74, SpO2 96% on room air, rhythm sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 23:45 EDT - HR 64, BP 109/75, SpO2 97% on room air, rhythm sinus tachycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 23:50 EDT - HR 65, BP 110/62, SpO2 98% on room air, rhythm sinus bradycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 23:55 EDT - HR 66, BP 111/63, SpO2 99% on room air, rhythm normal sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 00:00 EDT - HR 67, BP 112/64, SpO2 95% on room air, rhythm sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 00:05 EDT - HR 68, BP 113/65, SpO2 96% on room air, rhythm sinus tachycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 00:10 EDT - HR 69, BP 114/66, SpO2 97% on room air, rhythm sinus bradycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 00:15 EDT - HR 70, BP 115/67, SpO2 98% on room air, rhythm normal sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 00:20 EDT - HR 71, BP 116/68, SpO2 99% on room air, rhythm sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 00:25 EDT - HR 72, BP 117/69, SpO2 95% on room air, rhythm sinus tachycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 00:30 EDT - HR 73, BP 118/70, SpO2 96% on room air, rhythm sinus bradycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 00:35 EDT - HR 74, BP 119/71, SpO2 97% on room air, rhythm normal sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 00:40 EDT - HR 75, BP 120/72, SpO2 98% on room air, rhythm sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 00:45 EDT - HR 76, BP 121/73, SpO2 99% on room air, rhythm sinus tachycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 00:50 EDT - HR 77, BP 122/74, SpO2 95% on room air, rhythm sinus bradycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 00:55 EDT - HR 78, BP 123/75, SpO2 96% on room air, rhythm normal sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 01:00 EDT - HR 79, BP 124/62, SpO2 97% on room air, rhythm sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 01:05 EDT - HR 80, BP 125/63, SpO2 98% on room air, rhythm sinus tachycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 01:10 EDT - HR 62, BP 126/64, SpO2 99% on room air, rhythm sinus bradycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 01:15 EDT - HR 63, BP 127/65, SpO2 95% on room air, rhythm normal sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 01:20 EDT - HR 64, BP 128/66, SpO2 96% on room air, rhythm sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 01:25 EDT - HR 65, BP 129/67, SpO2 97% on room air, rhythm sinus tachycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 01:30 EDT - HR 66, BP 130/68, SpO2 98% on room air, rhythm sinus bradycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 01:35 EDT - HR 67, BP 131/69, SpO2 99% on room air, rhythm normal sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 01:40 EDT - HR 68, BP 108/70, SpO2 95% on room air, rhythm sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 01:45 EDT - HR 69, BP 109/71, SpO2 96% on room air, rhythm sinus tachycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 01:50 EDT - HR 70, BP 110/72, SpO2 97% on room air, rhythm sinus bradycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 01:55 EDT - HR 71, BP 111/73, SpO2 98% on room air, rhythm normal sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 02:00 EDT - HR 72, BP 112/74, SpO2 99% on room air, rhythm sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 02:05 EDT - HR 73, BP 113/75, SpO2 95% on room air, rhythm sinus tachycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 02:10 EDT - HR 74, BP 114/62, SpO2 96% on room air, rhythm sinus bradycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 02:15 EDT - HR 75, BP 115/63, SpO2 97% on room air, rhythm normal sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 02:20 EDT - HR 76, BP 116/64, SpO2 98% on room air, rhythm sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 02:25 EDT - HR 77, BP 117/65, SpO2 99% on room air, rhythm sinus tachycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 02:30 EDT - HR 78, BP 118/66, SpO2 95% on room air, rhythm sinus bradycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 02:35 EDT - HR 79, BP 119/67, SpO2 96% on room air, rhythm normal sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 02:40 EDT - HR 80, BP 120/68, SpO2 97% on room air, rhythm sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 02:45 EDT - HR 62, BP 121/69, SpO2 98% on room air, rhythm sinus tachycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 02:50 EDT - HR 63, BP 122/70, SpO2 99% on room air, rhythm sinus bradycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 02:55 EDT - HR 64, BP 123/71, SpO2 95% on room air, rhythm normal sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 03:00 EDT - HR 65, BP 124/72, SpO2 96% on room air, rhythm sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 03:05 EDT - HR 66, BP 125/73, SpO2 97% on room air, rhythm sinus tachycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 03:10 EDT - HR 67, BP 126/74, SpO2 98% on room air, rhythm sinus bradycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 03:15 EDT - HR 68, BP 127/75, SpO2 99% on room air, rhythm normal sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 03:20 EDT - HR 69, BP 128/62, SpO2 95% on room air, rhythm sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 03:25 EDT - HR 70, BP 129/63, SpO2 96% on room air, rhythm sinus tachycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 03:30 EDT - HR 71, BP 130/64, SpO2 97% on room air, rhythm sinus bradycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 03:35 EDT - HR 72, BP 131/65, SpO2 98% on room air, rhythm normal sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 03:40 EDT - HR 73, BP 108/66, SpO2 99% on room air, rhythm sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 03:45 EDT - HR 74, BP 109/67, SpO2 95% on room air, rhythm sinus tachycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 03:50 EDT - HR 75, BP 110/68, SpO2 96% on room air, rhythm sinus bradycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 03:55 EDT - HR 76, BP 111/69, SpO2 97% on room air, rhythm normal sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 04:00 EDT - HR 77, BP 112/70, SpO2 98% on room air, rhythm sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 04:05 EDT - HR 78, BP 113/71, SpO2 99% on room air, rhythm sinus tachycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 04:10 EDT - HR 79, BP 114/72, SpO2 95% on room air, rhythm sinus bradycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 04:15 EDT - HR 80, BP 115/73, SpO2 96% on room air, rhythm normal sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 04:20 EDT - HR 62, BP 116/74, SpO2 97% on room air, rhythm sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 04:25 EDT - HR 63, BP 117/75, SpO2 98% on room air, rhythm sinus tachycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 04:30 EDT - HR 64, BP 118/62, SpO2 99% on room air, rhythm sinus bradycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 04:35 EDT - HR 65, BP 119/63, SpO2 95% on room air, rhythm normal sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 04:40 EDT - HR 66, BP 120/64, SpO2 96% on room air, rhythm sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 04:45 EDT - HR 67, BP 121/65, SpO2 97% on room air, rhythm sinus tachycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 04:50 EDT - HR 68, BP 122/66, SpO2 98% on room air, rhythm sinus bradycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 04:55 EDT - HR 69, BP 123/67, SpO2 99% on room air, rhythm normal sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 05:00 EDT - HR 70, BP 124/68, SpO2 95% on room air, rhythm sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 05:05 EDT - HR 71, BP 125/69, SpO2 96% on room air, rhythm sinus tachycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 05:10 EDT - HR 72, BP 126/70, SpO2 97% on room air, rhythm sinus bradycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 05:15 EDT - HR 73, BP 127/71, SpO2 98% on room air, rhythm normal sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 05:20 EDT - HR 74, BP 128/72, SpO2 99% on room air, rhythm sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 05:25 EDT - HR 75, BP 129/73, SpO2 95% on room air, rhythm sinus tachycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 05:30 EDT - HR 76, BP 130/74, SpO2 96% on room air, rhythm sinus bradycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 05:35 EDT - HR 77, BP 131/75, SpO2 97% on room air, rhythm normal sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 05:40 EDT - HR 78, BP 108/62, SpO2 98% on room air, rhythm sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 05:45 EDT - HR 79, BP 109/63, SpO2 99% on room air, rhythm sinus tachycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 05:50 EDT - HR 80, BP 110/64, SpO2 95% on room air, rhythm sinus bradycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 05:55 EDT - HR 62, BP 111/65, SpO2 96% on room air, rhythm normal sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 06:00 EDT - HR 63, BP 112/66, SpO2 97% on room air, rhythm sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 06:05 EDT - HR 64, BP 113/67, SpO2 98% on room air, rhythm sinus tachycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 06:10 EDT - HR 65, BP 114/68, SpO2 99% on room air, rhythm sinus bradycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 06:15 EDT - HR 66, BP 115/69, SpO2 95% on room air, rhythm normal sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 06:20 EDT - HR 67, BP 116/70, SpO2 96% on room air, rhythm sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 06:25 EDT - HR 68, BP 117/71, SpO2 97% on room air, rhythm sinus tachycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 06:30 EDT - HR 69, BP 118/72, SpO2 98% on room air, rhythm sinus bradycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 06:35 EDT - HR 70, BP 119/73, SpO2 99% on room air, rhythm normal sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 06:40 EDT - HR 71, BP 120/74, SpO2 95% on room air, rhythm sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 06:45 EDT - HR 72, BP 121/75, SpO2 96% on room air, rhythm sinus tachycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 06:50 EDT - HR 73, BP 122/62, SpO2 97% on room air, rhythm sinus bradycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 06:55 EDT - HR 74, BP 123/63, SpO2 98% on room air, rhythm normal sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 07:00 EDT - HR 75, BP 124/64, SpO2 99% on room air, rhythm sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 07:05 EDT - HR 76, BP 125/65, SpO2 95% on room air, rhythm sinus tachycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 07:10 EDT - HR 77, BP 126/66, SpO2 96% on room air, rhythm sinus bradycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 07:15 EDT - HR 78, BP 127/67, SpO2 97% on room air, rhythm normal sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 07:20 EDT - HR 79, BP 128/68, SpO2 98% on room air, rhythm sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 07:25 EDT - HR 80, BP 129/69, SpO2 99% on room air, rhythm sinus tachycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 07:30 EDT - HR 62, BP 130/70, SpO2 95% on room air, rhythm sinus bradycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 07:35 EDT - HR 63, BP 131/71, SpO2 96% on room air, rhythm normal sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 07:40 EDT - HR 64, BP 108/72, SpO2 97% on room air, rhythm sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 07:45 EDT - HR 65, BP 109/73, SpO2 98% on room air, rhythm sinus tachycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 07:50 EDT - HR 66, BP 110/74, SpO2 99% on room air, rhythm sinus bradycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 07:55 EDT - HR 67, BP 111/75, SpO2 95% on room air, rhythm normal sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 08:00 EDT - HR 68, BP 112/62, SpO2 96% on room air, rhythm sinus rhythm; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 08:05 EDT - HR 69, BP 113/63, SpO2 97% on room air, rhythm sinus tachycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 08:10 EDT - HR 70, BP 114/64, SpO2 98% on room air, rhythm sinus bradycardia; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 08:15 EDT - HR 71, BP 115/65, SpO2 99% on room air, rhythm normal sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 08:20 EDT - HR 72, BP 116/66, SpO2 95% on room air, rhythm sinus rhythm; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 08:25 EDT - HR 73, BP 117/67, SpO2 96% on room air, rhythm sinus tachycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 08:30 EDT - HR 74, BP 118/68, SpO2 97% on room air, rhythm sinus bradycardia; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 08:35 EDT - HR 75, BP 119/69, SpO2 98% on room air, rhythm normal sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 08:40 EDT - HR 76, BP 120/70, SpO2 99% on room air, rhythm sinus rhythm; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+06/29/2026 08:45 EDT - HR 77, BP 121/71, SpO2 95% on room air, rhythm sinus tachycardia; access site clean, dry, and intact, no hematoma noted, distal pulses 2+ bilaterally.
+06/29/2026 08:50 EDT - HR 78, BP 122/72, SpO2 96% on room air, rhythm sinus bradycardia; TR band in place, no bleeding or oozing at radial access site, hand warm and well perfused.
+06/29/2026 08:55 EDT - HR 79, BP 123/73, SpO2 97% on room air, rhythm normal sinus rhythm; patient resting comfortably in bed, denies chest pain or shortness of breath.
+06/29/2026 09:00 EDT - HR 80, BP 124/74, SpO2 98% on room air, rhythm sinus rhythm; radial access site without ecchymosis or swelling, capillary refill brisk bilaterally.
+06/29/2026 09:05 EDT - HR 62, BP 125/75, SpO2 99% on room air, rhythm sinus tachycardia; patient alert and oriented x3, tolerating clear liquids, no nausea reported.
+
+Recommendation:
+Integrilin for 6 hours
+TR band wean as per protocol
+Monitor vitals, rhythm and vascular access site
+Follow up with cardiology in 2 weeks
+Aggressive risk factor modification
+Aspirin, ticagrelor and high intensity statin
+Cardiac rehabilitation referral
+
+Disposition:
+The patient will be returned to their room after the procedure, following bedrest and
+subsequent ambulation, provided the recovery parameters are appropriate.
+The patient has been instructed to call the procedural cardiologist immediately if symptoms
+recur.
+
+Signed By Ullah, Waqas MD On 6/29/2026 3:45:10 PM
