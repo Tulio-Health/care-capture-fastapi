@@ -81,3 +81,18 @@ def test_recommendations_guardrail_no_longer_bans_lifestyle_counseling():
     ).read_text()
     assert "no general educational" not in chain_source.lower()
     assert "no direct patient actions" not in chain_source.lower()
+
+
+def test_extraction_prompt_pins_the_procedures_section():
+    """PR-3a tightening (see §7 Check 5 in revision-round3.md): bounds the check to a prefix
+    of the extraction prompt ending right before Section 8 (Follow-Up) so this assertion can't
+    silently start passing because of unrelated content added later in the prompt.
+    """
+    chain_source = (
+        Path(__file__).parents[2] / "chains" / "attachment_summarization" / "chain.py"
+    ).read_text()
+    pinned = chain_source[: chain_source.lower().index("section 8:")]
+
+    assert "Section 7: Procedures" in pinned
+    assert "is an ORDER" in pinned
+    assert 'NEVER default to "performed"' in pinned

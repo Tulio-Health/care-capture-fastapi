@@ -106,6 +106,29 @@ class ProcedureMention(BaseModel):
     )
 
 
+class FollowUpDetail(BaseModel):
+    """A single dated/interval follow-up, return, or re-evaluation instruction, grounded in a
+    verbatim quote from the source document. No `NOT_DOCUMENTED_FOLLOW_UP` sentinel here
+    (deliberate divergence from `models/procedure_summarization.py`) -- most visits legitimately
+    have no follow-up, so absence is simply an empty list.
+    """
+
+    follow_up: str = Field(
+        ...,
+        description=(
+            "Plain-language, patient-facing follow-up/return/re-evaluation instruction (e.g., "
+            "'You were told to follow up with cardiology in 2 weeks')."
+        ),
+    )
+    source_quote: str = Field(
+        ...,
+        description=(
+            "The exact sentence(s) this was extracted from, copied character-for-character "
+            "verbatim from the source document."
+        ),
+    )
+
+
 class DocumentSummary(BaseModel):
     """Structured clinical data extracted from a single medical document. Only include information explicitly stated in the source text."""
 
@@ -164,6 +187,14 @@ class DocumentSummary(BaseModel):
     instructions: List[str] = Field(
         default_factory=list,
         description="Direct instructions given by the provider to the patient (e.g., 'take with food', 'return in 2 weeks', 'avoid heavy lifting'). Do not include clinical recommendations.",
+    )
+    follow_up: List[FollowUpDetail] = Field(
+        default_factory=list,
+        description=(
+            "Dated or interval-based follow-up, return, or re-evaluation instructions from THIS "
+            "document, each grounded in a verbatim source_quote. Empty list when genuinely "
+            "absent -- never a 'not documented' sentinel."
+        ),
     )
     risk_factors: List[str] = Field(
         default_factory=list,
@@ -332,6 +363,15 @@ class AttachmentSummarizationResponse(BaseModel):
     instructions: List[str] = Field(
         default_factory=list,
         description="Deduplicated list of all direct patient instructions from providers across all documents. Do not include clinical recommendations.",
+    )
+
+    follow_up: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Deduplicated list of dated/interval follow-up, return, or re-evaluation "
+            "instructions across all documents. Do not restate items already in instructions. "
+            "Empty when none documented."
+        ),
     )
 
     recommendations: List[str] = Field(

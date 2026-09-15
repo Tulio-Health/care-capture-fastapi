@@ -476,6 +476,7 @@ class AttachmentSummarizationService:
             "recommendations": [{"recommendation": rec} for rec in analysis_result.recommendations],
             "data": {
                 "procedures_mentioned": analysis_result.procedures_mentioned,
+                "follow_up": analysis_result.follow_up,
             },
             "summary_metadata": {
                 "source": "attachment_summary",
