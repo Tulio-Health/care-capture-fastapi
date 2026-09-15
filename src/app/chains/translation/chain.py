@@ -79,6 +79,56 @@ _GUARDED_FIELDS = (
     "data",
 )
 
+# Sentinel for "key present in original but absent from translated" -- lets the per-key guard
+# below tell that apart from a real value (including None) via `.get(key, _MISSING)`, so a
+# missing key is treated as corrupted-for-that-key instead of raising KeyError.
+_MISSING = object()
+
+
+def _guard_translated_data(original: Any, translated: Any) -> Any:
+    """Special-cased structure guard for the `data` field: reverts only the sub-keys whose
+    structure fails to survive translation, instead of reverting the whole blob -- so one
+    corrupted key (e.g. a mis-shaped `follow_up` list) doesn't drag every other, correctly
+    translated sub-key (e.g. `procedures_mentioned`) back to English with it.
+
+    Two preconditions the whole-blob guard used to absorb for free, restated here so a
+    degraded translation can't turn into a request failure:
+    - `translated` is not a dict (None, or a list if the model degrades the schema): revert
+      the whole field -- there is nothing to index per-key.
+    - a key present in `original` but absent from `translated`: looked up via
+      `.get(key, _MISSING)` so it is treated as corrupted-for-that-key rather than raising
+      KeyError inside the translation chain.
+    """
+    if not isinstance(original, dict) or not isinstance(translated, dict):
+        corrupted = (original is None and translated is not None) or (
+            original is not None and not _same_structure(original, translated)
+        )
+        if corrupted:
+            logger.warning(
+                "Translated %r failed the structure-preservation guard - falling back to "
+                "the untranslated original for this field.",
+                "data",
+            )
+            return original
+        return translated
+
+    result: Dict[str, Any] = {}
+    for key, original_sub in original.items():
+        translated_sub = translated.get(key, _MISSING)
+        if translated_sub is _MISSING or not _same_structure(
+            original_sub, translated_sub
+        ):
+            logger.warning(
+                "Translated %r failed the structure-preservation guard - falling back to "
+                "the untranslated original for this field. field=data key=%s",
+                "data",
+                key,
+            )
+            result[key] = original_sub
+        else:
+            result[key] = translated_sub
+    return result
+
 
 class TranslationChain:
     """
@@ -161,6 +211,13 @@ class TranslationChain:
             for field in _GUARDED_FIELDS:
                 original_value = summary_data.get(field)
                 translated_value = getattr(translated, field)
+
+                if field == "data":
+                    guarded[field] = _guard_translated_data(
+                        original_value, translated_value
+                    )
+                    continue
+
                 corrupted = (
                     original_value is None and translated_value is not None
                 ) or (

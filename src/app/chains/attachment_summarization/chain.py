@@ -3,22 +3,57 @@
 import asyncio
 import json
 import logging
-from typing import List
+import re
+from typing import List, Tuple
 
 from langsmith import traceable
 from pydantic_ai import Agent
 from pydantic_ai.settings import ModelSettings
 
+from src.app.chains.procedure_extraction.chain import _quote_supported
 from src.app.common.llm_factory import get_pydantic_ai_model
 from src.app.models.attachment_summarization import (
     AttachmentSummarizationResponse,
     DocumentAttachment,
     DocumentSummary,
+    FollowUpDetail,
 )
 
 logger = logging.getLogger(__name__)
 
 BATCH_CHAR_LIMIT = 30_000  # ~7,500-10,000 tokens of content per batch
+
+# A single document may fill exactly one batch, never more -- and _window_document (below)
+# enforces this by construction, it is not a hope. Named separately from
+# procedure_extraction/chain.py's _MAX_DOC_CHARS (100_000): that chain is per-document (one LLM
+# call per document); this one is batched (several documents can share one
+# BATCH_CHAR_LIMIT-sized prompt), so the two caps differ on purpose.
+_MAX_DOC_CHARS_ATTACHMENT = BATCH_CHAR_LIMIT
+
+# Section headers whose content must survive windowing even when the head+tail slice alone
+# would drop them. Bug 2's root cause: a blind head truncation dropped Assessment/Plan and
+# Follow-up content that appears late in long CDA documents.
+_PLAN_SECTION_PATTERN = re.compile(
+    r"\b(assessment\s*(?:and|/)\s*plan|plan of treatment|scheduled orders|follow[\s-]?up|"
+    r"return in|disposition|discharge instructions?|patient instructions?|recommendation)\b",
+    re.IGNORECASE,
+)
+
+# The four terms below are the LIVE values already in effect through ModelSettings(timeout=...)
+# and pydantic_ai.Agent's own `retries: int = 1` default (agent/__init__.py:170, installed
+# 1.30.1) -- made visible as named constants, not a new choice. Naming them lets CI assert the
+# budget without constructing an Agent, which raises ValueError without an OpenAI key (see
+# get_pydantic_ai_model() / llm_factory.py) rather than skipping.
+_EXTRACTION_TIMEOUT_S = 60.0
+_EXTRACTION_RETRIES = 1
+_SYNTHESIS_TIMEOUT_S = 60.0
+_SYNTHESIS_RETRIES = 1
+
+# Process-wide cap on concurrent LLM calls from this chain, copied from the live precedent at
+# procedure_extraction/chain.py:54. AttachmentSummarizationChain is instantiated fresh per HTTP
+# request, so this MUST be module-level (not an instance attribute) to actually bound
+# cross-request concurrency rather than giving every request its own private budget.
+_LLM_SEMAPHORE = asyncio.Semaphore(8)
 
 _EXTRACTION_SYSTEM_PROMPT = """You are an AI Clinical Summarizer (Non-Advisory) for patient-facing applications.
 
@@ -156,8 +191,9 @@ Section 4: Key Insights (key_insights)
 Section 5: Recommendations (recommendations)
 
 - Include the provider’s clinical plans, future considerations, suggested next steps, lifestyle counseling (diet, exercise, activity), and in-progress medication adjustments discussed during the visit
-- MUST be explicitly attributed to the provider
+- MUST be attributed to the provider in your wording; a bullet inside an Assessment/Plan, Plan of Treatment or Scheduled Orders section IS the provider's even when the source names no one — attribute it generically. Do NOT drop it for lack of an attribution phrase.
 - MUST NOT include direct patient actions phrased as commands (those go to instructions)
+- Dated or interval-based follow-up (e.g., "return in 6 weeks", "follow up in 2 weeks") routes to follow_up (Section 8), not here.
 
 Examples:
 - "The doctor recommended reevaluation in 6 weeks"
@@ -171,10 +207,37 @@ Section 6: Instructions (instructions)
 
 - Include ONLY direct actions the patient was told to follow
 - MUST be attributed to the provider
-- MUST NOT include conditional or future planning statements
+- MUST NOT include hypothetical or conditional "if X happens" statements — dated/interval follow-up (e.g., "return in 6 weeks") is NOT excluded by this rule; it routes to follow_up (Section 8), not here.
 
 Examples:
 - "You were instructed to continue physical therapy"
+
+----------------------------------------
+
+Section 7: Procedures (procedures)
+- For EACH procedure or intervention named anywhere in the document, return ALL of:
+  - description: the procedure as documented, with relevant details (date, site, outcome) where stated
+  - status: "performed" (actually done during THIS visit), "ordered" (ordered, recommended, referred, or
+    scheduled for the future — including anything under Referral, Reason for Referral, Order, Plan of
+    Treatment, or Scheduled Orders), or "not_stated" (the text does not make clear whether it was done or
+    only ordered)
+  - source_section: the section heading it was found under, if identifiable
+- CDA/C-CDA documents often flatten a referral into a bare table row with no verb, e.g. a line reading only
+  "Procedures  Ultrasound Neck Thyroid" inside a Referral/Reason for Referral block. This is an ORDER, not
+  something performed — tag it "ordered" even though the word "performed" or "ordered" never appears.
+- When in doubt, use "ordered" or "not_stated" — NEVER default to "performed". Guessing "performed" for
+  something only ordered, recommended, or referred is a critical error.
+- This status distinction also governs clinical_summary and key_insights: never narrate an ordered, scheduled or referred procedure as something that happened at this visit.
+
+----------------------------------------
+
+Section 8: Follow-Up (follow_up)
+- For EACH dated or interval-based follow-up, return, or re-evaluation instruction found anywhere in the document (e.g., "return in 6 weeks", "follow up with cardiology in 2 weeks", "repeat labs in 3 months"), follow this two-step process:
+  a. FIRST, locate and copy the exact sentence(s) it came from into source_quote, copied character-for-character verbatim from the document.
+  b. THEN, paraphrase it into follow_up in plain, patient-facing, second-person language (e.g., "f/u with cardiology in 2 weeks" becomes "You were told to follow up with cardiology in 2 weeks").
+- Follow-up content is STILL follow-up even when it's phrased as a clinician-directed order rather than text addressed to the patient (e.g., a bare "f/u with PCP in 2 weeks" inside a Plan or Disposition section) — attribute it generically rather than dropping it for lack of an explicit "you were told" phrase.
+- Do NOT infer follow-up from what "would normally" happen after a visit — only extract what is explicitly stated in THIS document.
+- If this document genuinely has no follow-up/return/re-evaluation content, return an empty list. Do NOT write "none documented", "not applicable", or any other sentinel string — an empty list IS the correct output for most visits.
 
 ----------------------------------------
 RULES
@@ -222,7 +285,7 @@ clinical_summary field:
 
 key_insights field:
 - Include key findings, trends, and notable observations
-- Fold in vital_signs from per-document summaries as relevant insights (procedures now live in procedures_mentioned, not here)
+- Fold in vital_signs from per-document summaries as relevant insights (performed procedures live in procedures_mentioned, not here)
 - Use second person ("your blood pressure was...", "you had...")
 
 diagnoses_mentioned:
@@ -231,7 +294,9 @@ diagnoses_mentioned:
 - Combine near-duplicate diagnoses only when they clearly refer to the same condition (e.g., merge "HTN" and "Hypertension", preferring the fuller documented form as official_diagnosis)
 
 procedures_mentioned:
-- Deduplicated list of procedures/interventions performed during the visit (e.g., injections, aspirations, minor in-office procedures), drawn from each document's procedures field
+- Deduplicated list of procedures/interventions performed during the visit (e.g., injections, aspirations, minor in-office procedures), drawn ONLY from each document's procedures_performed list — never an item from procedures_ordered
+- De-duplicate: emit at most one entry per distinct procedure, preserving first-appearance order. Never emit an item that is not in procedures_performed
+- Empty list when procedures_performed is empty across all documents
 - Use second person where natural (e.g., "You received a shoulder injection during this visit")
 
 medications_mentioned:
@@ -242,6 +307,7 @@ medications_mentioned:
 
 lab_results: Deduplicated list of all lab values with units and reference ranges
 instructions: Deduplicated list of all direct patient instructions from the provider
+follow_up: Deduplicated list of dated/interval follow-up, return, or re-evaluation instructions across all documents (from each document's follow_up list). Do not restate items already in instructions. Empty when none documented.
 recommendations: Deduplicated list of all clinical recommendations, including lifestyle counseling (diet, exercise, activity) and in-progress medication adjustments discussed by the provider
 risk_factors: Deduplicated list of all risk factors identified
 document_metadata: Build from source_document_title, source_document_date, source_document_type in each DocumentSummary
@@ -273,7 +339,10 @@ def _create_batches(
     for doc in documents:
         if doc.extraction_error:
             continue
-        doc_size = min(len(doc.extracted_text), 10_000)
+        doc = doc.model_copy(
+            update={"extracted_text": _window_document(doc.extracted_text)}
+        )
+        doc_size = len(doc.extracted_text)
         if current_batch and current_size + doc_size > BATCH_CHAR_LIMIT:
             batches.append(current_batch)
             current_batch = []
@@ -285,6 +354,72 @@ def _create_batches(
         batches.append(current_batch)
 
     return batches
+
+
+def _window_document(text: str, cap: int = _MAX_DOC_CHARS_ATTACHMENT) -> str:
+    """Bound a single document's extracted text to `cap` characters while preserving
+    Assessment/Plan, Follow-up and similar late-document sections that a blind head
+    truncation would drop (Bug 2's root cause).
+
+    No-op below `cap`. Otherwise: head (60% of cap) + tail (10% of cap) + every
+    `_PLAN_SECTION_PATTERN` match expanded to (header - 200, header + 1,500), merged/
+    de-overlapped, kept in document order. While the assembled output still exceeds `cap`,
+    the lowest-priority span -- the one furthest from the tail, since Epic CCDs put
+    Assessment/Plan, Plan of Treatment and Follow-up sections last -- is dropped and the
+    document is re-assembled.
+
+    The final `return out[:cap]` is an UNCONDITIONAL hard clamp: the bound holds no matter
+    what the assembly above computed, even if a marker string above is later reworded or a
+    span's size estimate is off by one. This clamp -- not the assembly logic -- is what makes
+    `len(_window_document(text, cap=cap)) <= cap` true by construction rather than by
+    assumption; see test_followup_windowing.py's explicit proof that removing it breaks the
+    invariant on a fixture with many spans.
+    """
+    if len(text) <= cap:
+        return text
+
+    head_end = int(cap * 0.6)
+    tail_start = len(text) - int(cap * 0.1)
+
+    raw_spans = sorted(
+        (max(0, m.start() - 200), min(len(text), m.start() + 1_500))
+        for m in _PLAN_SECTION_PATTERN.finditer(text)
+    )
+    spans: List[Tuple[int, int]] = []
+    for start, end in raw_spans:
+        if spans and start <= spans[-1][1]:
+            spans[-1] = (spans[-1][0], max(spans[-1][1], end))
+        else:
+            spans.append((start, end))
+
+    def _assemble(spans: List[Tuple[int, int]]) -> str:
+        parts = [text[:head_end]]
+        cursor = head_end
+        for start, end in spans:
+            start, end = max(start, cursor), max(end, cursor)
+            if start >= tail_start:
+                continue
+            end = min(end, tail_start)
+            if end <= start:
+                continue
+            if start > cursor:
+                parts.append(f"\n\n[... omitted {start - cursor} chars ...]\n\n")
+            parts.append(text[start:end])
+            cursor = end
+        if tail_start > cursor:
+            parts.append(f"\n\n[... omitted {tail_start - cursor} chars ...]\n\n")
+        parts.append(text[tail_start:])
+        return "".join(parts)
+
+    # Priority: spans closer to the tail matter more -- drop the span furthest from the tail
+    # (the earliest one, since `spans` is sorted in document order) first.
+    out = _assemble(spans)
+    while len(out) > cap and spans:
+        spans.pop(0)
+        out = _assemble(spans)
+
+    # Unconditional final clamp -- see docstring above.
+    return out[:cap]
 
 
 def _format_batch_prompt(
@@ -305,13 +440,113 @@ def _format_batch_prompt(
             header += f"Filename: {doc.file_name}\n"
         header += "---\n\n"
 
-        content = doc.extracted_text[:10_000]
-        if len(doc.extracted_text) > 10_000:
-            content += f"\n\n[... truncated, total: {len(doc.extracted_text)} chars]"
-
-        parts.append(header + content)
+        # Already windowed to _MAX_DOC_CHARS_ATTACHMENT by _create_batches -- the window's own
+        # `[... omitted N chars ...]` markers replace the old truncation suffix.
+        parts.append(header + doc.extracted_text)
 
     return "\n".join(parts)
+
+
+def _norm(text: str) -> str:
+    """Normalize a procedure description for de-dup comparison: collapse whitespace, lowercase."""
+    return " ".join(text.split()).lower()
+
+
+def _split_procedures(summaries: List[DocumentSummary]) -> List[dict]:
+    """Split each summary's mixed `procedures` list into `procedures_performed` / `procedures_ordered`
+    string lists, for use as synthesis input. `not_stated` groups with `ordered` — safe-failure: an
+    uncertain status is never surfaced as something that happened at this visit.
+    """
+    split: List[dict] = []
+    for summary in summaries:
+        data = summary.model_dump()
+        procedures = data.pop("procedures", [])
+        data["procedures_performed"] = [
+            p["description"] for p in procedures if p["status"] == "performed"
+        ]
+        data["procedures_ordered"] = [
+            p["description"] for p in procedures if p["status"] != "performed"
+        ]
+        split.append(data)
+    return split
+
+
+def _enforce_performed_cardinality(
+    response: AttachmentSummarizationResponse, split: List[dict]
+) -> None:
+    """Guards against the synthesis agent inventing a `procedures_mentioned` entry with no backing
+    item in any document's `procedures_performed` list. Fires only in the unsafe direction: merging
+    two performed items into one sentence is safe (fewer claims, all true); inventing an extra one
+    is not.
+    """
+    first_appearance: dict[str, str] = {}
+    for doc in split:
+        for p in doc["procedures_performed"]:
+            key = _norm(p)
+            if key not in first_appearance:
+                first_appearance[key] = p
+
+    if len(response.procedures_mentioned) > len(first_appearance):
+        logger.warning(
+            "procedures_mentioned cardinality (%d) exceeds the performed bucket (%d) — truncating "
+            "to the performed items themselves to avoid surfacing an unbacked claim",
+            len(response.procedures_mentioned),
+            len(first_appearance),
+        )
+        response.procedures_mentioned = list(first_appearance.values())
+
+
+def _check_follow_up_grounding(
+    summaries: List[DocumentSummary], source: str
+) -> Tuple[List[DocumentSummary], List[str]]:
+    """Anti-hallucination + anti-omission check for follow_up, run AFTER the extraction call
+    returns -- NO ModelRetry, NO extra model request. A pattern this broad, applied to a
+    multi-document batch, would make a retrying validator fire on nearly every long batch (the
+    same reasoning procedure_extraction/chain.py:38-45 documents for its narrower, per-document
+    case); this is a non-retrying pass by design, deferred to PR-3b pending real measurements.
+
+    Anti-hallucination (acted on): drops any FollowUpDetail whose source_quote is not grounded
+    in `source` (reusing procedure_extraction.chain._quote_supported). `source` is the exact
+    batch prompt string the model was shown, so the quote is checked against exactly what it saw.
+
+    Anti-omission (logged only, NOT acted on): counts, but does not act on, a batch where
+    `source` matches `_PLAN_SECTION_PATTERN` but no summary in the batch ended up with any
+    follow_up content -- the signal Phase 1b uses to decide whether PR-3b promotes this to a
+    retrying validator.
+
+    Returns (summaries, dropped_quotes): `summaries` with ungrounded follow_up entries removed;
+    `dropped_quotes` is the raw source_quote text of every dropped entry.
+    """
+    dropped_quotes: List[str] = []
+    for summary in summaries:
+        kept: List[FollowUpDetail] = []
+        for detail in summary.follow_up:
+            if _quote_supported(detail.source_quote, source):
+                kept.append(detail)
+            else:
+                dropped_quotes.append(detail.source_quote)
+        summary.follow_up = kept
+
+    dropped_ungrounded = len(dropped_quotes)
+    if dropped_ungrounded:
+        logger.warning(
+            "dropped_ungrounded: %d follow_up entries not found (verbatim/fuzzy) in the "
+            "source batch, dropped: %s",
+            dropped_ungrounded,
+            dropped_quotes,
+        )
+
+    suspected_omission = bool(_PLAN_SECTION_PATTERN.search(source)) and not any(
+        summary.follow_up for summary in summaries
+    )
+    if suspected_omission:
+        logger.warning(
+            "suspected_omission: batch source matches a plan/follow-up section pattern but no "
+            "follow_up was extracted from any document in this batch -- not retried (non-"
+            "retrying pass, PR-3a scope)."
+        )
+
+    return summaries, dropped_quotes
 
 
 class AttachmentSummarizationChain:
@@ -345,7 +580,8 @@ class AttachmentSummarizationChain:
                 self.model,
                 output_type=list[DocumentSummary],
                 system_prompt=self._extraction_system_prompt,
-                model_settings=ModelSettings(timeout=60.0),
+                model_settings=ModelSettings(timeout=_EXTRACTION_TIMEOUT_S),
+                retries=_EXTRACTION_RETRIES,
             )
         return self._extraction_agent
 
@@ -356,7 +592,8 @@ class AttachmentSummarizationChain:
                 self.model,
                 output_type=AttachmentSummarizationResponse,
                 system_prompt=self._synthesis_system_prompt,
-                model_settings=ModelSettings(timeout=60.0),
+                model_settings=ModelSettings(timeout=_SYNTHESIS_TIMEOUT_S),
+                retries=_SYNTHESIS_RETRIES,
             )
         return self._synthesis_agent
 
@@ -366,16 +603,19 @@ class AttachmentSummarizationChain:
     ) -> List[DocumentSummary]:
         """Run extraction agent on a single batch of documents."""
         prompt = _format_batch_prompt(batch, batch_num, total_batches)
-        result = await self.extraction_agent.run(prompt)
-        return result.output
+        async with _LLM_SEMAPHORE:
+            result = await self.extraction_agent.run(prompt)
+        summaries, _dropped_quotes = _check_follow_up_grounding(result.output, prompt)
+        return summaries
 
     @traceable(name="synthesize_summaries")
     async def _synthesize(
         self, appointment_context: dict, all_summaries: List[DocumentSummary]
     ) -> AttachmentSummarizationResponse:
         """Run synthesis agent to produce the final response."""
+        split = _split_procedures(all_summaries)
         summaries_json = json.dumps(
-            [s.model_dump() for s in all_summaries],
+            split,
             indent=2,
             default=str,
         )
@@ -390,6 +630,7 @@ class AttachmentSummarizationChain:
         )
         result = await self.synthesis_agent.run(prompt)
         response = result.output
+        _enforce_performed_cardinality(response, split)
         # Ensure accuracy — override with ground truth count
         response.documents_analyzed = len(all_summaries)
         return response

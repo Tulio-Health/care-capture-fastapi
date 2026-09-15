@@ -25,6 +25,70 @@ from src.app.utils.s3_client import S3DocumentClient
 logger = get_logger(__name__)
 
 
+def _static_fallback_summary_data(
+    request: AttachmentSummarizationRequest,
+    appointment: Appointment,
+    provider_name: str,
+) -> Dict[str, Any]:
+    """Build the summary payload for an appointment with no document attachments to analyze.
+
+    Pure function — no I/O — so it is directly testable without DB/network mocking.
+    """
+    appt_date = (
+        appointment.appointment_date.strftime("%B %d, %Y")
+        if appointment.appointment_date
+        else None
+    )
+    purpose = appointment.purpose
+    if provider_name and provider_name != "N/A":
+        if appt_date:
+            base = f"Your appointment with {provider_name} on {appt_date}"
+        else:
+            base = f"Your appointment with {provider_name}"
+    else:
+        if appt_date:
+            base = f"Your appointment on {appt_date}"
+        else:
+            base = "Your appointment"
+    if purpose:
+        base += f" was for {purpose}."
+    else:
+        base += "."
+    fallback_summary_text = (
+        f"{base} No clinical documents were available for this encounter."
+    )
+    return {
+        "summary_text": fallback_summary_text,
+        "user_id": request.user_id,
+        "created_by": request.user_id,
+        "updated_by": request.user_id,
+        "key_points": [],
+        "medications": [],
+        "diagnoses": [],
+        "instructions": [],
+        "recommendations": [],
+        "data": {},
+        "summary_metadata": {
+            "source": "attachment_summary",
+            "analysis_version": "1.0",
+            "total_documents": 0,
+            "successful_documents": 0,
+            "failed_documents": 0,
+            "document_metadata": [],
+            "extraction_errors": [],
+            "encounter_id": appointment.ehr_entity_id,
+            "provider_name": provider_name,
+            "appointment_date": (
+                appointment.appointment_date.isoformat()
+                if appointment.appointment_date
+                else None
+            ),
+            "lab_results": [],
+            "risk_factors": [],
+        },
+    }
+
+
 class AttachmentSummarizationService:
     """
     Service for analyzing document attachments and generating clinical insights.
@@ -89,50 +153,9 @@ class AttachmentSummarizationService:
             self.logger.info(
                 f"No document attachments found for appointment {request.appointment_id} - returning static appointment summary"
             )
-            appt_date = appointment.appointment_date.strftime("%B %d, %Y") if appointment.appointment_date else None
-            purpose = appointment.purpose
-            if provider_name and provider_name != "N/A":
-                if appt_date:
-                    base = f"Your appointment with {provider_name} on {appt_date}"
-                else:
-                    base = f"Your appointment with {provider_name}"
-            else:
-                if appt_date:
-                    base = f"Your appointment on {appt_date}"
-                else:
-                    base = "Your appointment"
-            if purpose:
-                base += f" was for {purpose}."
-            else:
-                base += "."
-            fallback_summary_text = f"{base} No clinical documents were available for this encounter."
-            summary_data = {
-                "summary_text": fallback_summary_text,
-                "user_id": request.user_id,
-                "created_by": request.user_id,
-                "updated_by": request.user_id,
-                "key_points": [],
-                "medications": [],
-                "diagnoses": [],
-                "instructions": [],
-                "recommendations": [],
-                "summary_metadata": {
-                    "source": "attachment_summary",
-                    "analysis_version": "1.0",
-                    "total_documents": 0,
-                    "successful_documents": 0,
-                    "failed_documents": 0,
-                    "document_metadata": [],
-                    "extraction_errors": [],
-                    "encounter_id": appointment.ehr_entity_id,
-                    "provider_name": provider_name,
-                    "appointment_date": (
-                        appointment.appointment_date.isoformat() if appointment.appointment_date else None
-                    ),
-                    "lab_results": [],
-                    "risk_factors": [],
-                },
-            }
+            summary_data = _static_fallback_summary_data(
+                request, appointment, provider_name
+            )
             db_summary = await self.summaries_repo.upsert(
                 appointment_id=request.appointment_id, summary_data=summary_data
             )
@@ -453,10 +476,11 @@ class AttachmentSummarizationService:
             "recommendations": [{"recommendation": rec} for rec in analysis_result.recommendations],
             "data": {
                 "procedures_mentioned": analysis_result.procedures_mentioned,
+                "follow_up": analysis_result.follow_up,
             },
             "summary_metadata": {
                 "source": "attachment_summary",
-                "analysis_version": "2.0",
+                "analysis_version": "2.1",
                 "total_documents": len(extracted_documents),
                 "successful_documents": successful_docs,
                 "failed_documents": len(extraction_errors),
