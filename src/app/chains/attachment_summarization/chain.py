@@ -177,6 +177,23 @@ Examples:
 - "You were instructed to continue physical therapy"
 
 ----------------------------------------
+
+Section 7: Procedures (procedures)
+- For EACH procedure or intervention named anywhere in the document, return ALL of:
+  - description: the procedure as documented, with relevant details (date, site, outcome) where stated
+  - status: "performed" (actually done during THIS visit), "ordered" (ordered, recommended, referred, or
+    scheduled for the future — including anything under Referral, Reason for Referral, Order, Plan of
+    Treatment, or Scheduled Orders), or "not_stated" (the text does not make clear whether it was done or
+    only ordered)
+  - source_section: the section heading it was found under, if identifiable
+- CDA/C-CDA documents often flatten a referral into a bare table row with no verb, e.g. a line reading only
+  "Procedures  Ultrasound Neck Thyroid" inside a Referral/Reason for Referral block. This is an ORDER, not
+  something performed — tag it "ordered" even though the word "performed" or "ordered" never appears.
+- When in doubt, use "ordered" or "not_stated" — NEVER default to "performed". Guessing "performed" for
+  something only ordered, recommended, or referred is a critical error.
+- This status distinction also governs clinical_summary and key_insights: never narrate an ordered, scheduled or referred procedure as something that happened at this visit.
+
+----------------------------------------
 RULES
 ----------------------------------------
 1. Do NOT provide medical advice or generate new recommendations
@@ -222,7 +239,7 @@ clinical_summary field:
 
 key_insights field:
 - Include key findings, trends, and notable observations
-- Fold in vital_signs from per-document summaries as relevant insights (procedures now live in procedures_mentioned, not here)
+- Fold in vital_signs from per-document summaries as relevant insights (performed procedures live in procedures_mentioned, not here)
 - Use second person ("your blood pressure was...", "you had...")
 
 diagnoses_mentioned:
@@ -231,7 +248,9 @@ diagnoses_mentioned:
 - Combine near-duplicate diagnoses only when they clearly refer to the same condition (e.g., merge "HTN" and "Hypertension", preferring the fuller documented form as official_diagnosis)
 
 procedures_mentioned:
-- Deduplicated list of procedures/interventions performed during the visit (e.g., injections, aspirations, minor in-office procedures), drawn from each document's procedures field
+- Deduplicated list of procedures/interventions performed during the visit (e.g., injections, aspirations, minor in-office procedures), drawn ONLY from each document's procedures_performed list — never an item from procedures_ordered
+- De-duplicate: emit at most one entry per distinct procedure, preserving first-appearance order. Never emit an item that is not in procedures_performed
+- Empty list when procedures_performed is empty across all documents
 - Use second person where natural (e.g., "You received a shoulder injection during this visit")
 
 medications_mentioned:
@@ -314,6 +333,55 @@ def _format_batch_prompt(
     return "\n".join(parts)
 
 
+def _norm(text: str) -> str:
+    """Normalize a procedure description for de-dup comparison: collapse whitespace, lowercase."""
+    return " ".join(text.split()).lower()
+
+
+def _split_procedures(summaries: List[DocumentSummary]) -> List[dict]:
+    """Split each summary's mixed `procedures` list into `procedures_performed` / `procedures_ordered`
+    string lists, for use as synthesis input. `not_stated` groups with `ordered` — safe-failure: an
+    uncertain status is never surfaced as something that happened at this visit.
+    """
+    split: List[dict] = []
+    for summary in summaries:
+        data = summary.model_dump()
+        procedures = data.pop("procedures", [])
+        data["procedures_performed"] = [
+            p["description"] for p in procedures if p["status"] == "performed"
+        ]
+        data["procedures_ordered"] = [
+            p["description"] for p in procedures if p["status"] != "performed"
+        ]
+        split.append(data)
+    return split
+
+
+def _enforce_performed_cardinality(
+    response: AttachmentSummarizationResponse, split: List[dict]
+) -> None:
+    """Guards against the synthesis agent inventing a `procedures_mentioned` entry with no backing
+    item in any document's `procedures_performed` list. Fires only in the unsafe direction: merging
+    two performed items into one sentence is safe (fewer claims, all true); inventing an extra one
+    is not.
+    """
+    first_appearance: dict[str, str] = {}
+    for doc in split:
+        for p in doc["procedures_performed"]:
+            key = _norm(p)
+            if key not in first_appearance:
+                first_appearance[key] = p
+
+    if len(response.procedures_mentioned) > len(first_appearance):
+        logger.warning(
+            "procedures_mentioned cardinality (%d) exceeds the performed bucket (%d) — truncating "
+            "to the performed items themselves to avoid surfacing an unbacked claim",
+            len(response.procedures_mentioned),
+            len(first_appearance),
+        )
+        response.procedures_mentioned = list(first_appearance.values())
+
+
 class AttachmentSummarizationChain:
     """Map-reduce chain for analyzing medical document attachments using PydanticAI."""
 
@@ -374,8 +442,9 @@ class AttachmentSummarizationChain:
         self, appointment_context: dict, all_summaries: List[DocumentSummary]
     ) -> AttachmentSummarizationResponse:
         """Run synthesis agent to produce the final response."""
+        split = _split_procedures(all_summaries)
         summaries_json = json.dumps(
-            [s.model_dump() for s in all_summaries],
+            split,
             indent=2,
             default=str,
         )
@@ -390,6 +459,7 @@ class AttachmentSummarizationChain:
         )
         result = await self.synthesis_agent.run(prompt)
         response = result.output
+        _enforce_performed_cardinality(response, split)
         # Ensure accuracy — override with ground truth count
         response.documents_analyzed = len(all_summaries)
         return response

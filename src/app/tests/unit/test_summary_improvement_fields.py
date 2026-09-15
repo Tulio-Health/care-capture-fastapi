@@ -6,6 +6,7 @@ one small check per change so a regression fails loudly.
 from pathlib import Path
 from typing import List
 
+from src.app.chains.attachment_summarization.chain import _enforce_performed_cardinality
 from src.app.models.attachment_summarization import (
     AttachmentSummarizationResponse,
     DiagnosisDetail,
@@ -47,6 +48,28 @@ def test_transcript_recommendations_use_recommendation_detail() -> None:
         ].annotation
         == list[RecommendationDetail]
     )
+
+
+def test_performed_sink_is_sourced_only_from_the_performed_bucket():
+    """procedures_mentioned must never surface an item that only appears in the ordered/not_stated
+    bucket. _enforce_performed_cardinality is the guard: if the synthesis agent over-produces
+    relative to the performed bucket, output is truncated to the performed items themselves.
+    """
+    split = [
+        {
+            "procedures_performed": ["Left shoulder injection"],
+            "procedures_ordered": ["Thyroid ultrasound"],
+        }
+    ]
+    response = AttachmentSummarizationResponse(
+        clinical_summary="x",
+        documents_analyzed=1,
+        procedures_mentioned=["Left shoulder injection", "Thyroid ultrasound"],
+    )
+
+    _enforce_performed_cardinality(response, split)
+
+    assert response.procedures_mentioned == ["Left shoulder injection"]
 
 
 def test_recommendations_guardrail_no_longer_bans_lifestyle_counseling():

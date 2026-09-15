@@ -1,7 +1,7 @@
 """Pydantic models for attachment summarization requests and responses."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -82,6 +82,30 @@ class RecommendationDetail(BaseModel):
     )
 
 
+class ProcedureMention(BaseModel):
+    """A single procedure or intervention named in a document, tagged with its status."""
+
+    description: str = Field(
+        ...,
+        description="The procedure or intervention as documented, with relevant details (date, site, outcome) where stated.",
+    )
+    status: Literal["performed", "ordered", "not_stated"] = Field(
+        ...,
+        description=(
+            "Whether this procedure actually happened during THIS visit ('performed'), or was only "
+            "ordered, recommended, referred, or scheduled for the future ('ordered' — this includes "
+            "anything documented under Referral, Reason for Referral, Order, Plan of Treatment, or "
+            "Scheduled Orders sections, including a CDA/CCD table row that names a procedure with no "
+            "verb), or the status cannot be determined from the text ('not_stated'). NEVER guess "
+            "'performed' for something only ordered, recommended, or referred."
+        ),
+    )
+    source_section: Optional[str] = Field(
+        None,
+        description="The document section this procedure was found in, if identifiable.",
+    )
+
+
 class DocumentSummary(BaseModel):
     """Structured clinical data extracted from a single medical document. Only include information explicitly stated in the source text."""
 
@@ -145,9 +169,9 @@ class DocumentSummary(BaseModel):
         default_factory=list,
         description="Identified risk factors and concerning findings requiring monitoring, only those explicitly stated in the document",
     )
-    procedures: List[str] = Field(
+    procedures: List[ProcedureMention] = Field(
         default_factory=list,
-        description="Medical procedures performed or recommended, with relevant details (date, site, outcome) where stated",
+        description="Every procedure named in the document, each tagged with a status (performed, ordered, or not_stated). See Section 7 rules.",
     )
     vital_signs: List[str] = Field(
         default_factory=list,
@@ -280,8 +304,11 @@ class AttachmentSummarizationResponse(BaseModel):
         default_factory=list,
         description=(
             "Deduplicated list of procedures/interventions performed during the visit (e.g., injections, "
-            "aspirations, minor in-office procedures), drawn from each document's procedures field. Use second "
-            "person where natural (e.g., 'You received a shoulder injection during this visit')."
+            "aspirations, minor in-office procedures), drawn ONLY from each document's procedures_performed "
+            "list — never an item from procedures_ordered. Empty when procedures_performed is empty across all "
+            "documents. De-duplicate: emit at most one entry per distinct procedure, preserving first-appearance "
+            "order. Never emit an item that is not in procedures_performed. Use second person where natural "
+            "(e.g., 'You received a shoulder injection during this visit')."
         ),
     )
 
