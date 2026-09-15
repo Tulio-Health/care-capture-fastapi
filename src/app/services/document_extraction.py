@@ -8,6 +8,7 @@ from typing import Optional
 
 import fitz  # PyMuPDF
 from docx import Document
+from striprtf.striprtf import rtf_to_text
 
 from src.app.common.logging import get_logger
 
@@ -22,12 +23,18 @@ class DocumentTextExtractor:
     - PDF (using PyMuPDF/fitz)
     - DOCX (using python-docx)
     - TXT (plain text)
+    - XML/CDA, HTML
+    - RTF (using striprtf)
 
     Handles extraction errors gracefully and provides detailed logging.
     """
 
     # Maximum file size: 50MB
     MAX_FILE_SIZE = 50 * 1024 * 1024
+
+    # EHR Binaries have no extension and an unreliable declared contentType, so RTF
+    # is sniffed by magic bytes rather than trusted from either signal.
+    RTF_MAGIC = b"{\\rtf"
 
     def extract_text(
         self, content: bytes, content_type: str, file_name: Optional[str] = None
@@ -64,7 +71,9 @@ class DocumentTextExtractor:
 
         try:
             # Route to appropriate extractor
-            if content_type == "application/pdf":
+            if content.lstrip()[:5] == self.RTF_MAGIC:
+                text = self._extract_from_rtf(content, file_name)
+            elif content_type == "application/pdf":
                 text = self._extract_from_pdf(content, file_name)
             elif content_type in [
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -77,6 +86,8 @@ class DocumentTextExtractor:
                 text = self._extract_from_xml(content, file_name)
             elif content_type in ["text/html", "application/xhtml+xml"]:
                 text = self._extract_from_html(content, file_name)
+            elif content_type in ["text/rtf", "application/rtf"]:
+                text = self._extract_from_rtf(content, file_name)
             elif content_type.startswith("text/"):
                 text = self._extract_from_txt(content, file_name)
             else:
@@ -300,6 +311,28 @@ class DocumentTextExtractor:
 
         except Exception as e:
             logger.warning(f"HTML extraction failed{file_info}: {e} - falling back to raw text")
+            return self._extract_from_txt(content, file_name)
+
+    def _extract_from_rtf(self, content: bytes, file_name: Optional[str] = None) -> str:
+        """Extract plain text from RTF using striprtf."""
+        file_info = f" ({file_name})" if file_name else ""
+
+        try:
+            try:
+                raw = content.decode("utf-8")
+            except UnicodeDecodeError:
+                raw = content.decode("latin-1")
+
+            extracted_text = rtf_to_text(raw, errors="ignore")
+            logger.debug(
+                f"Extracted text from RTF{file_info} - chars: {len(extracted_text)}"
+            )
+            return extracted_text
+
+        except Exception as e:
+            logger.warning(
+                f"RTF extraction failed{file_info}: {e} - falling back to raw text"
+            )
             return self._extract_from_txt(content, file_name)
 
     def _infer_type_from_filename(self, file_name: str) -> str:

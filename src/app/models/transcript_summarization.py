@@ -57,6 +57,8 @@ class TranscriptSummarizationResponse(BaseModel):
         default_factory=list,
         description=(
             "Procedures or interventions performed during the visit (e.g., injections, aspirations, minor "
-            "in-office procedures) discussed in the conversation."
+            "in-office procedures) discussed in the conversation. Do NOT include a procedure that was only "
+            "ordered, recommended, referred, or scheduled for a future visit — only what was actually "
+            "performed during this visit belongs here."
         ),
     )

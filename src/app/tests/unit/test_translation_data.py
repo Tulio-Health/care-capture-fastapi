@@ -72,7 +72,11 @@ async def test_translate_conversation_summary_merges_valid_translated_data():
 
 
 @pytest.mark.asyncio
-async def test_translate_conversation_summary_falls_back_on_corrupted_data():
+async def test_translate_conversation_summary_falls_back_only_on_the_corrupted_key():
+    """PR-3a: the whole-blob revert was replaced by a per-key one (see
+    test_translation_data_guard.py for the fuller coverage) -- a key the model dropped
+    reverts to its original value, but a sibling key that translated fine is NOT dragged
+    back to English with it."""
     chain = _chain_with_mocked_agent(
         {"reason": "es reason"}
     )  # dropped the "outcome" key
@@ -81,7 +85,7 @@ async def test_translate_conversation_summary_falls_back_on_corrupted_data():
 
     result = await chain.translate_conversation_summary(summary_data, "es")
 
-    assert result["data"] == original_data
+    assert result["data"] == {"reason": "es reason", "outcome": "en outcome"}
 
 
 def _chain_with_mocked_agent_recommendations(
