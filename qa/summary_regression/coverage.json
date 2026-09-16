@@ -313,7 +313,12 @@
         "NDJSON-PARTIAL",
         "GZIP-DOUBLE",
         "ZIP-DEPTH",
-        "ZIP-ENTRIES"
+        "ZIP-ENTRIES",
+        "FHIR-NESTED-NESTED_BUNDLE-JSON",
+        "FHIR-NESTED-NESTED_BUNDLE-XML",
+        "FHIR-NESTED-NESTED_REPORT-JSON",
+        "FHIR-NESTED-NESTED_REPORT-XML",
+        "FHIR-NESTED-REMOTE"
       ],
       "status": "specification_only"
     },
@@ -502,7 +507,10 @@
         "CLIN-OFFSETS",
         "CLIN-NORMALIZE",
         "CLIN-OMISSION",
-        "CLIN-POSTPROCESS"
+        "CLIN-POSTPROCESS",
+        "CLIN-LIVE-PRESCRIPTION",
+        "CLIN-LIVE-LAB-INTERPRETATION",
+        "CLIN-LIVE-VISIT-PURPOSE"
       ],
       "status": "specification_only"
     },
@@ -872,7 +880,10 @@
         "CLIN-OFFSETS",
         "CLIN-NORMALIZE",
         "CLIN-OMISSION",
-        "CLIN-POSTPROCESS"
+        "CLIN-POSTPROCESS",
+        "CLIN-LIVE-PRESCRIPTION",
+        "CLIN-LIVE-LAB-INTERPRETATION",
+        "CLIN-LIVE-VISIT-PURPOSE"
       ],
       "status": "specification_only"
     },

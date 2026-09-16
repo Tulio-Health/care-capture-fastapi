@@ -22,12 +22,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 # Configurations requiring orchestration/storage/transport simulators must not be ignored.
-SUPPORTED_CONFIG = {"repository_mode", "max_call_input_tokens", "max_input_tokens_per_job", "max_output_tokens", "max_images_per_call", "max_decoded_pixels", "declared_mime", "filename", "vision_enabled", "vision_response", "max_pages", "max_expanded_bytes", "max_archive_entries"}
+SUPPORTED_CONFIG = {"overlap_crops", "chunk_chars", "repeat_documents", "repository_mode", "max_call_input_tokens", "max_input_tokens_per_job", "max_output_tokens", "max_images_per_call", "max_decoded_pixels", "declared_mime", "filename", "vision_enabled", "vision_response", "max_pages", "max_expanded_bytes", "max_archive_entries"}
 SUPPORTED_CONFIG |= {"enabled_image_adapters", "text_without_mime_policy", "registered_rtf_aliases", "registered_aliases", "malformed_parameter_policy", "allow_unknown_text", "legacy_conversion_enabled", "disabled_adapters", "format_policy", "supported_text_encodings"}
 SUPPORTED_CONFIG |= {"transport_adapter_enabled", "approved_container_profile", "max_archive_depth"}
 SUPPORTED_CONFIG |= {"parameter_conflict_policy", "encoding_conflict_policy", "quality_profile"}
 SUPPORTED_CONFIG |= {"source", "retry_limit", "correction_limit", "max_vision_attempts", "strict_gate_rollback_requested"}
-SUPPORTED_INJECT = {"postprocess_attempts_add_claim", "legacy_error_field", "http_content_encoding", "wrap_fixture_in_gzip", "append_validated_text", "parent_resource_id", "same_parent_distinct_events", "narrative_append", "evidence_offset_shift", "model_omit_fact", "parser", "model_response_key", "repeat_on_correction", "model_error", "vision", "vision_response_key", "repeat_on_retry", "model_batch_ordinal", "model_chunk_ordinal", "all_model_batches", "model_omit_document_id", "model_duplicate_document_id", "model_add_document_id", "all_downloads", "missing_path_document_id", "fact_source_id", "model_claim", "model_quote", "vision_coordinates", "vision_omit_page"}
+SUPPORTED_INJECT = {"one_model_batch_fails", "postprocess_attempts_add_claim", "legacy_error_field", "http_content_encoding", "wrap_fixture_in_gzip", "append_validated_text", "parent_resource_id", "same_parent_distinct_events", "narrative_append", "evidence_offset_shift", "model_omit_fact", "parser", "model_response_key", "repeat_on_correction", "model_error", "vision", "vision_response_key", "repeat_on_retry", "model_batch_ordinal", "model_chunk_ordinal", "all_model_batches", "model_omit_document_id", "model_duplicate_document_id", "model_add_document_id", "all_downloads", "missing_path_document_id", "fact_source_id", "model_claim", "model_quote", "vision_coordinates", "vision_omit_page"}
 SUPPORT_DATA = {"scan_gold.json", "clinical_gold.json", "model_responses.json"}
 _RUNNER = None
 
@@ -41,6 +41,9 @@ def close():
 
 def run_case(case, fixture_dir, context):
     global _RUNNER
+    import routing_adapter
+    if case["id"] in routing_adapter.CASES:
+        return routing_adapter.run_case(case)
     import control_adapter
     if control_adapter.supports(case):
         return control_adapter.run_case(case, fixture_dir, context)
@@ -67,7 +70,11 @@ async def _run(case, fixture_dir, context):
     from pydantic_ai.models.openai import OpenAIChatModel
     from pydantic_ai.providers.openai import OpenAIProvider
 
-    config, inject = case.get("config", {}), case.get("inject", {})
+    config, inject = case.get("config", {}), dict(case.get("inject", {}))
+    if inject.pop("one_model_batch_fails", False):
+        inject.update(model_batch_ordinal=1, model_error="timeout")
+    from src.app.services.processing_metrics import snapshot
+    initial_metrics = snapshot()
     if config.get("repository_mode", "memory") != "memory":
         raise NotImplementedError("Only in-memory persistence is allowed")
     if config.get("source") not in {None, "attachment_summary", "procedure_summary"}:
@@ -112,10 +119,19 @@ async def _run(case, fixture_dir, context):
                 # Only explicit mock transcription fixtures may supply OCR text.
                 gold = json.loads((fixture_dir / "scan_gold.json").read_text())
                 pages = gold.get("pages", []) if isinstance(gold, dict) else gold
-                ordinal = capture["vision_pages"] + (1 if capture.get("active_fixture") == "scan_page2.jpg" else 0)
-                capture["vision_pages"] += 1
-                page = pages[ordinal] if ordinal < len(pages) else {}
-                text = page.get("text", "") if isinstance(page, dict) else str(page)
+                is_region = any("region" in item.get("text", "") for message in messages for item in (message.get("content", []) if isinstance(message.get("content"), list) else []) if isinstance(item, dict))
+                page_prompt = " ".join(item.get("text", "") for message in messages for item in (message.get("content", []) if isinstance(message.get("content"), list) else []) if isinstance(item, dict))
+                page_match = re.search(r"Transcribe page (\d+)", page_prompt)
+                ordinal = (int(page_match.group(1)) - 1 if page_match else capture.get("fixture_ocr_page", 0)) + (1 if capture.get("active_fixture") == "scan_page2.jpg" else 0)
+                if is_region:
+                    capture["region_calls"] = capture.get("region_calls", 0) + 1
+                    text = capture.get("last_ocr_gold", "")
+                else:
+                    capture["vision_pages"] += 1
+                    capture["fixture_ocr_page"] = capture.get("fixture_ocr_page", 0) + 1
+                    page = pages[ordinal] if ordinal < len(pages) else {}
+                    text = page.get("text", "") if isinstance(page, dict) else str(page)
+                    capture["last_ocr_gold"] = text
                 response = {"text": text, "unreadable_regions": [], "complete": inject.get("vision") != "unreadable"}
             if inject.get("vision_coordinates"):
                 response["coordinates"] = [{"x": 999999, "y": -1}]
@@ -205,6 +221,9 @@ async def _run(case, fixture_dir, context):
     try:
         with ExitStack() as stack:
             stack.enter_context(patch.object(settings_module, "get_settings", return_value=settings))
+            if "chunk_chars" in config:
+                import src.app.chains.attachment_summarization.chain as attachment_chain
+                stack.enter_context(patch.object(attachment_chain, "CHUNK_CHAR_LIMIT", config["chunk_chars"]))
             if "retry_limit" in config:
                 from src.app.services import summary_runtime
                 stack.enter_context(patch.object(summary_runtime, "MAX_TRANSIENT_RETRIES", config["retry_limit"]))
@@ -212,6 +231,10 @@ async def _run(case, fixture_dir, context):
                 raise NotImplementedError("Requested repair policy is not implemented")
             stack.enter_context(patch.object(factory, "get_pydantic_ai_model", side_effect=model_factory))
             from src.app.services import document_ocr as ocr_module
+            if config.get("overlap_crops"):
+                from src.app.services import ocr_regions
+                stack.enter_context(patch.object(ocr_regions, "REGION_HEIGHT", 600))
+                stack.enter_context(patch.object(ocr_regions, "REGION_OVERLAP", 100))
             if "max_output_tokens" in config:
                 stack.enter_context(patch.object(ocr_module, "MAX_OCR_OUTPUT_TOKENS", config["max_output_tokens"]))
             if "max_decoded_pixels" in config:
@@ -253,7 +276,7 @@ async def _run(case, fixture_dir, context):
                         return _original(self, *args, **kwargs)
                     stack.enter_context(patch.object(DocumentTextExtractor, method, wrapped))
             documents = []
-            fixture_names = case.get("fixtures", [])
+            fixture_names = case.get("fixtures", []) * config.get("repeat_documents", 1)
             if "connector_envelopes.json" in fixture_names:
                 from src.app.services.document_ingestion import process_attachments
                 from unittest.mock import AsyncMock
@@ -281,6 +304,7 @@ async def _run(case, fixture_dir, context):
             for index, name in enumerate(fixture_names):
                 if name in SUPPORT_DATA:
                     continue
+                capture["fixture_ocr_page"] = 0
                 info = catalog[name]
                 content = (fixture_dir / name).read_bytes()
                 if inject.get("append_validated_text"):
@@ -299,7 +323,7 @@ async def _run(case, fixture_dir, context):
                 mime = config.get("declared_mime", info["mime"])
                 filename = config.get("filename", name)
                 document = DocumentAttachment(file_path=f"qa://{name}", content_type=mime or "application/octet-stream", title=name, resource_id=f"doc-{index}", extracted_text="")
-                extractor = DocumentTextExtractor(disabled_adapters=config.get("disabled_adapters", []), transport_enabled=config.get("transport_adapter_enabled", False), allow_containers=config.get("approved_container_profile") == "qa-export" or "max_archive_depth" in config or "max_archive_entries" in config)
+                extractor = DocumentTextExtractor(disabled_adapters=config.get("disabled_adapters", []), transport_enabled=config.get("transport_adapter_enabled", True), allow_containers=True)
                 try:
                     # Same production parser; in-process invocation allows deliberate parser fault injection.
                     try:
@@ -366,7 +390,10 @@ async def _run(case, fixture_dir, context):
                 return observations
             from src.app.chains.attachment_summarization import chain as chain_module
             stack.enter_context(patch.object(chain_module, "get_pydantic_ai_model", side_effect=model_factory))
-            capture["batch_ordinals"] = {batch[0].resource_id: n for n, batch in enumerate(chain_module._create_batches(valid), 1)}
+            try:
+                capture["batch_ordinals"] = {batch[0].resource_id: n for n, batch in enumerate(chain_module._create_batches(valid), 1)}
+            except DocumentProcessingError:
+                capture["batch_ordinals"] = {}  # Let the real chain produce the job-limit outcome.
             original_extract = chain_module.AttachmentSummarizationChain._extract_batch
             async def observed_extract(chain, *args, **kwargs):
                 batch = args[0] if args else kwargs["batch"]
@@ -434,14 +461,17 @@ async def _run(case, fixture_dir, context):
             observations["outcome"] = "success" if state == "complete" else state
             observations["attempt"] = {"reported_complete": state == "complete"}
             notice = MESSAGES.get(state, "")
+            if state == "unavailable":
+                from src.app.services.summary_outcomes import unavailable_message
+                notice = unavailable_message(payload["summary_metadata"].get("processing_errors", []))
             observations["display"] = {"text": wire["summaryText"], "kind": state, "notice_is_prefix": bool(notice) and wire["summaryText"].startswith(notice), "notice_count": wire["summaryText"].count(notice) if notice else 0, "template_used": bool(notice) and wire["summaryText"].startswith(notice)}
             observations["persistence"] = {"display_matches_summary_text": observations["display"]["text"] == wire["summaryText"], "boundary_payload": wire}
             if inject.get("postprocess_attempts_add_claim"):
                 observations["persistence"]["final_clinical_text_validated"] = observations.get("postprocess_rejected", False) and inject["postprocess_attempts_add_claim"] not in wire["summaryText"]
             observations["http"] = {"public_contract_unchanged": set(wire) == {"id", "appointmentId", "userId", "summaryText", "keyPoints", "medications", "diagnoses", "instructions", "recommendations", "data", "summaryMetadata", "createdAt", "updatedAt", "createdBy", "updatedBy"}}
             observations["coverage"] = {"expected_documents": len(documents), "failed_documents": payload["summary_metadata"]["failed_documents"], "complete": bool(output) and not output.extraction_errors and len(valid) == len(documents)}
-            accepted_pages = [int(page) for document in valid for page in re.findall(r"\[OCR page (\d+)\]", document.extracted_text)]
-            observations["coverage"].update({"expected_pages": capture.get("rendered_pages", 0), "accepted_pages": len(accepted_pages) + capture.get("accepted_failed_document_pages", 0), "duplicate_pages": sum(len(ids) - len(set(ids)) for ids in ([int(page) for page in re.findall(r"\[OCR page (\d+)\]", document.extracted_text)] for document in valid))})
+            accepted_pages = [int(page) for document in valid for page in re.findall(r"\[(?:OCR page|Page) (\d+)\]", document.extracted_text)]
+            observations["coverage"].update({"expected_pages": capture.get("rendered_pages", 0), "accepted_pages": len(accepted_pages) + capture.get("accepted_failed_document_pages", 0), "duplicate_pages": sum(len(ids) - len(set(ids)) for ids in ([int(page) for page in re.findall(r"\[(?:OCR page|Page) (\d+)\]", document.extracted_text)] for document in valid))})
             observations["coverage"].update(failed_chunks=len(capture["failed_batches"]), failed_model_batches=len(capture["failed_batches"]), missing_model_documents=len(capture["model_missing_ids"]), duplicate_model_ids_rejected=capture["duplicate_ids"] and bool(capture["failed_batches"]), unexpected_model_ids_rejected=capture["unexpected_ids"] and bool(capture["failed_batches"]))
             observations["boundary"]["vision_output_validated_before_summary"] = bool(capture["ocr_gate_checks"]) and all(capture["ocr_gate_checks"])
             observations["boundary"]["prior_guess_used_as_evidence"] = any("candidate_transcription" in json.dumps(messages) for messages in capture.get("vision_requests", []) if "transcription engine" in str(messages[0].get("content", "")))
@@ -449,6 +479,11 @@ async def _run(case, fixture_dir, context):
             observations["coverage"]["manifest_reconciles"] = payload["summary_metadata"]["successful_documents"] + payload["summary_metadata"]["failed_documents"] == len(documents)
             observations["resources"] = {"limit_enforced": any(code in {"FILE_TOO_LARGE", "RESOURCE_LIMIT_EXCEEDED"} for code in observations["error_codes"])}
             observations["resources"]["all_model_calls_within_budget"] = all(body.get("max_completion_tokens",body.get("max_tokens",0)) <= config.get("max_output_tokens",4096) for body in capture.get("provider_bodies",[]))
+            if config.get("overlap_crops"):
+                anchor = capture.get("last_ocr_gold", "").strip()
+                occurrences = sum(d.extracted_text.count(anchor) for d in valid) if anchor else 0
+                observations["coverage"]["duplicate_regions"] = max(0, occurrences - len(valid))
+                observations["coverage"]["regions_checked"] = capture.get("region_calls", 0)
             observations["coverage"]["all_pages_accounted"] = bool(documents) and all(d.extraction_error or d in valid for d in documents)
             observations["calls"]["error_message_generation"] = 0
             observations["clinical"] = {"current_performed_procedures": output.procedures_mentioned if output else []}
@@ -472,6 +507,13 @@ async def _run(case, fixture_dir, context):
                 observations["calls"]["model_total"] = context.ai.calls - initial_calls
             observations["pipeline_output"] = {"documents": [d.model_dump(mode="json") for d in documents], "summary": capture["output"], "parser_version": DocumentTextExtractor.VERSION, "extractions": [item.model_dump(mode="json") for item in capture["extractions"]]}
             observations["model_input"] = {"text": json.dumps(capture["prompts"], ensure_ascii=False)}
+            # A whole-job budget refusal accounts for input by explicitly withholding the summary.
+            observations["coverage"]["all_chunks_accounted"] = bool(output) and not output.extraction_errors or (output is None and "RESOURCE_LIMIT_EXCEEDED" in observations["error_codes"])
+            metrics = snapshot()
+            observed_stages = {key.split(":")[0] for key, count in metrics.items() if count > initial_metrics.get(key, 0)}
+            observations["observability"] = {"stage_metrics_distinct": {"parsing", "extraction", "coverage"} <= observed_stages, "stage_events": sorted(observed_stages)}
+            if "one_model_batch_fails" in case.get("inject", {}):
+                observations["boundary"]["secret_leaked"] = any("SECRET_QA_TOKEN" in key for key in metrics)
             return observations
     finally:
         _current_budget.reset(token)

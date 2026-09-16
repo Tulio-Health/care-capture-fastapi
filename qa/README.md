@@ -2,7 +2,7 @@
 
 **Workflow: implement the FastAPI fixes, wire the test adapter, then run regressions against that fixed FastAPI code.** Both mocked and live-AI tests exercise the same application parsers, chains, prompts, validators, orchestration and persistence decisions. There is no separate replacement summarizer.
 
-**Mock and selected live regressions have run; see the current report for results.** The pack contains 479 case specifications, 100 synthetic fixtures and 54 requirement groups. The default `application_adapter.py` now exercises the real FastAPI parser/OCR/attachment chain in mock and live modes. Orchestration and fault integrations remain partial; unwired controls report BLOCKED. These counts are specifications, not passing tests. See [implementation status and remaining work](IMPLEMENTATION_STATUS.md).
+**Mock and selected live regressions have run; see the current report for results.** The pack contains 494 case specifications, 114 synthetic fixtures and 54 requirement groups. The default `application_adapter.py` now exercises the real FastAPI parser/OCR/attachment chain in mock and live modes. The formerly blocked orchestration/fault cases are integrated; missing external prerequisites still report BLOCKED. These counts are specifications, not passing tests. See [implementation status and remaining work](IMPLEMENTATION_STATUS.md).
 
 ## Contents
 
@@ -32,7 +32,7 @@ Fault cases remain mocked: real AI cannot reliably produce a specific timeout, m
 
 Live runs also require recorded human review of actual summaries. Passing machine assertions without review yields `REVIEW_REQUIRED`, not a claim of clinical correctness. The model cannot approve its own output. Repeat critical live cases using `--repeat` to expose variability.
 
-The initial live profile is intentionally a subset of the 479 cases. Add a case only after its adapter path is wired to actual FastAPI code and its accuracy oracle is appropriate for real AI. Optional converters and incomplete fixes remain BLOCKED.
+The initial live profile is intentionally a subset of the 494 cases. Add a case only after its adapter path is wired to actual FastAPI code and its accuracy oracle is appropriate for real AI. Optional converters and incomplete fixes remain BLOCKED.
 
 ## Regression-specific OpenAI key
 
@@ -149,3 +149,25 @@ Fixtures are representative examples, not an exhaustive definition of valid clin
 ### Interpreting a safe rejection
 
 `SAFELY_REJECTED` means a rejected clinical candidate was withheld, the observed publication payload contains the failure template and empty clinical fields, and the unmet assertions concern summary availability only. Safety containment passed; no summary was produced. The original availability checks remain visible. This is distinct from `FAIL`, and does not claim clinical accuracy, successful summary delivery or a database integration pass. Deliberate unsafe-response injection cases remain `PASS` when all their expected rejection checks pass.
+
+### Approved format policy and runtime dependencies
+
+No added application environment configuration is required. FHIR JSON/XML and multipart are enabled in the internal parser policy. NDJSON, ZIP and gzip document containers produce an unsupported-format message. HTTP Content-Encoding is separate. Legacy text-based `.doc` uses `antiword` plus `olefile`; the Dockerfile packages antiword and the Python dependency is locked. Development/QA environments must have antiword on PATH. Encrypted, macro-bearing or image/embedded-object legacy files remain contained unsupported/password outcomes; no raw fallback is permitted.
+
+The Linux memory-limit regression uses the current Linux interpreter, or on macOS the local `python:3.12-slim` Docker image. The probe runs with networking disabled, read-only source mount, no application credentials and no database. If Docker/image access is absent, that platform qualification is explicitly blocked. It never pulls an image during a mock run.
+
+Prepare the independent reviewer packet after a completed regression:
+
+```sh
+python qa/summary_regression/prepare_clinical_review.py
+```
+
+[Clinical review packet](CLINICAL_REVIEW.md) and [engineering review evidence](ENGINEERING_REVIEW.md) distinguish clinical approval from code checks. HTTP 401/403 live failures are reported as credential blockers, not application-test integration gaps. Update the existing regression key file locally; never paste the key into a report.
+
+OCR/logo routing regressions are included in the main mock pack as `ROUTING-*`, `ACCESS-EXISTING-*`, and `PRESERVE-*`. Their synthetic documents are under `qa/testdata/routing`. To run only the local unit checks without replacing the canonical full-pack report:
+
+```sh
+python -m unittest discover -s qa/summary_regression -p 'test_*safety*.py'
+```
+
+See [routing and deferred persistence verification](ROUTING_AND_PERSISTENCE_REVIEW.md) for supported logo geometry, access limitations and the later deployed-instance checklist. Passing memory-backed tests does not verify database transactions or caregiver integration.

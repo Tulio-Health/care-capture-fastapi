@@ -1,10 +1,11 @@
 """Deterministic user messages carried by existing summary JSON and metadata."""
 MESSAGES = {
+    "unsupported": "We couldn’t summarize these documents because their format or embedded content isn’t supported. Please provide a supported document format.",
     "unavailable": "We couldn’t create a summary because the documents couldn’t be processed. Please try again later.",
     "partial": "Some documents couldn’t be processed. Important information may be missing.",
     "no_documents": "No clinical documents are available to summarize for this appointment.",
 }
-PIPELINE_VERSION = "document-safety-2"
+PIPELINE_VERSION = "document-safety-3"
 
 
 def nonclinical_payload(request, source, *, state="unavailable", errors=()):
@@ -17,6 +18,8 @@ def nonclinical_payload(request, source, *, state="unavailable", errors=()):
 
 
 def outcome_metadata(state, errors=()):
+    from src.app.services.processing_metrics import record
+    record("coverage", state)
     from datetime import datetime, timezone
     from src.app.services.summary_runtime import _current_budget
     budget = _current_budget.get()
@@ -34,3 +37,8 @@ def source_manifest(references):
     entries = [{"id": str(item.ehr_resource_id), "data": item.data, "updated_at": str(getattr(item, "updated_at", ""))} for item in references]
     entries.sort(key=lambda item: item["id"])
     return hashlib.sha256(json.dumps(entries, sort_keys=True, default=str, ensure_ascii=False).encode()).hexdigest()
+
+
+def unavailable_message(errors):
+    codes = {item.get("error") for item in errors if isinstance(item, dict)}
+    return MESSAGES["unsupported"] if codes == {"UNSUPPORTED_FORMAT"} else MESSAGES["unavailable"]

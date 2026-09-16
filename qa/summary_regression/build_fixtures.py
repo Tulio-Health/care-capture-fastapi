@@ -177,5 +177,24 @@ jsonfile('transcript.json',{'segments':[{'id':'t3','timestamp':30,'text':'Plan: 
 jsonfile('connector_envelopes.json',{'note':'Synthetic normalized examples, not official vendor wire contracts','sources':[{'connector':c,'documents':[{'id':'doc-a','contentType':'text/html; charset="utf-8"','file':'clinical.html','downloadStatus':'success'},{'id':'doc-b','contentType':'application/pdf','file':'scanned.pdf','downloadStatus':'failed'}]} for c in ['cerner','fasten','generic']]},'Connector provenance and acquisition accounting')
 from extended_fixtures import build as build_extended
 build_extended(put, jsonfile, archive, BASE)
+# Retain the valid binary Word fixture across platforms; author it from BASE on macOS if absent.
+legacy = DATA / 'legacy_word.doc'
+if not legacy.is_file():
+    import shutil
+    import subprocess
+    tool = shutil.which('textutil')
+    if not tool:
+        raise RuntimeError('Restore the checked-in legacy_word.doc fixture or generate it with a Word-compatible authoring tool.')
+    subprocess.run([tool, '-convert', 'doc', '-output', str(legacy), str(DATA/'clinical_utf8.txt')], check=True, timeout=30)
+put('legacy_word.doc', legacy.read_bytes(), 'application/msword', 'Valid synthetic legacy Word document generated from clinical_utf8.txt; retained binary fixture.')
+put('chunk_failure.txt', 'SYNTHETIC TEST DOCUMENT\n' + '\n'.join(f'Observation record {i}: no additional findings documented.' for i in range(60)), 'text/plain', 'Bounded multi-chunk input for one failed chunk, independently of whole-job resource ceilings.')
+jsonfile('structured_fhir.json', [{'resourceType':'Condition','codeText':'Synthetic documented condition','clinicalStatus':'active','verificationStatus':'confirmed'}], 'Synthetic structured clinical resource, separate from failed document attachments.')
+from nested_fhir_fixtures import build as build_nested_fhir
+build_nested_fhir(put)
+from routing_fixtures import fixture_documents
+fixture_documents()
+for path in sorted((DATA/'routing').iterdir()):
+    mime = 'application/pdf' if path.suffix == '.pdf' else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    put('routing/' + path.name, path.read_bytes(), mime, 'Synthetic routing fixture: decorative letterhead or explicit embedded clinical image; no real patient data.')
 (ROOT/'fixture_catalog.json').write_text(json.dumps({'synthetic':True,'fixtures':CATALOG},indent=2,ensure_ascii=False)+'\n')
 print(f'Generated {len(CATALOG)} synthetic fixtures. No application tests executed.')

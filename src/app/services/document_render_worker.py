@@ -18,6 +18,11 @@ def render(content, *, max_decoded_pixels=20_000_000):
             if len(document) > 20:
                 raise DocumentProcessingError("OCR_PAGE_LIMIT_EXCEEDED")
             for page in document:
+                from src.app.services.document_image_routing import pdf_page_requires_ocr
+                text = page.get_text(sort=True)
+                if not pdf_page_requires_ocr(page, text):
+                    pages.append({"native_text": text})
+                    continue
                 if page.rect.width * page.rect.height * 4 > max_decoded_pixels:
                     raise DocumentProcessingError("IMAGE_PIXEL_LIMIT_EXCEEDED")
                 pixels = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
@@ -37,7 +42,7 @@ def render(content, *, max_decoded_pixels=20_000_000):
                 with io.BytesIO() as output:
                     ImageOps.exif_transpose(image).convert("RGB").save(output, format="PNG")
                     pages.append(base64.b64encode(output.getvalue()).decode())
-    if not pages or sum(map(len, pages)) > 24 * 1024 * 1024:
+    if not pages or sum(len(page) if isinstance(page, str) else len(page["native_text"]) for page in pages) > 24 * 1024 * 1024:
         raise DocumentProcessingError("OCR_RENDER_LIMIT_EXCEEDED")
     return pages
 

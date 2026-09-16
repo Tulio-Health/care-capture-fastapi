@@ -22,8 +22,7 @@ def attachment_fingerprint(documents, manifest, context, settings):
              'verification_model': settings.DOCUMENT_VERIFICATION_MODEL,
              'ocr_model': settings.DOCUMENT_OCR_MODEL,
              'ocr_enabled': settings.ENABLE_DOCUMENT_OCR,
-             'transport_enabled': settings.ENABLE_DOCUMENT_TRANSPORT,
-             'containers_enabled': settings.ENABLE_DOCUMENT_CONTAINERS}
+             'format_policy': 'fhir-json-xml-multipart-legacy-word-v1'}
     return hashlib.sha256(json.dumps(facts, sort_keys=True, default=str).encode()).hexdigest()
 
 

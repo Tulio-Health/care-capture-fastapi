@@ -19,6 +19,7 @@ STAGES = {
     'EXTRACTION_QUALITY_FAILED': ('parsing', False),
     'MODEL_TIMEOUT': ('extraction', True),
     'MODEL_RATE_LIMITED': ('extraction', True),
+    'MODEL_AUTH_FAILED': ('extraction', False),
     'MODEL_UNAVAILABLE': ('extraction', True),
     'MODEL_OUTPUT_INVALID': ('extraction', False),
     'CLINICAL_EVIDENCE_FAILED': ('validation', False),

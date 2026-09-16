@@ -175,6 +175,18 @@ add_final_review(case,eq,has,no,one,check)
 from resilience_cases import add as add_resilience
 add_resilience(case,eq,has,check)
 
+from routing_adapter import CASES as ROUTING_CASES
+for identity, (test_name, fixtures, expectation) in ROUTING_CASES.items():
+    review = []
+    if identity == 'ACCESS-EXISTING-SERVICE':
+        review = ['Trusted service path passes locally. Direct caregiver/provider grant resolution remains unresolved; verify existing deployed access flows before release.']
+    if identity.startswith('PRESERVE-'):
+        review = ['Memory-only publication assertions pass. PostgreSQL locking, durable commits and deployed consumer behavior are deferred to deployed-instance verification.']
+    case(identity, expectation, fixtures, [eq('regression.passed', True), eq('regression.tests_run', 1), eq('persistence.database_writes', 0)], refs=['OCR/DOCX routing and compatibility review'], review=review)
+
+from approved_scope import apply
+apply(CASES)
+
 (ROOT/'cases.json').write_text(json.dumps({'schema_version':1,'execution_status':'not_run','cases':CASES},indent=2,ensure_ascii=False)+'\n')
 lines=['# Regression case matrix','','This matrix specifies scenarios; current execution results are in `../results/report.html`. Expectations describe the fixes, not the current baseline.','', '| ID | Scenario | Plan reference |','|---|---|---|']
 for c in CASES: lines.append(f"| {c['id']} | {c['title']} | {', '.join(c['plan_refs'])} |")

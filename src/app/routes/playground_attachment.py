@@ -370,7 +370,7 @@ async def playground_attachment_summary(
     from src.app.services.document_ingestion import mark_parsed
     from src.app.core.settings import get_settings
     settings = get_settings()
-    extractor = DocumentTextExtractor(transport_enabled=settings.ENABLE_DOCUMENT_TRANSPORT, allow_containers=settings.ENABLE_DOCUMENT_CONTAINERS)
+    extractor = DocumentTextExtractor()
     documents: List[DocumentAttachment] = []
 
     if files:

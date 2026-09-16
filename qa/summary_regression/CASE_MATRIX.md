@@ -305,21 +305,21 @@ This matrix specifies scenarios; current execution results are in `../results/re
 | TRANSPORT-FHIRXML-PARAM | FHIRXML transport MIME PARAM | 5, 6, 8 |
 | TRANSPORT-FHIRXML-CASE | FHIRXML transport MIME CASE | 5, 6, 8 |
 | TRANSPORT-FHIRXML-CHARSET | FHIRXML transport MIME CHARSET | 5, 6, 8 |
-| TRANSPORT-NDJSON-OFF | Disabled NDJSON transport adapter | 5, 8 |
-| TRANSPORT-NDJSON-ON | Approved NDJSON adapter unwraps content | 5, 8 |
-| TRANSPORT-NDJSON-PARAM | NDJSON transport MIME PARAM | 5, 6, 8 |
-| TRANSPORT-NDJSON-CASE | NDJSON transport MIME CASE | 5, 6, 8 |
-| TRANSPORT-NDJSON-CHARSET | NDJSON transport MIME CHARSET | 5, 6, 8 |
-| TRANSPORT-GZIP-OFF | Disabled GZIP transport adapter | 5, 8 |
-| TRANSPORT-GZIP-ON | Approved GZIP adapter unwraps content | 5, 8 |
-| TRANSPORT-GZIP-PARAM | GZIP transport MIME PARAM | 5, 6, 8 |
-| TRANSPORT-GZIP-CASE | GZIP transport MIME CASE | 5, 6, 8 |
-| TRANSPORT-GZIP-CHARSET | GZIP transport MIME CHARSET | 5, 6, 8 |
-| TRANSPORT-ZIP-OFF | Disabled ZIP transport adapter | 5, 8 |
-| TRANSPORT-ZIP-ON | Approved ZIP adapter unwraps content | 5, 8 |
-| TRANSPORT-ZIP-PARAM | ZIP transport MIME PARAM | 5, 6, 8 |
-| TRANSPORT-ZIP-CASE | ZIP transport MIME CASE | 5, 6, 8 |
-| TRANSPORT-ZIP-CHARSET | ZIP transport MIME CHARSET | 5, 6, 8 |
+| TRANSPORT-NDJSON-OFF | Unsupported release format: Disabled NDJSON transport adapter | 5, 8 |
+| TRANSPORT-NDJSON-ON | Unsupported release format: Approved NDJSON adapter unwraps content | 5, 8 |
+| TRANSPORT-NDJSON-PARAM | Unsupported release format: NDJSON transport MIME PARAM | 5, 6, 8 |
+| TRANSPORT-NDJSON-CASE | Unsupported release format: NDJSON transport MIME CASE | 5, 6, 8 |
+| TRANSPORT-NDJSON-CHARSET | Unsupported release format: NDJSON transport MIME CHARSET | 5, 6, 8 |
+| TRANSPORT-GZIP-OFF | Unsupported release format: Disabled GZIP transport adapter | 5, 8 |
+| TRANSPORT-GZIP-ON | Unsupported release format: Approved GZIP adapter unwraps content | 5, 8 |
+| TRANSPORT-GZIP-PARAM | Unsupported release format: GZIP transport MIME PARAM | 5, 6, 8 |
+| TRANSPORT-GZIP-CASE | Unsupported release format: GZIP transport MIME CASE | 5, 6, 8 |
+| TRANSPORT-GZIP-CHARSET | Unsupported release format: GZIP transport MIME CHARSET | 5, 6, 8 |
+| TRANSPORT-ZIP-OFF | Unsupported release format: Disabled ZIP transport adapter | 5, 8 |
+| TRANSPORT-ZIP-ON | Unsupported release format: Approved ZIP adapter unwraps content | 5, 8 |
+| TRANSPORT-ZIP-PARAM | Unsupported release format: ZIP transport MIME PARAM | 5, 6, 8 |
+| TRANSPORT-ZIP-CASE | Unsupported release format: ZIP transport MIME CASE | 5, 6, 8 |
+| TRANSPORT-ZIP-CHARSET | Unsupported release format: ZIP transport MIME CHARSET | 5, 6, 8 |
 | TRANSPORT-MULTIPART-OFF | Disabled MULTIPART transport adapter | 5, 8 |
 | TRANSPORT-MULTIPART-ON | Approved MULTIPART adapter unwraps content | 5, 8 |
 | TRANSPORT-MULTIPART-PARAM | MULTIPART transport MIME PARAM | 5, 6, 8 |
@@ -343,9 +343,9 @@ This matrix specifies scenarios; current execution results are in `../results/re
 | XML-DTD | Internal entity processing disabled | 8 |
 | FHIR-BASE64 | Malformed attachment base64 rejected | 5, 8 |
 | NDJSON-PARTIAL | Malformed NDJSON tail cannot be silently complete | 5, 8 |
-| GZIP-DOUBLE | HTTP and file compression decoded exactly once each | 8 |
-| ZIP-DEPTH | Archive depth cap | 8 |
-| ZIP-ENTRIES | Archive entry-count cap | 8 |
+| GZIP-DOUBLE | HTTP compression decoded once; nested gzip document rejected | 8 |
+| ZIP-DEPTH | Reject excluded ZIP before expansion: Archive depth cap | 8 |
+| ZIP-ENTRIES | Reject excluded ZIP before expansion: Archive entry-count cap | 8 |
 | LIMIT-PAGES | PDF page count cap before model | 8 |
 | LIMIT-PARSER | Parser hard timeout cannot become fallback | 8, A09 |
 | LIMIT-MEMORY | Parser worker memory budget enforced | 8, A09 |
@@ -483,3 +483,18 @@ This matrix specifies scenarios; current execution results are in `../results/re
 | RES-ADAPTER | Mock/live use same fixed pipeline entry point | R54, 30 |
 | RES-QAKEY | No application-key fallback when regression key absent | R54, 30 |
 | RES-REPORTIO | Report write failure never reported as successful run | R54, 30 |
+| ROUTING-PDF-LOGO | Native PDF text retained; zero OCR/vision calls | OCR/DOCX routing and compatibility review |
+| ROUTING-DOCX-LOGO | Header, first-paragraph and footer logos retain clinical text and table text; zero OCR calls | OCR/DOCX routing and compatibility review |
+| ROUTING-DOCX-IMAGE | Unsupported clinical image returns UNSUPPORTED_FORMAT without entering OCR renderer | OCR/DOCX routing and compatibility review |
+| ROUTING-MIXED-PDF | Only scanned page transcribed; three native pages preserved in order | OCR/DOCX routing and compatibility review |
+| ROUTING-BLANK | Blank PDF returns NO_READABLE_TEXT with no model call | OCR/DOCX routing and compatibility review |
+| ACCESS-EXISTING-SERVICE | Trusted service retains existing patient delegation without new mapping lookup | OCR/DOCX routing and compatibility review |
+| ACCESS-EXISTING-PATIENT | Authenticated mapped patient accepted; cross-patient request denied | OCR/DOCX routing and compatibility review |
+| PRESERVE-FAILED-REFRESH | Failed refresh retains diagnosis and original summary with exactly one notice | OCR/DOCX routing and compatibility review |
+| PRESERVE-EMPTY-PARTIAL | Empty failed procedure refresh does not delete prior rows or clinical content | OCR/DOCX routing and compatibility review |
+| DOC-LEGACY-VALID | Valid legacy Word parsed before clinical AI | 7, PARSE-05 |
+| FHIR-NESTED-NESTED_BUNDLE-JSON | Parse nested FHIR attachment: nested_bundle.json | 5, 8 |
+| FHIR-NESTED-NESTED_BUNDLE-XML | Parse nested FHIR attachment: nested_bundle.xml | 5, 8 |
+| FHIR-NESTED-NESTED_REPORT-JSON | Parse nested FHIR attachment: nested_report.json | 5, 8 |
+| FHIR-NESTED-NESTED_REPORT-XML | Parse nested FHIR attachment: nested_report.xml | 5, 8 |
+| FHIR-NESTED-REMOTE | Unacquired nested remote attachment is unavailable | 5, 8 |

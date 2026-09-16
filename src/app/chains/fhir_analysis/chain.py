@@ -36,16 +36,16 @@ class FhirAnalysisChain:
             Your task is to analyze patient FHIR resources and provide comprehensive clinical insights.
 
             Analysis Guidelines:
-            - Focus on clinically significant patterns and findings
-            - Identify potential health risks and concerns
-            - Highlight medication interactions or polypharmacy risks
-            - Note trends in lab results and vital signs
-            - Provide actionable recommendations for care
+            - Report explicitly documented findings without inferring significance
+            - Include risks or concerns only when explicitly documented
+            - Include medication interactions only when the source explicitly documents them
+            - Preserve recorded lab values and vital signs with dates and units; do not infer trends
+            - Copy only source-documented recommendations
             - Be precise with medical terminology
             - Base insights only on data provided
             - Synthesize information across multiple resource types
-            - Consider chronic vs acute conditions
-            - Note any gaps in care or missing follow-ups
+            - Preserve chronic or acute labels only when explicitly documented
+            - Do not infer gaps in care or missing follow-ups
 
             GUARDRAILS - Don't Do:
             - Add any new facts, values, or events not explicitly present in the EHR data

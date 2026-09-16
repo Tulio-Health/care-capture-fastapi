@@ -8,7 +8,7 @@ This is a specification coverage map, not a test pass report. Execution results 
 | R02 | 2, 11 | Incident: late diagnosis and ordered/performed distinction | 4 |
 | R03 | 5–6 | Native format MIME variants and signature routing | 168 |
 | R04 | 5 | Unsupported/disabled formats fail explicitly | 59 |
-| R05 | 5, 8 | FHIR/NDJSON attachment and container boundaries | 35 |
+| R05 | 5, 8 | FHIR/NDJSON attachment and container boundaries | 40 |
 | R06 | 6 | MIME conflicts, aliases, parameters and termination | 37 |
 | R07 | 7 | BOM/code page/Unicode/invalid encoding | 23 |
 | R08 | 8, 10 | Malformed/protected/empty files and quality gate | 15 |
@@ -16,7 +16,7 @@ This is a specification coverage map, not a test pass report. Execution results 
 | R10 | 8, A09 | Streaming, worker, memory, page, pixel and archive limits | 11 |
 | R11 | 9–10 | Typed results cannot be bypassed by false success | 4 |
 | R12 | 11, A08 | Chunk budgets, middle/tail content and final reduction | 8 |
-| R13 | 12, 25 | Procedure status, time, subject and evidence | 21 |
+| R13 | 12, 25 | Procedure status, time, subject and evidence | 24 |
 | R14 | 13, 24 | No documents versus unreadable, partial and refresh notices | 11 |
 | R15 | 14, A01 | No destructive pruning after parse/model/acquisition failure | 3 |
 | R16 | 14, A10 | Source isolation, generation order and idempotency in memory | 7 |
@@ -37,7 +37,7 @@ This is a specification coverage map, not a test pass report. Execution results 
 | R31 | 23.6–23.9 | Safe HTTP, request/output distinction and persistence failure | 4 |
 | R32 | 24 | Existing JSON/text/metadata contracts; no fake procedure rows | 5 |
 | R33 | 25.1–25.4 | Shared grounding prompt, provenance and injection rejection | 4 |
-| R34 | 25.5–25.7 | Semantic checks, correction bounds and final validated version | 22 |
+| R34 | 25.5–25.7 | Semantic checks, correction bounds and final validated version | 25 |
 | R35 | 25.9–25.10 | Clinical omission independent of fabrication | 6 |
 | R36 | 26.1–26.3 | Vision capability, page/region routing and model budgets | 51 |
 | R37 | 26.4–26.5 | Vision schema/page identity/truncation/crops/fidelity | 7 |

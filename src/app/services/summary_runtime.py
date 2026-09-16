@@ -92,6 +92,10 @@ def model_error_code(exc):
             return "MODEL_TIMEOUT"
         if status == 429 or name == "RateLimitError":
             return "MODEL_RATE_LIMITED"
+        if status in {401, 403} or name in {"AuthenticationError", "PermissionDeniedError"}:
+            return "MODEL_AUTH_FAILED"
+        if isinstance(status, int) and status >= 400:
+            return "MODEL_UNAVAILABLE"
         if name in {"UnexpectedModelBehavior", "ValidationError", "ModelRetry", "ToolRetryError"}:
             return "MODEL_OUTPUT_INVALID"
         if name == "BudgetExceeded":

@@ -1672,3 +1672,26 @@ Every execution overwrites `qa/results/report.html` and its machine-readable `re
 ## Content-independent implementation requirement
 
 Synthetic regression documents are examples only. Do not encode their filenames, case IDs, patient details, diagnoses, medications, laboratory names or expected summaries in production decisions. Implement documented parser contracts, source evidence validation and bounded failure handling. Keep canned model outputs and fault injection in QA. Add varied positive and negative examples when a defect is found; preserve blocked and review-required outcomes when verification is incomplete.
+
+## Confirmed review decisions — 2026-09-16
+
+- Support FHIR JSON/XML and multipart transport. Return a clear unsupported-format outcome for the other optional formats discussed: NDJSON, gzip document containers and ZIP. Keep ordinary supported clinical formats. Distinguish HTTP Content-Encoding decoding from an uploaded gzip document; do not accidentally break connector HTTP transport decoding.
+- Legacy Word `.doc` is required. The existing fail-closed rejection is containment, not completed legacy support. Add a bounded isolated conversion/parser path and valid positive fixtures before claiming support.
+- S3 selection already exists. Review the current user/appointment/encounter ownership checks and stored attachment filePath flow. Do not redesign storage, hardcode per-user folders, or require a new list of every user's prefix. The current default-empty DOCUMENT_ALLOWED_S3_PREFIXES gate is a compatibility risk unless existing deployment configuration supplies an applicable scope; review this gate against the existing storage contract before rollout.
+- Clinical reviewer packet: `qa/CLINICAL_REVIEW.md`, regenerated from saved observations with `python qa/summary_regression/prepare_clinical_review.py`. Review remains pending; mocked outputs and blocked cases cannot qualify clinical accuracy.
+- These are accepted requirements, not a claim that the above application changes have been implemented or deployed.
+
+## Completion implementation — 2026-09-16
+
+Implemented the approved internal format policy without added application environment variables, restored original S3 lookup compatibility, packaged bounded legacy Word parsing, added nested FHIR bundle/attachment parsing, partial FHIR fallback, overlapping OCR region cross-checks, stage instrumentation and the remaining regression integrations. No production rules identify synthetic fixture names, patient details, diagnoses or medication names. Native Word parsing and the memory-limit mechanism were also exercised under Linux.
+
+See `qa/IMPLEMENTATION_STATUS.md` for exact supported/unsupported boundaries and `qa/ENGINEERING_REVIEW.md` for review closures. Clinical approval remains manual; live verification currently requires a valid key in the existing regression file after HTTP 401 responses. The current report records results rather than treating missing prerequisites as passes.
+
+
+## OCR routing correction and deferred persistence qualification
+
+- Avoid vision for supported small marginal PDF logos; preserve native page order and send only scanned/meaningful-image pages through OCR.
+- Extract supported DOCX logo-bearing text/tables locally. Never send DOCX to the PDF/PIL renderer. Unsupported embedded-image layouts return a clear contained outcome.
+- Require zero OCR calls for supported logo PDFs/DOCX, mixed-page preservation, native patient/service access, and prior-summary retention on failed/empty partial refreshes. Nine new catalog cases implement these checks.
+- Do not change persistence implementation in this routing patch. Verify actual transactions later with synthetic identities in a deployed test instance using qa/ROUTING_AND_PERSISTENCE_REVIEW.md.
+- Direct caregiver/provider grant compatibility remains unresolved and is not covered by passing service-delegation tests. Retain as a release review item.

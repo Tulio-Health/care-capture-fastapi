@@ -38,11 +38,7 @@ class Settings(BaseSettings):
     # Playground (dev-only)
     PLAYGROUND_API_KEY: str = ""
 
-    # Explicit deployment allowlist; empty means deny all document downloads.
-    DOCUMENT_ALLOWED_S3_PREFIXES: list[str] = []
     ENABLE_DOCUMENT_OCR: bool = True
-    ENABLE_DOCUMENT_TRANSPORT: bool = False
-    ENABLE_DOCUMENT_CONTAINERS: bool = False
     DOCUMENT_OCR_MODEL: str = "gpt-4o-mini"
     DOCUMENT_VERIFICATION_MODEL: str = "gpt-4.1-mini"
 
