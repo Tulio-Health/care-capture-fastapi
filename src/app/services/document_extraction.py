@@ -37,6 +37,9 @@ class DocumentProcessingError(ValueError):
         self.reason_code = code
         self.code = next((canonical for canonical, members in groups.items() if code in members), code)
         super().__init__(self.code)
+        from src.app.services.processing_errors import STAGES
+        from src.app.services.processing_metrics import record
+        record(STAGES.get(self.code, ("internal", False))[0], "attempt_failure")
 
 
 class DocumentTextExtractor:
@@ -46,10 +49,10 @@ class DocumentTextExtractor:
     MAX_ZIP_ENTRIES = 2000
     MAX_ARCHIVE_EXPANDED_BYTES = 50 * 1024 * 1024
     RTF_MAGIC = b"{\\rtf"
-    VERSION = "strict-1"
+    VERSION = "strict-3"
     MAX_ARCHIVE_DEPTH = 2
 
-    def __init__(self, *, disabled_adapters=(), transport_enabled=False, allow_containers=False):
+    def __init__(self, *, disabled_adapters=(), transport_enabled=True, allow_containers=True):
         self.disabled_adapters = frozenset(disabled_adapters)
         self.last_adapter = None
         self.declared_mime = None
@@ -59,6 +62,8 @@ class DocumentTextExtractor:
         self.decode_count = 0
         self._transport_depth = 0
         self._expanded_bytes = 0
+        self._embedded_attachments = 0
+        self._work_directory = None
 
     ALIASES = {
         "application/x-rtf": "application/rtf", "text/rtf": "application/rtf",
@@ -143,21 +148,10 @@ class DocumentTextExtractor:
             raise DocumentProcessingError("FILE_TOO_LARGE")
         mime, charset = self.normalize_mime(content_type)
         self.declared_mime = content_type
-        if content.startswith(b"\x1f\x8b"):
-            if not self.transport_enabled:
-                raise DocumentProcessingError("UNSUPPORTED_FORMAT")
-            import gzip
-            try:
-                with gzip.GzipFile(fileobj=io.BytesIO(content)) as compressed:
-                    expanded = compressed.read(self.MAX_FILE_SIZE + 1)
-            except Exception as exc:
-                raise DocumentProcessingError("INVALID_COMPRESSION") from exc
-            if len(expanded) > self.MAX_FILE_SIZE or expanded.startswith(b"\x1f\x8b"):
-                raise DocumentProcessingError("COMPRESSION_LIMIT_EXCEEDED")
-            inner_name = file_name[:-3] if file_name and file_name.lower().endswith(".gz") else file_name
-            inner_mime = "application/octet-stream" if mime in {"application/gzip", "application/x-gzip"} else content_type
-            self.decode_count += 1
-            return self.extract_text(expanded, inner_mime, inner_name)
+        # Release format policy is internal: compressed document containers are unsupported.
+        # HTTP Content-Encoding is decoded separately by the download transport.
+        if content.startswith(b"\x1f\x8b") or mime in {"application/gzip", "application/x-gzip", "application/zip", "application/fhir+ndjson", "application/x-ndjson", "application/ndjson"}:
+            raise DocumentProcessingError("UNSUPPORTED_FORMAT")
         head = content.removeprefix(codecs.BOM_UTF8).lstrip()
         detected = None
         if head.startswith(self.RTF_MAGIC):
@@ -169,9 +163,7 @@ class DocumentTextExtractor:
                 with zipfile.ZipFile(io.BytesIO(content)) as archive:
                     names = archive.namelist()
                     if "word/document.xml" not in names or "[Content_Types].xml" not in names:
-                        if not self.transport_enabled or not self.allow_containers:
-                            raise DocumentProcessingError("UNSUPPORTED_ARCHIVE")
-                        detected = "application/zip"
+                        raise DocumentProcessingError("UNSUPPORTED_ARCHIVE")
                     else:
                         detected = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             except zipfile.BadZipFile as exc:
@@ -183,7 +175,7 @@ class DocumentTextExtractor:
             self.last_adapter = "vision"
             raise DocumentProcessingError("OCR_REQUIRED")
         elif content.startswith(b"\xd0\xcf\x11\xe0"):
-            raise DocumentProcessingError("UNSUPPORTED_LEGACY_OFFICE")
+            detected = "application/msword"
         # Signature takes precedence over unreliable connector metadata, never vice versa.
         mime = detected or mime
         if mime.endswith("+xml"):
@@ -219,7 +211,7 @@ class DocumentTextExtractor:
                 raise DocumentProcessingError("PARSE_FAILED") from exc
             if transported is not None:
                 return transported
-        adapter = {"application/pdf": "pdf", "application/rtf": "rtf", "application/xml": "xml", "text/html": "html", "application/json": "json", "text/csv": "csv", "text/tab-separated-values": "csv", "text/plain": "text", "text/markdown": "text", "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx"}.get(mime)
+        adapter = {"application/msword": "doc", "application/pdf": "pdf", "application/rtf": "rtf", "application/xml": "xml", "text/html": "html", "application/json": "json", "text/csv": "csv", "text/tab-separated-values": "csv", "text/plain": "text", "text/markdown": "text", "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx"}.get(mime)
         if adapter in self.disabled_adapters or (content_type and content_type.split(';')[0].strip().lower() == "text/richtext" and "richtext" in self.disabled_adapters):
             raise DocumentProcessingError("UNSUPPORTED_FORMAT")
         self.last_adapter = adapter
@@ -230,6 +222,9 @@ class DocumentTextExtractor:
                 text = self._extract_from_pdf(content)
             elif mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
                 text = self._extract_from_docx(content)
+            elif mime == "application/msword":
+                from src.app.services.legacy_word import extract_legacy_word
+                text = extract_legacy_word(self, content)
             elif mime == "application/rtf":
                 text = self._extract_from_rtf(content, charset=charset)
             elif mime == "application/xml":
@@ -251,11 +246,15 @@ class DocumentTextExtractor:
                             for child in value:
                                 reject_embedded_documents(child)
                     reject_embedded_documents(parsed)
-                    def parse_nested_text(value):
+                    def parse_nested_text(value, field_name=""):
                         if isinstance(value, dict):
-                            return {key: parse_nested_text(child) for key, child in value.items()}
+                            if ("data" in value or "url" in value) and ("contentType" in value or field_name in {"attachment", "presentedForm"} or field_name.endswith("Attachment")):
+                                from src.app.services.document_transport import parse_embedded_attachment
+                                parsed_text = parse_embedded_attachment(self, value)
+                                return {**{key: parse_nested_text(child) for key, child in value.items() if key not in {"data", "url"}}, "parsed_attachment_text": parsed_text}
+                            return {key: parse_nested_text(child, key) for key, child in value.items()}
                         if isinstance(value, list):
-                            return [parse_nested_text(child) for child in value]
+                            return [parse_nested_text(child, field_name) for child in value]
                         if isinstance(value, str):
                             if value.lstrip().startswith("{\\rtf"):
                                 return self.validate_text(self._extract_from_rtf(value.encode("utf-8"), charset="utf-8"))
@@ -302,10 +301,11 @@ class DocumentTextExtractor:
             parts = []
             for page in doc:
                 text = page.get_text(sort=True)
-                # Embedded scans may contain the only clinical evidence. Do not silently omit them.
-                if not text.strip() or page.get_images():
+                from src.app.services.document_image_routing import pdf_page_requires_ocr
+                if pdf_page_requires_ocr(page, text):
                     raise DocumentProcessingError("OCR_REQUIRED")
-                parts.append(f"[Page {page.number + 1}]\n{text}")
+                if text.strip():
+                    parts.append(f"[Page {page.number + 1}]\n{text}")
             return "\n\n".join(parts)
 
     def _extract_from_docx(self, content: bytes, file_name=None) -> str:
@@ -322,12 +322,15 @@ class DocumentTextExtractor:
                 raise DocumentProcessingError("UNSUPPORTED_ARCHIVE")
             if any("vbaProject" in n or n.startswith("word/embeddings/") for n in names):
                 raise DocumentProcessingError("UNSUPPORTED_EMBEDDED_CONTENT")
-            if any(n.startswith("word/media/") for n in names):
-                raise DocumentProcessingError("OCR_REQUIRED")
             parts = []
             for name in names:
                 if name == "word/document.xml" or re.fullmatch(r"word/(?:header\d*|footer\d*|footnotes|endnotes)\.xml", name):
-                    parts.append(self._word_text(archive.read(name)))
+                    raw = archive.read(name)
+                    text = self._word_text(raw)
+                    from src.app.services.document_image_routing import docx_has_unsupported_images
+                    if docx_has_unsupported_images(ET.fromstring(raw), marginal_part=bool(re.fullmatch(r"word/(?:header\d*|footer\d*)\.xml", name))):
+                        raise DocumentProcessingError("UNSUPPORTED_EMBEDDED_CONTENT")
+                    parts.append(text)
             return "\n".join(parts)
 
     @staticmethod
@@ -459,29 +462,38 @@ class DocumentTextExtractor:
             raise DocumentProcessingError("FILE_TOO_LARGE")
         options = {"disabled_adapters": sorted(self.disabled_adapters), "transport_enabled": self.transport_enabled, "allow_containers": self.allow_containers}
         limits = {name: getattr(self, name) for name in ("MAX_FILE_SIZE", "MAX_TEXT_CHARS", "MAX_PAGES", "MAX_ZIP_ENTRIES", "MAX_ARCHIVE_EXPANDED_BYTES", "MAX_ARCHIVE_DEPTH")}
-        async with _PARSER_SLOTS:
-            process = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "src.app.services.document_parser_worker",
-                content_type or "application/octet-stream", file_name or "", json.dumps({"options": options, "limits": limits}), stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
-            )
-            try:
-                output, _ = await asyncio.wait_for(process.communicate(content), timeout=30)
-                if process.returncode:
-                    raise DocumentProcessingError("PARSER_PROCESS_FAILED")
-                result = json.loads(output)
-                if "error" in result:
-                    if result["error"] == "OCR_REQUIRED":
-                        from src.app.services.document_ocr import extract_scanned_document
-                        return await extract_scanned_document(content, content_type)
-                    raise DocumentProcessingError(result["error"])
-                return self.validate_text(result["text"])
-            except TimeoutError as exc:
-                raise DocumentProcessingError("PARSER_TIMEOUT") from exc
-            finally:
-                if process.returncode is None:
-                    process.kill()
-                await process.wait()
+        import tempfile
+        # Parent owns the directory so SIGKILL of a native parser cannot leave source files.
+        with tempfile.TemporaryDirectory(prefix="document-parser-") as workspace:
+            async with _PARSER_SLOTS:
+                process = await asyncio.create_subprocess_exec(
+                    sys.executable, "-m", "src.app.services.document_parser_worker",
+                    content_type or "application/octet-stream", file_name or "", json.dumps({"options": options, "limits": limits, "workspace": workspace}), stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+                try:
+                    output, _ = await asyncio.wait_for(process.communicate(content), timeout=30)
+                    if process.returncode:
+                        raise DocumentProcessingError("PARSER_PROCESS_FAILED")
+                    result = json.loads(output)
+                    if "error" in result:
+                        if result["error"] == "OCR_REQUIRED":
+                            from src.app.services.document_ocr import extract_scanned_document
+                            return await extract_scanned_document(content, content_type)
+                        raise DocumentProcessingError(result["error"])
+                    return self.validate_text(result["text"])
+                except TimeoutError as exc:
+                    raise DocumentProcessingError("PARSER_TIMEOUT") from exc
+                finally:
+                    # Kill the process group too: native converters must not outlive cancellation.
+                    import os
+                    import signal
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    await process.wait()
 
 
 _PARSER_SLOTS = asyncio.Semaphore(2)

@@ -123,7 +123,7 @@ class AttachmentSummarizationService:
         self.s3_client = S3DocumentClient()
         from src.app.core.settings import get_settings
         settings = get_settings()
-        self.text_extractor = DocumentTextExtractor(transport_enabled=settings.ENABLE_DOCUMENT_TRANSPORT, allow_containers=settings.ENABLE_DOCUMENT_CONTAINERS)
+        self.text_extractor = DocumentTextExtractor()
         self.logger = logger
 
     @bounded_summary
@@ -440,7 +440,8 @@ class AttachmentSummarizationService:
         if state == "partial":
             summary_text = MESSAGES["partial"] + "\n\n" + summary_text
         elif state == "unavailable":
-            summary_text = MESSAGES["unavailable"]
+            from src.app.services.summary_outcomes import unavailable_message
+            summary_text = unavailable_message(extraction_errors)
 
         return {
             "summary_text": summary_text,

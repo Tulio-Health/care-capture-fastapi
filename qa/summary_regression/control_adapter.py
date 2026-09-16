@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 import os
+import completion_adapter
 import inventory_adapter
 import cache_adapter
 import remaining_adapter
@@ -30,7 +31,7 @@ CASES = {
 
 
 def supports(case):
-    return case['id'] in inventory_adapter.CASES or case['id'] in cache_adapter.CASES or case['id'] in remaining_adapter.CASES or case['id'] in downstream_adapter.CASES or case['id'] in commit_adapter.CASES or case['id'] in io_adapter.CASES or case['id'] in translation_adapter.CASES or case['id'] in parser_control_adapter.CASES or case['id'] in source_adapter.CASES or case['id'] in runtime_adapter.CASES or case['id'] in http_adapter.CASES or case['id'] in publication_adapter.CASES or case['id'] in CASES or case['id'].startswith('POLICY-') and 'dependency_error_code' in case.get('inject',{})
+    return case['id'] in completion_adapter.CASES or case['id'] in inventory_adapter.CASES or case['id'] in cache_adapter.CASES or case['id'] in remaining_adapter.CASES or case['id'] in downstream_adapter.CASES or case['id'] in commit_adapter.CASES or case['id'] in io_adapter.CASES or case['id'] in translation_adapter.CASES or case['id'] in parser_control_adapter.CASES or case['id'] in source_adapter.CASES or case['id'] in runtime_adapter.CASES or case['id'] in http_adapter.CASES or case['id'] in publication_adapter.CASES or case['id'] in CASES or case['id'].startswith('POLICY-') and 'dependency_error_code' in case.get('inject',{})
 
 
 def run_case(case, fixture_dir, context):
@@ -39,6 +40,8 @@ def run_case(case, fixture_dir, context):
 
 
 async def _run(case,fixture_dir):
+    if case['id'] in completion_adapter.CASES:
+        return await completion_adapter.run(case,fixture_dir)
     if case['id'] in inventory_adapter.CASES:
         return await inventory_adapter.run(case,fixture_dir)
     if case['id'] in cache_adapter.CASES:

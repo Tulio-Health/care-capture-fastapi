@@ -337,6 +337,8 @@ GUARDRAILS - Do:
 - Present conflicting values as-is (e.g., "BP on admission: 165/98 mmHg; BP at discharge: 128/76 mmHg")"""
 
 
+CHUNK_CHAR_LIMIT = 12000
+
 def _create_batches(
     documents: List[DocumentAttachment],
 ) -> List[List[DocumentAttachment]]:
@@ -347,11 +349,11 @@ def _create_batches(
             continue
         require_parsed(doc)
         validate_single_subject(doc.extracted_text)
-        for offset in range(0, len(doc.extracted_text), 11000):
+        for offset in range(0, len(doc.extracted_text), CHUNK_CHAR_LIMIT - min(1000, CHUNK_CHAR_LIMIT // 10)):
             if len(batches) >= 128:
                 raise DocumentProcessingError("CHUNK_LIMIT_EXCEEDED")
             chunk = doc.model_copy(update={
-                "extracted_text": doc.extracted_text[offset:offset + 12000],
+                "extracted_text": doc.extracted_text[offset:offset + CHUNK_CHAR_LIMIT],
                 "resource_id": f"{doc.resource_id or index}:chunk:{offset}",
             })
             batches.append([mark_parsed(chunk)])

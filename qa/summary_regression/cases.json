@@ -870,9 +870,7 @@
           ]
         }
       ],
-      "manual_review": [
-        "Fixture is a truncated OLE header, not a valid DOC. A valid legacy DOC positive fixture is a release blocker before enabling that adapter."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -1092,9 +1090,7 @@
           "value": true
         }
       ],
-      "manual_review": [
-        "If archives are unsupported, reject before expansion. If conversion is enabled, enforce expansion limits."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -1161,11 +1157,11 @@
         "LONG-03"
       ],
       "fixtures": [
-        "long_middle_late.txt"
+        "chunk_failure.txt"
       ],
       "config": {
-        "chunk_tokens": 1000,
-        "retry_limit": 0
+        "retry_limit": 0,
+        "chunk_chars": 1000
       },
       "inject": {
         "model_chunk_ordinal": 2,
@@ -1740,9 +1736,7 @@
           "value": false
         }
       ],
-      "manual_review": [
-        "Exercise FastAPI-owned fetch paths only; connector-only remediation remains outside approved scope."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -3181,24 +3175,23 @@
         "scan_gold.json"
       ],
       "config": {
-        "mode": "real_model_opt_in"
+        "vision_enabled": true
       },
       "inject": {},
       "expected": [
         {
-          "path": "evaluation.review_complete",
+          "path": "boundary.raw_content_forwarded",
           "op": "eq",
-          "value": true
+          "value": false
         },
         {
-          "path": "evaluation.thresholds_met",
+          "path": "coverage.all_pages_accounted",
           "op": "eq",
           "value": true
         }
       ],
       "manual_review": [
-        "Record exact model snapshot, prompt version, images, token cost, latency and independent reviewer assessment. No live calls are made by this pack itself.",
-        "Compare actual transcription to scan_gold.json, including numbers/units/status/negation. Set thresholds before execution; do not accept self-confidence as a score."
+        "Run this case in live mode and review every source image against the saved transcription. Mock evidence does not qualify OCR accuracy. Require exact numbers, units, negation and procedure status, no unsupported additions, and explicit disclosure of unreadable content. Record reviewer, model, source regions and discrepancies; review_complete and thresholds_met remain unapproved until recorded independent review."
       ],
       "execution_status": "not_run"
     },
@@ -13331,9 +13324,7 @@
           "value": 1
         }
       ],
-      "manual_review": [
-        "Enable only if this transport adapter is in the release scope; otherwise mark BLOCKED with the disabled-path test as the required containment gate."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -13370,9 +13361,7 @@
           "value": 1
         }
       ],
-      "manual_review": [
-        "Conditional enabled-adapter test; not evidence that this optional transport is implemented."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -13409,9 +13398,7 @@
           "value": 1
         }
       ],
-      "manual_review": [
-        "Conditional enabled-adapter test; not evidence that this optional transport is implemented."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -13448,9 +13435,7 @@
           "value": 1
         }
       ],
-      "manual_review": [
-        "Conditional enabled-adapter test; not evidence that this optional transport is implemented."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -13521,9 +13506,7 @@
           "value": 1
         }
       ],
-      "manual_review": [
-        "Enable only if this transport adapter is in the release scope; otherwise mark BLOCKED with the disabled-path test as the required containment gate."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -13560,9 +13543,7 @@
           "value": 1
         }
       ],
-      "manual_review": [
-        "Conditional enabled-adapter test; not evidence that this optional transport is implemented."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -13599,9 +13580,7 @@
           "value": 1
         }
       ],
-      "manual_review": [
-        "Conditional enabled-adapter test; not evidence that this optional transport is implemented."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -13638,14 +13617,12 @@
           "value": 1
         }
       ],
-      "manual_review": [
-        "Conditional enabled-adapter test; not evidence that this optional transport is implemented."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
       "id": "TRANSPORT-NDJSON-OFF",
-      "title": "Disabled NDJSON transport adapter",
+      "title": "Unsupported release format: Disabled NDJSON transport adapter",
       "plan_refs": [
         "5",
         "8"
@@ -13665,14 +13642,14 @@
           "value": "unavailable"
         },
         {
-          "path": "calls.summarization",
-          "op": "eq",
-          "value": 0
-        },
-        {
           "path": "error_codes",
           "op": "contains",
           "value": "UNSUPPORTED_FORMAT"
+        },
+        {
+          "path": "calls.summarization",
+          "op": "eq",
+          "value": 0
         }
       ],
       "manual_review": [],
@@ -13680,7 +13657,7 @@
     },
     {
       "id": "TRANSPORT-NDJSON-ON",
-      "title": "Approved NDJSON adapter unwraps content",
+      "title": "Unsupported release format: Approved NDJSON adapter unwraps content",
       "plan_refs": [
         "5",
         "8"
@@ -13696,29 +13673,27 @@
       "inject": {},
       "expected": [
         {
-          "path": "boundary.raw_content_forwarded",
+          "path": "outcome",
           "op": "eq",
-          "value": false
+          "value": "unavailable"
         },
         {
-          "path": "model_input.text",
+          "path": "error_codes",
           "op": "contains",
-          "value": "Iron deficiency anemia"
+          "value": "UNSUPPORTED_FORMAT"
         },
         {
-          "path": "transport.decode_count",
+          "path": "calls.summarization",
           "op": "eq",
-          "value": 1
+          "value": 0
         }
       ],
-      "manual_review": [
-        "Enable only if this transport adapter is in the release scope; otherwise mark BLOCKED with the disabled-path test as the required containment gate."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
       "id": "TRANSPORT-NDJSON-PARAM",
-      "title": "NDJSON transport MIME PARAM",
+      "title": "Unsupported release format: NDJSON transport MIME PARAM",
       "plan_refs": [
         "5",
         "6",
@@ -13735,29 +13710,27 @@
       "inject": {},
       "expected": [
         {
-          "path": "boundary.raw_content_forwarded",
+          "path": "outcome",
           "op": "eq",
-          "value": false
+          "value": "unavailable"
         },
         {
-          "path": "model_input.text",
+          "path": "error_codes",
           "op": "contains",
-          "value": "Iron deficiency anemia"
+          "value": "UNSUPPORTED_FORMAT"
         },
         {
-          "path": "transport.decode_count",
+          "path": "calls.summarization",
           "op": "eq",
-          "value": 1
+          "value": 0
         }
       ],
-      "manual_review": [
-        "Conditional enabled-adapter test; not evidence that this optional transport is implemented."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
       "id": "TRANSPORT-NDJSON-CASE",
-      "title": "NDJSON transport MIME CASE",
+      "title": "Unsupported release format: NDJSON transport MIME CASE",
       "plan_refs": [
         "5",
         "6",
@@ -13774,29 +13747,27 @@
       "inject": {},
       "expected": [
         {
-          "path": "boundary.raw_content_forwarded",
+          "path": "outcome",
           "op": "eq",
-          "value": false
+          "value": "unavailable"
         },
         {
-          "path": "model_input.text",
+          "path": "error_codes",
           "op": "contains",
-          "value": "Iron deficiency anemia"
+          "value": "UNSUPPORTED_FORMAT"
         },
         {
-          "path": "transport.decode_count",
+          "path": "calls.summarization",
           "op": "eq",
-          "value": 1
+          "value": 0
         }
       ],
-      "manual_review": [
-        "Conditional enabled-adapter test; not evidence that this optional transport is implemented."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
       "id": "TRANSPORT-NDJSON-CHARSET",
-      "title": "NDJSON transport MIME CHARSET",
+      "title": "Unsupported release format: NDJSON transport MIME CHARSET",
       "plan_refs": [
         "5",
         "6",
@@ -13813,29 +13784,27 @@
       "inject": {},
       "expected": [
         {
-          "path": "boundary.raw_content_forwarded",
+          "path": "outcome",
           "op": "eq",
-          "value": false
+          "value": "unavailable"
         },
         {
-          "path": "model_input.text",
+          "path": "error_codes",
           "op": "contains",
-          "value": "Iron deficiency anemia"
+          "value": "UNSUPPORTED_FORMAT"
         },
         {
-          "path": "transport.decode_count",
+          "path": "calls.summarization",
           "op": "eq",
-          "value": 1
+          "value": 0
         }
       ],
-      "manual_review": [
-        "Conditional enabled-adapter test; not evidence that this optional transport is implemented."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
       "id": "TRANSPORT-GZIP-OFF",
-      "title": "Disabled GZIP transport adapter",
+      "title": "Unsupported release format: Disabled GZIP transport adapter",
       "plan_refs": [
         "5",
         "8"
@@ -13855,14 +13824,14 @@
           "value": "unavailable"
         },
         {
-          "path": "calls.summarization",
-          "op": "eq",
-          "value": 0
-        },
-        {
           "path": "error_codes",
           "op": "contains",
           "value": "UNSUPPORTED_FORMAT"
+        },
+        {
+          "path": "calls.summarization",
+          "op": "eq",
+          "value": 0
         }
       ],
       "manual_review": [],
@@ -13870,7 +13839,7 @@
     },
     {
       "id": "TRANSPORT-GZIP-ON",
-      "title": "Approved GZIP adapter unwraps content",
+      "title": "Unsupported release format: Approved GZIP adapter unwraps content",
       "plan_refs": [
         "5",
         "8"
@@ -13886,29 +13855,27 @@
       "inject": {},
       "expected": [
         {
-          "path": "boundary.raw_content_forwarded",
+          "path": "outcome",
           "op": "eq",
-          "value": false
+          "value": "unavailable"
         },
         {
-          "path": "model_input.text",
+          "path": "error_codes",
           "op": "contains",
-          "value": "Iron deficiency anemia"
+          "value": "UNSUPPORTED_FORMAT"
         },
         {
-          "path": "transport.decode_count",
+          "path": "calls.summarization",
           "op": "eq",
-          "value": 1
+          "value": 0
         }
       ],
-      "manual_review": [
-        "Enable only if this transport adapter is in the release scope; otherwise mark BLOCKED with the disabled-path test as the required containment gate."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
       "id": "TRANSPORT-GZIP-PARAM",
-      "title": "GZIP transport MIME PARAM",
+      "title": "Unsupported release format: GZIP transport MIME PARAM",
       "plan_refs": [
         "5",
         "6",
@@ -13925,29 +13892,27 @@
       "inject": {},
       "expected": [
         {
-          "path": "boundary.raw_content_forwarded",
+          "path": "outcome",
           "op": "eq",
-          "value": false
+          "value": "unavailable"
         },
         {
-          "path": "model_input.text",
+          "path": "error_codes",
           "op": "contains",
-          "value": "Iron deficiency anemia"
+          "value": "UNSUPPORTED_FORMAT"
         },
         {
-          "path": "transport.decode_count",
+          "path": "calls.summarization",
           "op": "eq",
-          "value": 1
+          "value": 0
         }
       ],
-      "manual_review": [
-        "Conditional enabled-adapter test; not evidence that this optional transport is implemented."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
       "id": "TRANSPORT-GZIP-CASE",
-      "title": "GZIP transport MIME CASE",
+      "title": "Unsupported release format: GZIP transport MIME CASE",
       "plan_refs": [
         "5",
         "6",
@@ -13964,29 +13929,27 @@
       "inject": {},
       "expected": [
         {
-          "path": "boundary.raw_content_forwarded",
+          "path": "outcome",
           "op": "eq",
-          "value": false
+          "value": "unavailable"
         },
         {
-          "path": "model_input.text",
+          "path": "error_codes",
           "op": "contains",
-          "value": "Iron deficiency anemia"
+          "value": "UNSUPPORTED_FORMAT"
         },
         {
-          "path": "transport.decode_count",
+          "path": "calls.summarization",
           "op": "eq",
-          "value": 1
+          "value": 0
         }
       ],
-      "manual_review": [
-        "Conditional enabled-adapter test; not evidence that this optional transport is implemented."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
       "id": "TRANSPORT-GZIP-CHARSET",
-      "title": "GZIP transport MIME CHARSET",
+      "title": "Unsupported release format: GZIP transport MIME CHARSET",
       "plan_refs": [
         "5",
         "6",
@@ -14003,29 +13966,27 @@
       "inject": {},
       "expected": [
         {
-          "path": "boundary.raw_content_forwarded",
+          "path": "outcome",
           "op": "eq",
-          "value": false
+          "value": "unavailable"
         },
         {
-          "path": "model_input.text",
+          "path": "error_codes",
           "op": "contains",
-          "value": "Iron deficiency anemia"
+          "value": "UNSUPPORTED_FORMAT"
         },
         {
-          "path": "transport.decode_count",
+          "path": "calls.summarization",
           "op": "eq",
-          "value": 1
+          "value": 0
         }
       ],
-      "manual_review": [
-        "Conditional enabled-adapter test; not evidence that this optional transport is implemented."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
       "id": "TRANSPORT-ZIP-OFF",
-      "title": "Disabled ZIP transport adapter",
+      "title": "Unsupported release format: Disabled ZIP transport adapter",
       "plan_refs": [
         "5",
         "8"
@@ -14045,14 +14006,14 @@
           "value": "unavailable"
         },
         {
-          "path": "calls.summarization",
-          "op": "eq",
-          "value": 0
-        },
-        {
           "path": "error_codes",
           "op": "contains",
           "value": "UNSUPPORTED_FORMAT"
+        },
+        {
+          "path": "calls.summarization",
+          "op": "eq",
+          "value": 0
         }
       ],
       "manual_review": [],
@@ -14060,7 +14021,7 @@
     },
     {
       "id": "TRANSPORT-ZIP-ON",
-      "title": "Approved ZIP adapter unwraps content",
+      "title": "Unsupported release format: Approved ZIP adapter unwraps content",
       "plan_refs": [
         "5",
         "8"
@@ -14076,29 +14037,27 @@
       "inject": {},
       "expected": [
         {
-          "path": "boundary.raw_content_forwarded",
+          "path": "outcome",
           "op": "eq",
-          "value": false
+          "value": "unavailable"
         },
         {
-          "path": "model_input.text",
+          "path": "error_codes",
           "op": "contains",
-          "value": "Iron deficiency anemia"
+          "value": "UNSUPPORTED_FORMAT"
         },
         {
-          "path": "transport.decode_count",
+          "path": "calls.summarization",
           "op": "eq",
-          "value": 1
+          "value": 0
         }
       ],
-      "manual_review": [
-        "Enable only if this transport adapter is in the release scope; otherwise mark BLOCKED with the disabled-path test as the required containment gate."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
       "id": "TRANSPORT-ZIP-PARAM",
-      "title": "ZIP transport MIME PARAM",
+      "title": "Unsupported release format: ZIP transport MIME PARAM",
       "plan_refs": [
         "5",
         "6",
@@ -14115,29 +14074,27 @@
       "inject": {},
       "expected": [
         {
-          "path": "boundary.raw_content_forwarded",
+          "path": "outcome",
           "op": "eq",
-          "value": false
+          "value": "unavailable"
         },
         {
-          "path": "model_input.text",
+          "path": "error_codes",
           "op": "contains",
-          "value": "Iron deficiency anemia"
+          "value": "UNSUPPORTED_FORMAT"
         },
         {
-          "path": "transport.decode_count",
+          "path": "calls.summarization",
           "op": "eq",
-          "value": 1
+          "value": 0
         }
       ],
-      "manual_review": [
-        "Conditional enabled-adapter test; not evidence that this optional transport is implemented."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
       "id": "TRANSPORT-ZIP-CASE",
-      "title": "ZIP transport MIME CASE",
+      "title": "Unsupported release format: ZIP transport MIME CASE",
       "plan_refs": [
         "5",
         "6",
@@ -14154,29 +14111,27 @@
       "inject": {},
       "expected": [
         {
-          "path": "boundary.raw_content_forwarded",
+          "path": "outcome",
           "op": "eq",
-          "value": false
+          "value": "unavailable"
         },
         {
-          "path": "model_input.text",
+          "path": "error_codes",
           "op": "contains",
-          "value": "Iron deficiency anemia"
+          "value": "UNSUPPORTED_FORMAT"
         },
         {
-          "path": "transport.decode_count",
+          "path": "calls.summarization",
           "op": "eq",
-          "value": 1
+          "value": 0
         }
       ],
-      "manual_review": [
-        "Conditional enabled-adapter test; not evidence that this optional transport is implemented."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
       "id": "TRANSPORT-ZIP-CHARSET",
-      "title": "ZIP transport MIME CHARSET",
+      "title": "Unsupported release format: ZIP transport MIME CHARSET",
       "plan_refs": [
         "5",
         "6",
@@ -14193,24 +14148,22 @@
       "inject": {},
       "expected": [
         {
-          "path": "boundary.raw_content_forwarded",
+          "path": "outcome",
           "op": "eq",
-          "value": false
+          "value": "unavailable"
         },
         {
-          "path": "model_input.text",
+          "path": "error_codes",
           "op": "contains",
-          "value": "Iron deficiency anemia"
+          "value": "UNSUPPORTED_FORMAT"
         },
         {
-          "path": "transport.decode_count",
+          "path": "calls.summarization",
           "op": "eq",
-          "value": 1
+          "value": 0
         }
       ],
-      "manual_review": [
-        "Conditional enabled-adapter test; not evidence that this optional transport is implemented."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -14281,9 +14234,7 @@
           "value": 1
         }
       ],
-      "manual_review": [
-        "Enable only if this transport adapter is in the release scope; otherwise mark BLOCKED with the disabled-path test as the required containment gate."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -14320,9 +14271,7 @@
           "value": 1
         }
       ],
-      "manual_review": [
-        "Conditional enabled-adapter test; not evidence that this optional transport is implemented."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -14359,9 +14308,7 @@
           "value": 1
         }
       ],
-      "manual_review": [
-        "Conditional enabled-adapter test; not evidence that this optional transport is implemented."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -14398,9 +14345,7 @@
           "value": 1
         }
       ],
-      "manual_review": [
-        "Conditional enabled-adapter test; not evidence that this optional transport is implemented."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -15043,7 +14988,7 @@
     },
     {
       "id": "GZIP-DOUBLE",
-      "title": "HTTP and file compression decoded exactly once each",
+      "title": "HTTP compression decoded once; nested gzip document rejected",
       "plan_refs": [
         "8"
       ],
@@ -15066,12 +15011,17 @@
         {
           "path": "transport.file_decode_count",
           "op": "eq",
-          "value": 1
+          "value": 0
         },
         {
-          "path": "model_input.text",
+          "path": "error_codes",
           "op": "contains",
-          "value": "Iron deficiency anemia"
+          "value": "UNSUPPORTED_FORMAT"
+        },
+        {
+          "path": "calls.summarization",
+          "op": "eq",
+          "value": 0
         }
       ],
       "manual_review": [],
@@ -15079,7 +15029,7 @@
     },
     {
       "id": "ZIP-DEPTH",
-      "title": "Archive depth cap",
+      "title": "Reject excluded ZIP before expansion: Archive depth cap",
       "plan_refs": [
         "8"
       ],
@@ -15100,7 +15050,7 @@
         {
           "path": "error_codes",
           "op": "contains",
-          "value": "RESOURCE_LIMIT_EXCEEDED"
+          "value": "UNSUPPORTED_FORMAT"
         }
       ],
       "manual_review": [],
@@ -15108,7 +15058,7 @@
     },
     {
       "id": "ZIP-ENTRIES",
-      "title": "Archive entry-count cap",
+      "title": "Reject excluded ZIP before expansion: Archive entry-count cap",
       "plan_refs": [
         "8"
       ],
@@ -15129,7 +15079,7 @@
         {
           "path": "error_codes",
           "op": "contains",
-          "value": "RESOURCE_LIMIT_EXCEEDED"
+          "value": "UNSUPPORTED_FORMAT"
         }
       ],
       "manual_review": [],
@@ -15553,7 +15503,7 @@
         "A03"
       ],
       "fixtures": [
-        "fhir_document.json",
+        "structured_fhir.json",
         "corrupt.pdf"
       ],
       "config": {
@@ -16397,9 +16347,16 @@
           "path": "coverage.complete",
           "op": "eq",
           "value": true
+        },
+        {
+          "path": "coverage.regions_checked",
+          "op": "gte",
+          "value": 2
         }
       ],
-      "manual_review": [],
+      "manual_review": [
+        "Mock crop responses verify routing and duplicate suppression only; real crop accuracy requires clinical review."
+      ],
       "execution_status": "not_run"
     },
     {
@@ -17047,9 +17004,7 @@
           "value": false
         }
       ],
-      "manual_review": [
-        "transient_retryable distinguishes transient retries from a separately configured one-shot correction or idempotent persistence policy."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -17092,9 +17047,7 @@
           "value": false
         }
       ],
-      "manual_review": [
-        "transient_retryable distinguishes transient retries from a separately configured one-shot correction or idempotent persistence policy."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -17137,9 +17090,7 @@
           "value": false
         }
       ],
-      "manual_review": [
-        "transient_retryable distinguishes transient retries from a separately configured one-shot correction or idempotent persistence policy."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -17182,9 +17133,7 @@
           "value": false
         }
       ],
-      "manual_review": [
-        "transient_retryable distinguishes transient retries from a separately configured one-shot correction or idempotent persistence policy."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -17227,9 +17176,7 @@
           "value": false
         }
       ],
-      "manual_review": [
-        "transient_retryable distinguishes transient retries from a separately configured one-shot correction or idempotent persistence policy."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -17272,9 +17219,7 @@
           "value": false
         }
       ],
-      "manual_review": [
-        "transient_retryable distinguishes transient retries from a separately configured one-shot correction or idempotent persistence policy."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -17317,9 +17262,7 @@
           "value": false
         }
       ],
-      "manual_review": [
-        "transient_retryable distinguishes transient retries from a separately configured one-shot correction or idempotent persistence policy."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -17362,9 +17305,7 @@
           "value": false
         }
       ],
-      "manual_review": [
-        "transient_retryable distinguishes transient retries from a separately configured one-shot correction or idempotent persistence policy."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -17407,9 +17348,7 @@
           "value": false
         }
       ],
-      "manual_review": [
-        "transient_retryable distinguishes transient retries from a separately configured one-shot correction or idempotent persistence policy."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -17452,9 +17391,7 @@
           "value": false
         }
       ],
-      "manual_review": [
-        "transient_retryable distinguishes transient retries from a separately configured one-shot correction or idempotent persistence policy."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -17497,9 +17434,7 @@
           "value": false
         }
       ],
-      "manual_review": [
-        "transient_retryable distinguishes transient retries from a separately configured one-shot correction or idempotent persistence policy."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -17542,9 +17477,7 @@
           "value": false
         }
       ],
-      "manual_review": [
-        "transient_retryable distinguishes transient retries from a separately configured one-shot correction or idempotent persistence policy."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -17608,9 +17541,7 @@
           "value": 0
         }
       ],
-      "manual_review": [
-        "For transcript-only entry points, prove attachment payload rejection; do not invent attachment support solely for this case."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -17642,9 +17573,7 @@
           "value": 0
         }
       ],
-      "manual_review": [
-        "For transcript-only entry points, prove attachment payload rejection; do not invent attachment support solely for this case."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -17676,9 +17605,7 @@
           "value": 0
         }
       ],
-      "manual_review": [
-        "For transcript-only entry points, prove attachment payload rejection; do not invent attachment support solely for this case."
-      ],
+      "manual_review": [],
       "execution_status": "not_run"
     },
     {
@@ -19417,6 +19344,477 @@
         },
         {
           "path": "calls.database",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "manual_review": [],
+      "execution_status": "not_run"
+    },
+    {
+      "id": "ROUTING-PDF-LOGO",
+      "title": "Native PDF text retained; zero OCR/vision calls",
+      "plan_refs": [
+        "OCR/DOCX routing and compatibility review"
+      ],
+      "fixtures": [
+        "routing/letterhead.pdf"
+      ],
+      "config": {},
+      "inject": {},
+      "expected": [
+        {
+          "path": "regression.passed",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "path": "regression.tests_run",
+          "op": "eq",
+          "value": 1
+        },
+        {
+          "path": "persistence.database_writes",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "manual_review": [],
+      "execution_status": "not_run"
+    },
+    {
+      "id": "ROUTING-DOCX-LOGO",
+      "title": "Header, first-paragraph and footer logos retain clinical text and table text; zero OCR calls",
+      "plan_refs": [
+        "OCR/DOCX routing and compatibility review"
+      ],
+      "fixtures": [
+        "routing/logo_header.docx",
+        "routing/logo_body.docx",
+        "routing/logo_footer.docx"
+      ],
+      "config": {},
+      "inject": {},
+      "expected": [
+        {
+          "path": "regression.passed",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "path": "regression.tests_run",
+          "op": "eq",
+          "value": 1
+        },
+        {
+          "path": "persistence.database_writes",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "manual_review": [],
+      "execution_status": "not_run"
+    },
+    {
+      "id": "ROUTING-DOCX-IMAGE",
+      "title": "Unsupported clinical image returns UNSUPPORTED_FORMAT without entering OCR renderer",
+      "plan_refs": [
+        "OCR/DOCX routing and compatibility review"
+      ],
+      "fixtures": [
+        "routing/clinical_image.docx"
+      ],
+      "config": {},
+      "inject": {},
+      "expected": [
+        {
+          "path": "regression.passed",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "path": "regression.tests_run",
+          "op": "eq",
+          "value": 1
+        },
+        {
+          "path": "persistence.database_writes",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "manual_review": [],
+      "execution_status": "not_run"
+    },
+    {
+      "id": "ROUTING-MIXED-PDF",
+      "title": "Only scanned page transcribed; three native pages preserved in order",
+      "plan_refs": [
+        "OCR/DOCX routing and compatibility review"
+      ],
+      "fixtures": [
+        "routing/mixed_scan.pdf"
+      ],
+      "config": {},
+      "inject": {},
+      "expected": [
+        {
+          "path": "regression.passed",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "path": "regression.tests_run",
+          "op": "eq",
+          "value": 1
+        },
+        {
+          "path": "persistence.database_writes",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "manual_review": [],
+      "execution_status": "not_run"
+    },
+    {
+      "id": "ROUTING-BLANK",
+      "title": "Blank PDF returns NO_READABLE_TEXT with no model call",
+      "plan_refs": [
+        "OCR/DOCX routing and compatibility review"
+      ],
+      "fixtures": [],
+      "config": {},
+      "inject": {},
+      "expected": [
+        {
+          "path": "regression.passed",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "path": "regression.tests_run",
+          "op": "eq",
+          "value": 1
+        },
+        {
+          "path": "persistence.database_writes",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "manual_review": [],
+      "execution_status": "not_run"
+    },
+    {
+      "id": "ACCESS-EXISTING-SERVICE",
+      "title": "Trusted service retains existing patient delegation without new mapping lookup",
+      "plan_refs": [
+        "OCR/DOCX routing and compatibility review"
+      ],
+      "fixtures": [],
+      "config": {},
+      "inject": {},
+      "expected": [
+        {
+          "path": "regression.passed",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "path": "regression.tests_run",
+          "op": "eq",
+          "value": 1
+        },
+        {
+          "path": "persistence.database_writes",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "manual_review": [
+        "Trusted service path passes locally. Direct caregiver/provider grant resolution remains unresolved; verify existing deployed access flows before release."
+      ],
+      "execution_status": "not_run"
+    },
+    {
+      "id": "ACCESS-EXISTING-PATIENT",
+      "title": "Authenticated mapped patient accepted; cross-patient request denied",
+      "plan_refs": [
+        "OCR/DOCX routing and compatibility review"
+      ],
+      "fixtures": [],
+      "config": {},
+      "inject": {},
+      "expected": [
+        {
+          "path": "regression.passed",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "path": "regression.tests_run",
+          "op": "eq",
+          "value": 1
+        },
+        {
+          "path": "persistence.database_writes",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "manual_review": [],
+      "execution_status": "not_run"
+    },
+    {
+      "id": "PRESERVE-FAILED-REFRESH",
+      "title": "Failed refresh retains diagnosis and original summary with exactly one notice",
+      "plan_refs": [
+        "OCR/DOCX routing and compatibility review"
+      ],
+      "fixtures": [],
+      "config": {},
+      "inject": {},
+      "expected": [
+        {
+          "path": "regression.passed",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "path": "regression.tests_run",
+          "op": "eq",
+          "value": 1
+        },
+        {
+          "path": "persistence.database_writes",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "manual_review": [
+        "Memory-only publication assertions pass. PostgreSQL locking, durable commits and deployed consumer behavior are deferred to deployed-instance verification."
+      ],
+      "execution_status": "not_run"
+    },
+    {
+      "id": "PRESERVE-EMPTY-PARTIAL",
+      "title": "Empty failed procedure refresh does not delete prior rows or clinical content",
+      "plan_refs": [
+        "OCR/DOCX routing and compatibility review"
+      ],
+      "fixtures": [],
+      "config": {},
+      "inject": {},
+      "expected": [
+        {
+          "path": "regression.passed",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "path": "regression.tests_run",
+          "op": "eq",
+          "value": 1
+        },
+        {
+          "path": "persistence.database_writes",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "manual_review": [
+        "Memory-only publication assertions pass. PostgreSQL locking, durable commits and deployed consumer behavior are deferred to deployed-instance verification."
+      ],
+      "execution_status": "not_run"
+    },
+    {
+      "id": "DOC-LEGACY-VALID",
+      "title": "Valid legacy Word parsed before clinical AI",
+      "plan_refs": [
+        "7",
+        "PARSE-05"
+      ],
+      "fixtures": [
+        "legacy_word.doc"
+      ],
+      "config": {},
+      "inject": {},
+      "expected": [
+        {
+          "path": "extraction.status",
+          "op": "eq",
+          "value": "success"
+        },
+        {
+          "path": "extraction.adapter",
+          "op": "eq",
+          "value": "doc"
+        },
+        {
+          "path": "boundary.raw_content_forwarded",
+          "op": "eq",
+          "value": false
+        }
+      ],
+      "manual_review": [
+        "Review extracted legacy Word content against the source, including any table associations."
+      ],
+      "execution_status": "not_run"
+    },
+    {
+      "id": "FHIR-NESTED-NESTED_BUNDLE-JSON",
+      "title": "Parse nested FHIR attachment: nested_bundle.json",
+      "plan_refs": [
+        "5",
+        "8"
+      ],
+      "fixtures": [
+        "nested_bundle.json"
+      ],
+      "config": {},
+      "inject": {},
+      "expected": [
+        {
+          "path": "extraction.status",
+          "op": "eq",
+          "value": "success"
+        },
+        {
+          "path": "extraction.text",
+          "op": "contains",
+          "value": "completion not documented"
+        },
+        {
+          "path": "boundary.raw_content_forwarded",
+          "op": "eq",
+          "value": false
+        }
+      ],
+      "manual_review": [],
+      "execution_status": "not_run"
+    },
+    {
+      "id": "FHIR-NESTED-NESTED_BUNDLE-XML",
+      "title": "Parse nested FHIR attachment: nested_bundle.xml",
+      "plan_refs": [
+        "5",
+        "8"
+      ],
+      "fixtures": [
+        "nested_bundle.xml"
+      ],
+      "config": {},
+      "inject": {},
+      "expected": [
+        {
+          "path": "extraction.status",
+          "op": "eq",
+          "value": "success"
+        },
+        {
+          "path": "extraction.text",
+          "op": "contains",
+          "value": "completion not documented"
+        },
+        {
+          "path": "boundary.raw_content_forwarded",
+          "op": "eq",
+          "value": false
+        }
+      ],
+      "manual_review": [],
+      "execution_status": "not_run"
+    },
+    {
+      "id": "FHIR-NESTED-NESTED_REPORT-JSON",
+      "title": "Parse nested FHIR attachment: nested_report.json",
+      "plan_refs": [
+        "5",
+        "8"
+      ],
+      "fixtures": [
+        "nested_report.json"
+      ],
+      "config": {},
+      "inject": {},
+      "expected": [
+        {
+          "path": "extraction.status",
+          "op": "eq",
+          "value": "success"
+        },
+        {
+          "path": "extraction.text",
+          "op": "contains",
+          "value": "completion not documented"
+        },
+        {
+          "path": "boundary.raw_content_forwarded",
+          "op": "eq",
+          "value": false
+        }
+      ],
+      "manual_review": [],
+      "execution_status": "not_run"
+    },
+    {
+      "id": "FHIR-NESTED-NESTED_REPORT-XML",
+      "title": "Parse nested FHIR attachment: nested_report.xml",
+      "plan_refs": [
+        "5",
+        "8"
+      ],
+      "fixtures": [
+        "nested_report.xml"
+      ],
+      "config": {},
+      "inject": {},
+      "expected": [
+        {
+          "path": "extraction.status",
+          "op": "eq",
+          "value": "success"
+        },
+        {
+          "path": "extraction.text",
+          "op": "contains",
+          "value": "completion not documented"
+        },
+        {
+          "path": "boundary.raw_content_forwarded",
+          "op": "eq",
+          "value": false
+        }
+      ],
+      "manual_review": [],
+      "execution_status": "not_run"
+    },
+    {
+      "id": "FHIR-NESTED-REMOTE",
+      "title": "Unacquired nested remote attachment is unavailable",
+      "plan_refs": [
+        "5",
+        "8"
+      ],
+      "fixtures": [
+        "nested_external.json"
+      ],
+      "config": {},
+      "inject": {},
+      "expected": [
+        {
+          "path": "outcome",
+          "op": "eq",
+          "value": "unavailable"
+        },
+        {
+          "path": "error_codes",
+          "op": "contains",
+          "value": "DOWNLOAD_UNAVAILABLE"
+        },
+        {
+          "path": "calls.summarization",
           "op": "eq",
           "value": 0
         }

@@ -51,7 +51,7 @@ class FhirAnalysisService:
 
     @bounded_summary
     async def analyze_fhir_resources(
-        self, request: FhirAnalysisRequest
+        self, request: FhirAnalysisRequest, *, attachment_failures=()
     ) -> ConversationSummary:
         """
         Analyze FHIR resources for a patient appointment and generate clinical insights.
@@ -84,6 +84,10 @@ class FhirAnalysisService:
         try:
             # Fetch FHIR resources
             fhir_resources = await self._fetch_fhir_resources(request, appointment)
+            if attachment_failures:
+                # Failed attachment envelopes are not structured clinical evidence.
+                fhir_resources = [resource for resource in fhir_resources
+                                  if resource.resource_type not in {"DocumentReference", "Binary", "Media"}]
 
             if not fhir_resources:
                 from src.app.services.document_extraction import DocumentProcessingError
@@ -132,6 +136,12 @@ class FhirAnalysisService:
             empty = getattr(exc, "code", None) == "NO_DOCUMENTS"
             code = "SOURCE_INVENTORY_FAILED" if stage == "inventory" else model_error_code(exc)
             summary_data = nonclinical_payload(request, "fhir_analysis", state="no_documents" if empty else "unavailable", errors=[] if empty else [{"error": code}])
+
+        if attachment_failures and summary_data["summary_metadata"].get("is_clinical_summary"):
+            from src.app.services.summary_outcomes import MESSAGES
+            summary_data["summary_text"] = MESSAGES["partial"] + "\n\n" + summary_data["summary_text"]
+            summary_data["summary_metadata"].update(outcome_metadata("partial", attachment_failures))
+            summary_data["summary_metadata"]["unavailable_sources"] = ["attachment_summary"]
 
         db_summary = await self.summaries_repo.upsert(
             appointment_id=request.appointment_id, summary_data=summary_data

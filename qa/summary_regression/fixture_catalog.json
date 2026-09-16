@@ -377,7 +377,7 @@
       "path": "../testdata/clinical.docx",
       "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "bytes": 37058,
-      "sha256": "531b5571e22d8f716dadda99bfbb02d4073b9781654af969e4b2df2a70d71b6d",
+      "sha256": "c4f4e8d9fa54f22652237bf0e9fbc498d09aff2a7cffb31703d2ad3579fd0e99",
       "purpose": "Paragraphs and a real laboratory table"
     },
     "scan_gold.json": {
@@ -594,7 +594,7 @@
       "path": "../testdata/clinical.txt.gz",
       "mime": "application/gzip",
       "bytes": 240,
-      "sha256": "379d9793cdad45106addef8e77e9264f55eaee1a4779f97e9af8ffff7a70d532",
+      "sha256": "aad28c394c98d52edcd8e38cd6871afa57cf70e1a203d8353fdeacb66b0b0576",
       "purpose": "Approved compression container"
     },
     "export.zip": {
@@ -736,6 +736,104 @@
       "bytes": 560,
       "sha256": "3acdc42ed35e9d74d44bc421a098daeb1e2b7e9fc765abf91664004d70d93f73",
       "purpose": "Explicit transport decoding only; not raw summarization"
+    },
+    "legacy_word.doc": {
+      "path": "../testdata/legacy_word.doc",
+      "mime": "application/msword",
+      "bytes": 19456,
+      "sha256": "49218769a4b05b8fa9fb711af796b9fc368a0f82ec7f564e2bbf92ee1fd92c13",
+      "purpose": "Valid synthetic legacy Word document generated from clinical_utf8.txt; retained binary fixture."
+    },
+    "chunk_failure.txt": {
+      "path": "../testdata/chunk_failure.txt",
+      "mime": "text/plain",
+      "bytes": 3493,
+      "sha256": "9c771e5a5791e5cee5a3c89c23203e151635a6d52d7f717866f1f9133d9e2ae8",
+      "purpose": "Bounded multi-chunk input for one failed chunk, independently of whole-job resource ceilings."
+    },
+    "structured_fhir.json": {
+      "path": "../testdata/structured_fhir.json",
+      "mime": "application/json",
+      "bytes": 165,
+      "sha256": "5d8c597a5fa33bda8b7b390880465a8dc63da42f0a01ab6306d030bbad975268",
+      "purpose": "Synthetic structured clinical resource, separate from failed document attachments."
+    },
+    "nested_bundle.json": {
+      "path": "../testdata/nested_bundle.json",
+      "mime": "application/fhir+json",
+      "bytes": 184,
+      "sha256": "b7c9c7bdd4998d97dcdc1e5f18251b57ce5f932c5a536a8a64970fe37ac5f3b4",
+      "purpose": "FHIR Bundle with an embedded text document."
+    },
+    "nested_bundle.xml": {
+      "path": "../testdata/nested_bundle.xml",
+      "mime": "application/fhir+xml",
+      "bytes": 211,
+      "sha256": "7c82f930a021241a8f2f3ab9d0f70736aa928491cc52c01091af355a630d3719",
+      "purpose": "FHIR XML Bundle with an embedded text document."
+    },
+    "nested_report.json": {
+      "path": "../testdata/nested_report.json",
+      "mime": "application/fhir+json",
+      "bytes": 162,
+      "sha256": "cd3058c91e3afbb04e72ad2c9577f07cfe6f84b7fed35a2bb1c85afae4c07c14",
+      "purpose": "Typed attachment nested in a DiagnosticReport."
+    },
+    "nested_report.xml": {
+      "path": "../testdata/nested_report.xml",
+      "mime": "application/fhir+xml",
+      "bytes": 209,
+      "sha256": "8ab71afc5d6a2150eaec46effb396d7325216b10743f492ea0dadf2e01bd9311",
+      "purpose": "FHIR XML typed attachment nested in a DiagnosticReport."
+    },
+    "nested_external.json": {
+      "path": "../testdata/nested_external.json",
+      "mime": "application/fhir+json",
+      "bytes": 129,
+      "sha256": "82aa68fef602aeb7a2e42aaf0d7a761b2788fa23e8d2e91f3332042c9627b16a",
+      "purpose": "Unacquired remote attachment must not trigger arbitrary fetching or summarize missing content."
+    },
+    "routing/clinical_image.docx": {
+      "path": "../testdata/routing/clinical_image.docx",
+      "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "bytes": 37092,
+      "sha256": "127e2b3e691302caf9e2be5c5c39f6c567ae81ad42f269c8a9833f05019b781a",
+      "purpose": "Synthetic routing fixture: decorative letterhead or explicit embedded clinical image; no real patient data."
+    },
+    "routing/letterhead.pdf": {
+      "path": "../testdata/routing/letterhead.pdf",
+      "mime": "application/pdf",
+      "bytes": 12160,
+      "sha256": "a03e1d5f9b16b4a5ad8111942e2a55c4ff08d0347b818ddfaef9e3759fbd6a16",
+      "purpose": "Synthetic routing fixture: decorative letterhead or explicit embedded clinical image; no real patient data."
+    },
+    "routing/logo_body.docx": {
+      "path": "../testdata/routing/logo_body.docx",
+      "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "bytes": 37234,
+      "sha256": "885b8647a36bf4c55200de3de5572abcebbac83c5e1c8140dbb426468d19619a",
+      "purpose": "Synthetic routing fixture: decorative letterhead or explicit embedded clinical image; no real patient data."
+    },
+    "routing/logo_footer.docx": {
+      "path": "../testdata/routing/logo_footer.docx",
+      "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "bytes": 38065,
+      "sha256": "54eac9df80cb12cbdb1bebecbed9ce6fd36a19a96e6717aa663874fa8d6a00da",
+      "purpose": "Synthetic routing fixture: decorative letterhead or explicit embedded clinical image; no real patient data."
+    },
+    "routing/logo_header.docx": {
+      "path": "../testdata/routing/logo_header.docx",
+      "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "bytes": 38065,
+      "sha256": "8d26952f9e9892a0a209416251913d7acb47ac836bc65fa6650b0d89b00aa086",
+      "purpose": "Synthetic routing fixture: decorative letterhead or explicit embedded clinical image; no real patient data."
+    },
+    "routing/mixed_scan.pdf": {
+      "path": "../testdata/routing/mixed_scan.pdf",
+      "mime": "application/pdf",
+      "bytes": 12476,
+      "sha256": "3f63057387f1d3243ec43ae5ccc0ce01523afe32a0d1af1bd88ac1e068a2dfeb",
+      "purpose": "Synthetic routing fixture: decorative letterhead or explicit embedded clinical image; no real patient data."
     }
   }
 }

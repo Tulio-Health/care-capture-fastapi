@@ -77,7 +77,7 @@ def extract_transport(extractor, content, mime, charset, declared, filename):
             raise DocumentProcessingError('PARSE_FAILED') from exc
         if len(objects) > extractor.MAX_ZIP_ENTRIES:
             raise DocumentProcessingError('ARCHIVE_LIMIT_EXCEEDED')
-        envelopes = {'Binary', 'DocumentReference', 'Media'}
+        envelopes = {'Binary', 'DocumentReference', 'Media', 'Bundle'}
         if not any(isinstance(item, dict) and item.get('resourceType') in envelopes for item in objects):
             return None
         if not extractor.transport_enabled:
@@ -87,12 +87,26 @@ def extract_transport(extractor, content, mime, charset, declared, filename):
             if not isinstance(item, dict):
                 raise DocumentProcessingError('PARSE_FAILED')
             kind = item.get('resourceType')
+            if kind == 'Bundle':
+                entries = item.get('entry', [])
+                if not isinstance(entries, list):
+                    raise DocumentProcessingError('PARSE_FAILED')
+                if len(entries) + len(children) > extractor.MAX_ZIP_ENTRIES:
+                    raise DocumentProcessingError('ARCHIVE_LIMIT_EXCEEDED')
+                for entry in entries:
+                    resource = entry.get('resource') if isinstance(entry, dict) else None
+                    if not isinstance(resource, dict) or not isinstance(resource.get('resourceType'), str):
+                        raise DocumentProcessingError('PARSE_FAILED')
+                    children.append((json.dumps(resource).encode(), 'application/fhir+json', None))
+                continue
             attachments = [item] if kind == 'Binary' else [item.get('content')] if kind == 'Media' else [entry.get('attachment') if isinstance(entry, dict) else None for entry in item.get('content', [])] if kind == 'DocumentReference' else []
             if not attachments:
                 # Mixed structured resources are retained through the JSON parser.
                 if kind in envelopes:
                     raise DocumentProcessingError('NO_READABLE_TEXT')
                 children.append((json.dumps(item).encode(), 'application/json', None))
+            if len(attachments) + len(children) > extractor.MAX_ZIP_ENTRIES:
+                raise DocumentProcessingError('ARCHIVE_LIMIT_EXCEEDED')
             for attachment in attachments:
                 if not isinstance(attachment, dict) or 'data' not in attachment:
                     raise DocumentProcessingError('DOWNLOAD_UNAVAILABLE')
@@ -110,21 +124,47 @@ def extract_transport(extractor, content, mime, charset, declared, filename):
         except ET.ParseError as exc:
             raise DocumentProcessingError('PARSE_FAILED') from exc
         tag = root.tag.rsplit('}', 1)[-1]
-        if tag not in {'Binary','DocumentReference','Media'}:
-            return None
+        if tag not in {'Binary','DocumentReference','Media','Bundle'}:
+            nested = []
+            for node in root.iter():
+                fields = {child.tag.rsplit('}', 1)[-1]: child.get('value') for child in node}
+                if ('data' in fields or 'url' in fields) and ('contentType' in fields or node.tag.rsplit('}', 1)[-1] in {'attachment', 'presentedForm'} or node.tag.rsplit('}', 1)[-1].endswith('Attachment')):
+                    nested.append((node, fields))
+            if not nested:
+                return None
+            for node, fields in nested:
+                text = parse_embedded_attachment(extractor, fields)
+                for child in list(node):
+                    if child.tag.rsplit('}', 1)[-1] in {'data', 'url'}:
+                        node.remove(child)
+                ET.SubElement(node, 'parsedAttachmentText').text = text
+            return extractor.validate_text(extractor._xml_text(ET.tostring(root, encoding='unicode')))
         if not extractor.transport_enabled:
             raise DocumentProcessingError('UNSUPPORTED_FORMAT')
-        nodes = [root] if tag == 'Binary' else [node for node in root.iter() if node.tag.rsplit('}',1)[-1] in {'attachment'} or (tag == 'Media' and node.tag.rsplit('}',1)[-1] == 'content')]
-        children = []
-        for node in nodes:
-            fields = {child.tag.rsplit('}',1)[-1]: child.get('value') for child in node}
-            if 'data' not in fields:
-                raise DocumentProcessingError('DOWNLOAD_UNAVAILABLE')
-            children.append((decode_base64(fields['data'], limit), fields.get('contentType') or 'application/octet-stream', None))
+        if tag == 'Bundle':
+            entries = [node for node in root if node.tag.rsplit('}', 1)[-1] == 'entry']
+            children = []
+            if len(entries) > extractor.MAX_ZIP_ENTRIES:
+                raise DocumentProcessingError('ARCHIVE_LIMIT_EXCEEDED')
+            for entry in entries:
+                wrappers = [node for node in entry if node.tag.rsplit('}', 1)[-1] == 'resource']
+                if len(wrappers) != 1 or len(wrappers[0]) != 1:
+                    raise DocumentProcessingError('PARSE_FAILED')
+                children.append((ET.tostring(wrappers[0][0], encoding='utf-8'), 'application/fhir+xml', None))
+        else:
+            nodes = [root] if tag == 'Binary' else [node for node in root.iter() if node.tag.rsplit('}',1)[-1] in {'attachment'} or (tag == 'Media' and node.tag.rsplit('}',1)[-1] == 'content')]
+            children = []
+            for node in nodes:
+                fields = {child.tag.rsplit('}',1)[-1]: child.get('value') for child in node}
+                if 'data' not in fields:
+                    raise DocumentProcessingError('DOWNLOAD_UNAVAILABLE')
+                children.append((decode_base64(fields['data'], limit), fields.get('contentType') or 'application/octet-stream', None))
     if children is None:
         return None
     if not children:
         raise DocumentProcessingError('NO_READABLE_TEXT')
+    if len(children) > extractor.MAX_ZIP_ENTRIES:
+        raise DocumentProcessingError('ARCHIVE_LIMIT_EXCEEDED')
     if extractor._transport_depth >= extractor.MAX_ARCHIVE_DEPTH:
         raise DocumentProcessingError('ARCHIVE_LIMIT_EXCEEDED')
     extractor.decode_count += 1
@@ -143,5 +183,32 @@ def extract_transport(extractor, content, mime, charset, declared, filename):
                 raise
             texts.append(f'[Attachment {ordinal}]\n{text}')
         return extractor.validate_text('\n\n'.join(texts))
+    finally:
+        extractor._transport_depth -= 1
+
+
+def parse_embedded_attachment(extractor, attachment):
+    """FHIR Attachment values can appear outside Binary/DocumentReference/Media."""
+    if not extractor.transport_enabled:
+        raise DocumentProcessingError('UNSUPPORTED_FORMAT')
+    if 'data' not in attachment:
+        raise DocumentProcessingError('DOWNLOAD_UNAVAILABLE')
+    if extractor._transport_depth >= extractor.MAX_ARCHIVE_DEPTH:
+        raise DocumentProcessingError('ARCHIVE_LIMIT_EXCEEDED')
+    extractor._embedded_attachments += 1
+    if extractor._embedded_attachments > extractor.MAX_ZIP_ENTRIES:
+        raise DocumentProcessingError('ARCHIVE_LIMIT_EXCEEDED')
+    content = decode_base64(attachment['data'], extractor.MAX_ARCHIVE_EXPANDED_BYTES)
+    extractor._expanded_bytes += len(content)
+    if extractor._expanded_bytes > extractor.MAX_ARCHIVE_EXPANDED_BYTES:
+        raise DocumentProcessingError('ARCHIVE_LIMIT_EXCEEDED')
+    extractor._transport_depth += 1
+    extractor.decode_count += 1
+    try:
+        return extractor.extract_text(content, attachment.get('contentType') or 'application/octet-stream', attachment.get('title'))
+    except DocumentProcessingError as exc:
+        if exc.code == 'OCR_REQUIRED':
+            raise DocumentProcessingError('UNSUPPORTED_EMBEDDED_CONTENT') from exc
+        raise
     finally:
         extractor._transport_depth -= 1

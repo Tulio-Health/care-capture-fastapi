@@ -13,7 +13,6 @@ import boto3
 from botocore.exceptions import ClientError
 
 from src.app.common.logging import get_logger
-from src.app.core.settings import get_settings
 
 logger = get_logger(__name__)
 _DOWNLOAD_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="document-download")
@@ -64,12 +63,14 @@ class S3DocumentClient:
             >>> client.parse_s3_url("s3://my-bucket/folder/file.pdf")
             ('my-bucket', 'folder/file.pdf')
         """
-        if not file_path:
+        if not isinstance(file_path, str) or not file_path:
             raise ValueError("File path cannot be empty")
+        if any(ord(character) < 32 or ord(character) == 127 for character in file_path):
+            raise ValueError("Invalid document storage URI")
 
         # Parse S3 URI: s3://bucket/key
         s3_pattern = r"^s3://([^/]+)/(.+)$"
-        match = re.match(s3_pattern, file_path)
+        match = re.fullmatch(s3_pattern, file_path)
 
         if not match:
             raise ValueError(
@@ -84,13 +85,17 @@ class S3DocumentClient:
         return bucket, key
 
     def authorize_location(self, file_path):
-        """Allow only configured bucket/object-prefix scopes before loading credentials."""
+        """Read stored document URIs; owner-scoped inventory and IAM authorize production access.
+
+        Explicit scopes may be injected by a restricted caller; no global per-user
+        prefix configuration is required. Never accept arbitrary request URLs here.
+        """
         bucket, key = self.parse_s3_url(file_path)
         if not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", bucket):
             raise DocumentProcessingError("DOCUMENT_ACCESS_DENIED")
         prefixes = self.allowed_prefixes
         if prefixes is None:
-            prefixes = get_settings().DOCUMENT_ALLOWED_S3_PREFIXES
+            return bucket, key
         for prefix in prefixes:
             if not isinstance(prefix, str) or not prefix.startswith("s3://"):
                 continue

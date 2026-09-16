@@ -235,6 +235,8 @@ def main():
                         before_calls = ai.calls
                         ai.blocked_reason = None
                         observed = module.run_case(case, ROOT.parent / 'testdata', context)
+                        if any(event.get('http_status') in {401, 403} for event in ai.events if event.get('attempt', 0) > before_calls):
+                            raise ConfigurationError('Regression AI credentials were rejected by the provider (HTTP 401/403).')
                         if ai.blocked_reason and not (isinstance(observed, dict) and observed.get('pipeline_output', {}).get('summary')):
                             raise BudgetExceeded('Regression transport budget reached')
                         if ai.calls == before_calls:
@@ -249,6 +251,8 @@ def main():
                         if not observed['pipeline_output'].get('summary'):
                             row['status'] = 'FAIL'
                             row['failures'].append({'check': {'path': 'pipeline_output.summary', 'op': 'present', 'value': True}, 'actual': None})
+                except ConfigurationError:
+                    row.update(status='BLOCKED', reason='Regression AI credentials rejected (HTTP 401/403); update the existing regression key file.', blocked_category='ai_credentials')
                 except (NotImplementedError, BudgetExceeded) as exc:
                     row.update(status='BLOCKED', reason='AI budget reached' if isinstance(exc, BudgetExceeded) else str(exc), blocked_category='ai_budget' if isinstance(exc, BudgetExceeded) else 'adapter_or_fixture', budget_reason=ai.blocked_reason if isinstance(exc, BudgetExceeded) else None)
                 except KeyboardInterrupt:

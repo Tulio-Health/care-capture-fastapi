@@ -272,7 +272,7 @@ class ComprehensiveSummarizationService:
                         f"Adding attachment summarization task (attachments found) - "
                         f"appointment_id: {request.appointment_id}"
                     )
-                    tasks.append(lambda: self._run_attachment_summarization(request))
+                    tasks.append(lambda: self._run_attachment_with_fhir_fallback(request))
                     task_sources.append("attachment_summary")
             else:
                 # Only fall back to FHIR analysis if config flag is enabled
@@ -482,7 +482,7 @@ class ComprehensiveSummarizationService:
                 raise
 
     async def _run_fhir_analysis(
-        self, request: ComprehensiveSummarizationRequest
+        self, request: ComprehensiveSummarizationRequest, *, attachment_failures=()
     ) -> Optional[ConversationSummary]:
         """
         Execute FHIR analysis with its own database session.
@@ -520,7 +520,7 @@ class ComprehensiveSummarizationService:
                 )
 
                 # Execute analysis
-                result = await fhir_service.analyze_fhir_resources(fhir_req)
+                result = await fhir_service.analyze_fhir_resources(fhir_req, attachment_failures=attachment_failures)
 
                 # Calculate execution time
                 execution_time = (datetime.utcnow() - start_time).total_seconds()
@@ -584,6 +584,22 @@ class ComprehensiveSummarizationService:
                     f"Error checking attachments existence: {type(e).__name__}", exc_info=False
                 )
                 raise RuntimeError("DOCUMENT_INVENTORY_UNAVAILABLE") from e
+
+    async def _run_attachment_with_fhir_fallback(self, request):
+        """Preserve a qualified structured result when attachment processing is unavailable."""
+        result = await self._run_attachment_summarization(request)
+        metadata = result.metadata or {} if result is not None else {}
+        if metadata.get("is_clinical_summary") or metadata.get("processing_outcome") != "unavailable":
+            return result
+        failures = metadata.get("processing_errors") or [{"error": "INTERNAL_PROCESSING_ERROR"}]
+        try:
+            fallback = await self._run_fhir_analysis(request, attachment_failures=failures)
+        except Exception:
+            # The already-contained attachment outcome must survive a fallback failure.
+            return result
+        if fallback is not None and (fallback.metadata or {}).get("is_clinical_summary"):
+            return fallback
+        return result
 
     async def _run_attachment_summarization(
         self, request: ComprehensiveSummarizationRequest

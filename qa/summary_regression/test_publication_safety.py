@@ -114,6 +114,18 @@ class PublicationSafety(unittest.IsolatedAsyncioTestCase):
         await self.repository.upsert_many_for_source(self.request.appointment_id,source,rows,allow_prune=True)
         await self.repository.upsert_many_for_source(self.request.appointment_id,source,[payload(self.request, source=source, ids=['a'])],allow_prune=False)
         self.assertEqual(len(self.session.rows),2); self.assertEqual(self.session.deleted,[])
+    async def test_empty_failed_procedure_refresh_preserves_all_existing_rows(self):
+        source = 'procedure_summary'
+        await self.repository.upsert_many_for_source(self.request.appointment_id, source,
+            [payload(self.request, source=source, ids=[identity]) for identity in ['a', 'b']], allow_prune=True)
+        original = [(row.id, deepcopy(row.diagnoses)) for row in self.session.rows]
+        await self.repository.upsert_many_for_source(self.request.appointment_id, source, [],
+            allow_prune=False, user_id=self.request.user_id)
+        self.assertEqual([(row.id, row.diagnoses) for row in self.session.rows], original)
+        self.assertEqual(self.session.deleted, [])
+        for row in self.session.rows:
+            self.assertIn('Ultrasound ordered; not performed.', row.summary_text)
+
     async def test_successful_zero_event_result_prunes_only_its_source(self):
         await self.save(payload(self.request))
         await self.repository.upsert_many_for_source(self.request.appointment_id,'procedure_summary',[payload(self.request,source='procedure_summary',ids=['a'])],allow_prune=True)

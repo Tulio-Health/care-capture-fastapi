@@ -81,7 +81,7 @@ class ProcedureSummarizationService:
         self.s3_client = S3DocumentClient()
         from src.app.core.settings import get_settings
         settings = get_settings()
-        self.text_extractor = DocumentTextExtractor(transport_enabled=settings.ENABLE_DOCUMENT_TRANSPORT, allow_containers=settings.ENABLE_DOCUMENT_CONTAINERS)
+        self.text_extractor = DocumentTextExtractor()
         self.logger = logger
 
     @bounded_summary
