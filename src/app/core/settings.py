@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     ENABLE_DOCUMENT_OCR: bool = True
     DOCUMENT_OCR_MODEL: str = "gpt-4o-mini"
     DOCUMENT_VERIFICATION_MODEL: str = "gpt-4.1-mini"
+    # Defaults require no deployment/environment changes. Retry is only for truncation.
+    DOCUMENT_OCR_VERIFICATION_OUTPUT_TOKENS: int = Field(default=2048, ge=256, le=4096)
+    DOCUMENT_OCR_VERIFICATION_RETRY_OUTPUT_TOKENS: int = Field(default=4096, ge=256, le=4096)
 
     # Summarization Configuration
     ENABLE_FHIR_FALLBACK: bool = Field(

@@ -1,0 +1,291 @@
+{
+  "downloaded_utc": "2026-09-16T12:32:47.814229+00:00",
+  "samples": [
+    {
+      "file": "doctor_pediatric_progress_examples.pdf",
+      "title": "Pediatric progress/SOAP notes",
+      "publisher": "University of Tennessee Health Science Center",
+      "source_url": "https://www.uthsc.edu/pediatrics/clerkship/documents/progress-notes.pdf",
+      "resolved_url": "https://www.uthsc.edu/pediatrics/clerkship/documents/progress-notes.pdf",
+      "provenance": "Educational progress-note examples.",
+      "content_type": "application/pdf",
+      "bytes": 38703,
+      "sha256": "5946612d18cc449259e203b5445561fff103e20b59ed55c6f3ea72d45bd6e537",
+      "pages": [
+        {
+          "page": 1,
+          "native_text_characters": 3284,
+          "images": 0
+        },
+        {
+          "page": 2,
+          "native_text_characters": 3174,
+          "images": 0
+        }
+      ],
+      "test_status": "NOT_RUN",
+      "rights": "Publicly downloadable publisher sample/educational document; no additional redistribution license asserted."
+    },
+    {
+      "file": "lab_24hour_urine_sample.pdf",
+      "title": "24-hour urine report",
+      "publisher": "Labcorp Litholink",
+      "source_url": "https://litholink.labcorp.com/sites/default/files/2025-08/Litholink%2024-hour%20Enhanced%20Report%20Sample%20-%20910235.pdf",
+      "resolved_url": "https://litholink.labcorp.com/sites/default/files/2025-08/Litholink%2024-hour%20Enhanced%20Report%20Sample%20-%20910235.pdf",
+      "provenance": "Publisher-designated sample report.",
+      "content_type": "application/pdf",
+      "bytes": 581351,
+      "sha256": "7e4d6eeaf578325172211e71906d358053d0d27d1865cb0ef992d86c66f6a7a8",
+      "pages": [
+        {
+          "page": 1,
+          "native_text_characters": 2202,
+          "images": 0
+        },
+        {
+          "page": 2,
+          "native_text_characters": 2917,
+          "images": 0
+        },
+        {
+          "page": 3,
+          "native_text_characters": 1620,
+          "images": 0
+        },
+        {
+          "page": 4,
+          "native_text_characters": 2310,
+          "images": 1
+        },
+        {
+          "page": 5,
+          "native_text_characters": 1106,
+          "images": 0
+        }
+      ],
+      "test_status": "NOT_RUN",
+      "rights": "Publicly downloadable publisher sample/educational document; no additional redistribution license asserted."
+    },
+    {
+      "file": "lab_stone_urinalysis_sample.pdf",
+      "title": "Stone urinalysis report",
+      "publisher": "Labcorp Dianon",
+      "source_url": "https://dianon.labcorp.com/sites/default/files/2021-07/AH3500627%20CLN.pdf",
+      "resolved_url": "https://dianon.labcorp.com/sites/default/files/2021-07/AH3500627%20CLN.pdf",
+      "provenance": "Linked as a sample report on the publisher sample-reports page.",
+      "content_type": "application/pdf",
+      "bytes": 267355,
+      "sha256": "8908bb1a6c270a0ad889a305986311ade18a908427a97d3fd95bcaadf6df817f",
+      "pages": [
+        {
+          "page": 1,
+          "native_text_characters": 1908,
+          "images": 2
+        },
+        {
+          "page": 2,
+          "native_text_characters": 4003,
+          "images": 2
+        },
+        {
+          "page": 3,
+          "native_text_characters": 3284,
+          "images": 2
+        },
+        {
+          "page": 4,
+          "native_text_characters": 1063,
+          "images": 2
+        }
+      ],
+      "test_status": "NOT_RUN",
+      "rights": "Publicly downloadable publisher sample/educational document; no additional redistribution license asserted."
+    },
+    {
+      "file": "lab_blood_test_sample_reports.pdf",
+      "title": "Blood-test sample reports",
+      "publisher": "Life Extension / Labcorp sample report",
+      "source_url": "https://www.lifeextension.com/-/media/lef/files/pdf/sample_reports.pdf",
+      "resolved_url": "https://www.lifeextension.com/-/media/lef/files/pdf/sample_reports.pdf",
+      "provenance": "Published sample reports; sample patient labeling.",
+      "content_type": "application/pdf",
+      "bytes": 749909,
+      "sha256": "1f16c5ec94ca8eb7f6cb887b19f1cc7b486c731615570d38c610d6fa75528e5e",
+      "pages": [
+        {
+          "page": 1,
+          "native_text_characters": 1831,
+          "images": 0
+        },
+        {
+          "page": 2,
+          "native_text_characters": 1838,
+          "images": 0
+        },
+        {
+          "page": 3,
+          "native_text_characters": 2228,
+          "images": 47
+        },
+        {
+          "page": 4,
+          "native_text_characters": 2419,
+          "images": 52
+        },
+        {
+          "page": 5,
+          "native_text_characters": 2706,
+          "images": 2
+        },
+        {
+          "page": 6,
+          "native_text_characters": 3938,
+          "images": 2
+        },
+        {
+          "page": 7,
+          "native_text_characters": 3504,
+          "images": 1
+        },
+        {
+          "page": 8,
+          "native_text_characters": 2835,
+          "images": 1
+        },
+        {
+          "page": 9,
+          "native_text_characters": 2637,
+          "images": 1
+        },
+        {
+          "page": 10,
+          "native_text_characters": 1937,
+          "images": 1
+        },
+        {
+          "page": 11,
+          "native_text_characters": 1947,
+          "images": 1
+        },
+        {
+          "page": 12,
+          "native_text_characters": 1938,
+          "images": 1
+        },
+        {
+          "page": 13,
+          "native_text_characters": 1956,
+          "images": 1
+        },
+        {
+          "page": 14,
+          "native_text_characters": 1887,
+          "images": 1
+        },
+        {
+          "page": 15,
+          "native_text_characters": 2395,
+          "images": 1
+        },
+        {
+          "page": 16,
+          "native_text_characters": 2399,
+          "images": 1
+        },
+        {
+          "page": 17,
+          "native_text_characters": 2888,
+          "images": 0
+        },
+        {
+          "page": 18,
+          "native_text_characters": 3232,
+          "images": 0
+        },
+        {
+          "page": 19,
+          "native_text_characters": 3005,
+          "images": 0
+        },
+        {
+          "page": 20,
+          "native_text_characters": 3273,
+          "images": 0
+        },
+        {
+          "page": 21,
+          "native_text_characters": 3497,
+          "images": 0
+        },
+        {
+          "page": 22,
+          "native_text_characters": 3454,
+          "images": 0
+        },
+        {
+          "page": 23,
+          "native_text_characters": 3386,
+          "images": 0
+        },
+        {
+          "page": 24,
+          "native_text_characters": 3536,
+          "images": 0
+        },
+        {
+          "page": 25,
+          "native_text_characters": 2303,
+          "images": 0
+        },
+        {
+          "page": 26,
+          "native_text_characters": 3273,
+          "images": 0
+        },
+        {
+          "page": 27,
+          "native_text_characters": 3737,
+          "images": 0
+        },
+        {
+          "page": 28,
+          "native_text_characters": 3103,
+          "images": 0
+        },
+        {
+          "page": 29,
+          "native_text_characters": 546,
+          "images": 0
+        }
+      ],
+      "test_status": "NOT_RUN",
+      "rights": "Publicly downloadable publisher sample/educational document; no additional redistribution license asserted."
+    },
+    {
+      "file": "doctor_medical_necessity_soap_example.pdf",
+      "title": "Treating-physician medical-necessity SOAP example",
+      "publisher": "National Functional Evaluations",
+      "source_url": "https://nationalfe.com/images/SOAP%20sample%20NOT%20FOR%20ACTUAL%20USE.pdf",
+      "resolved_url": "https://nationalfe.com/images/SOAP%20sample%20NOT%20FOR%20ACTUAL%20USE.pdf",
+      "provenance": "Publisher explicitly labels it an example, not for actual use. Generic sample wording, not a completed individual encounter.",
+      "content_type": "application/pdf",
+      "bytes": 124463,
+      "sha256": "e82e6d472b643797580816f9b9645522a7b45d5004f79e71f5d3235ddf9ac98f",
+      "pages": [
+        {
+          "page": 1,
+          "native_text_characters": 2483,
+          "images": 0
+        },
+        {
+          "page": 2,
+          "native_text_characters": 2349,
+          "images": 0
+        }
+      ],
+      "test_status": "NOT_RUN",
+      "rights": "Public sample; no additional redistribution license asserted."
+    }
+  ],
+  "notes": "Original downloaded PDFs; not generated or modified. Clinical examples, not validated clinical truth or Cerner production samples. No AI calls or regression run."
+}

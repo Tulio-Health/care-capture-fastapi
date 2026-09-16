@@ -2,15 +2,21 @@
 MESSAGES = {
     "unsupported": "We couldn’t summarize these documents because their format or embedded content isn’t supported. Please provide a supported document format.",
     "unavailable": "We couldn’t create a summary because the documents couldn’t be processed. Please try again later.",
+    "service_unavailable": "We couldn’t create a summary right now because the summarization service is unavailable. Please try again later.",
     "partial": "Some documents couldn’t be processed. Important information may be missing.",
     "no_documents": "No clinical documents are available to summarize for this appointment.",
 }
-PIPELINE_VERSION = "document-safety-3"
+SERVICE_UNAVAILABLE_CODES = frozenset({
+    "MODEL_UNAVAILABLE", "MODEL_TIMEOUT", "MODEL_RATE_LIMITED", "MODEL_AUTH_FAILED", "OCR_TIMEOUT",
+})
+PIPELINE_VERSION = "document-safety-4"
 
 
 def nonclinical_payload(request, source, *, state="unavailable", errors=()):
     """Existing summary contract with no stale or fabricated clinical fields."""
-    return {"summary_text": MESSAGES[state], "user_id": request.user_id,
+    errors = list(errors)
+    message = unavailable_message(errors) if state == "unavailable" else MESSAGES[state]
+    return {"summary_text": message, "user_id": request.user_id,
             "created_by": request.user_id, "updated_by": request.user_id,
             "key_points": [], "medications": [], "diagnoses": [],
             "instructions": [], "recommendations": [], "data": {},
@@ -41,4 +47,6 @@ def source_manifest(references):
 
 def unavailable_message(errors):
     codes = {item.get("error") for item in errors if isinstance(item, dict)}
+    if codes & SERVICE_UNAVAILABLE_CODES:
+        return MESSAGES["service_unavailable"]
     return MESSAGES["unsupported"] if codes == {"UNSUPPORTED_FORMAT"} else MESSAGES["unavailable"]
