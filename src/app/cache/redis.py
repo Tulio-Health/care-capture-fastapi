@@ -18,49 +18,29 @@ class RedisClient:
         return cls._instance
 
     def __init__(self):
-        if self._client is None:
-            try:
-                # Get settings dynamically to ensure SSM parameters are loaded
-                settings = get_settings()
-                self._client = Redis(
-                    host=settings.REDIS_HOST,
-                    port=settings.REDIS_PORT,
-                    db=0,
-                    decode_responses=True
-                )
-                self._client.ping()
-                logger.info(f"Redis client initialized at {settings.REDIS_HOST}:{settings.REDIS_PORT}")
-            except ConnectionError as e:
-                logger.info(f"Redis connection error: {e}")
-                raise
-            except Exception as e:
-                logger.info(f"Redis error: {e}")
-                raise
+        # Importing a route must not connect to Redis or load application secrets.
+        pass
 
     @property
     def client(self) -> Redis:
+        if self._client is None:
+            settings = get_settings()
+            self._client = Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT,
+                password=settings.REDIS_PASSWORD or None, db=0, decode_responses=True,
+                socket_connect_timeout=5, socket_timeout=5)
         return self._client
 
     def get(self, key: str) -> Optional[str]:
-        if not self._client:
-            logger.error("Redis client not initialized before get call.")
-            return None
-        return self._client.get(key)
+        return self.client.get(key)
 
     def set(self, key: str, value: str, expiry: int = None) -> bool:
-        if not self._client:
-            logger.error("Redis client not initialized before set call.")
-            return False
-        return self._client.set(key, value, ex=expiry)
+        return self.client.set(key, value, ex=expiry)
 
     def lrange(self, key: str, start: int, end: int) -> Optional[List[str]]:
-        if not self._client:
-            logger.error("Redis client not initialized before lrange call.")
-            return None
         try:
-            return self._client.lrange(key, start, end)
+            return self.client.lrange(key, start, end)
         except Exception as e:
-            logger.error(f"Redis lrange error for key {key}: {e}")
+            logger.error("Redis list read failed; error_type=%s", type(e).__name__)
             return None
 
 redis_client = RedisClient()

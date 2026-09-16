@@ -1,6 +1,8 @@
-from sqlite3 import IntegrityError
+import asyncio
+from sqlalchemy.exc import IntegrityError
+import json
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from ..entities.conversation_summaries import ConversationSummaries
 from typing import Any, Optional, List
 from ....common.logging import get_logger
@@ -8,25 +10,137 @@ from uuid import UUID
 
 logger = get_logger(__name__)
 
+
+def _retry_transaction(operation):
+    """One fresh transaction only for database-confirmed aborts; never uncertain commits."""
+    from functools import wraps
+    @wraps(operation)
+    async def wrapped(self, *args, **kwargs):
+        for attempt in range(2):
+            try:
+                return await operation(self, *args, **kwargs)
+            except Exception as exc:
+                current, seen, aborted = exc, set(), False
+                while current is not None and id(current) not in seen:
+                    seen.add(id(current))
+                    original = getattr(current, "orig", current)
+                    if getattr(original, "sqlstate", getattr(original, "pgcode", None)) in {"40001", "40P01"}:
+                        aborted = True
+                    current = current.__cause__ or current.__context__
+                if attempt or not aborted:
+                    raise
+                await self.session.rollback()
+    return wrapped
+
+
 class ConversationSummariesRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    async def _lock_scope(self, appointment_id, source, user_id=None):
+        """Serialize publication using PostgreSQL transaction locks; no schema changes."""
+        import hashlib
+        if user_id is not None:
+            from src.app.db.models.appointments import Appointment
+            from sqlalchemy import cast, String
+            owner = await self.session.execute(select(Appointment.id).where(
+                Appointment.id == appointment_id, cast(Appointment.user_id, String) == str(user_id)))
+            if owner.scalar_one_or_none() is None:
+                raise ValueError("APPOINTMENT_SCOPE_MISMATCH")
+        key = int.from_bytes(hashlib.sha256(f"{appointment_id}:{source}".encode()).digest()[:8], "big", signed=True)
+        await self.session.execute(text("SET LOCAL lock_timeout = '5s'"))
+        await self.session.execute(select(__import__("sqlalchemy").func.pg_advisory_xact_lock(key)))
+
+    @staticmethod
+    def _validate_payload(payload):
+        from src.app.services.document_extraction import DocumentProcessingError
+        for field in ("summary_metadata", "data", "key_points", "medications", "diagnoses", "instructions", "recommendations"):
+            try:
+                serialized = json.dumps(payload.get(field), ensure_ascii=False, allow_nan=False)
+            except (TypeError, ValueError) as exc:
+                raise DocumentProcessingError("INVALID_PERSISTENCE_PAYLOAD") from exc
+            if len(serialized.encode()) > 256 * 1024:
+                raise DocumentProcessingError("PERSISTENCE_PAYLOAD_TOO_LARGE")
+
+    async def _commit_validated(self, rows, *, deleted_ids=()):
+        from src.app.models.conversation_summaries import ConversationSummary
+        # Validate the final merged JSON, including preserved metadata, before writing.
+        for row in rows:
+            self._validate_payload({name: getattr(row, name) for name in ("summary_metadata", "data", "key_points", "medications", "diagnoses", "instructions", "recommendations")})
+        # Resolve defaults and validate the public contract BEFORE committing.
+        await self.session.flush()
+        for row in rows:
+            await self.session.refresh(row)
+            ConversationSummary.model_validate(row)
+        # A lost commit acknowledgement must not trigger a second clinical write.
+        # Re-read the exact row identities and compare the complete intended payload.
+        from copy import deepcopy
+        fields = ("user_id", "summary_text", "summary_metadata", "data", "key_points",
+                  "medications", "diagnoses", "instructions", "recommendations")
+        expected = [(row.id, {name: deepcopy(getattr(row, name)) for name in fields}) for row in rows]
+        commit_task = asyncio.create_task(self.session.commit())
+        try:
+            await asyncio.shield(commit_task)
+        except asyncio.CancelledError:
+            # Keep the session alive briefly to settle an in-flight commit. Never
+            # publish a failure placeholder or retry a write on cancellation.
+            try:
+                await asyncio.wait_for(asyncio.shield(commit_task), timeout=5)
+            except (Exception, asyncio.CancelledError):
+                commit_task.cancel()
+                await asyncio.gather(commit_task, return_exceptions=True)
+            raise
+        except Exception as exc:
+            from src.app.services.document_extraction import DocumentProcessingError
+            try:
+                await self.session.rollback()
+                reconciled = bool(expected or deleted_ids)
+                for identity, values in expected:
+                    stored = await self.get_by_id(identity)
+                    reconciled = reconciled and stored is not None and all(getattr(stored, name) == value for name, value in values.items())
+                for identity in deleted_ids:
+                    reconciled = (await self.get_by_id(identity)) is None and reconciled
+                if reconciled:
+                    return
+            except Exception:
+                pass
+            raise DocumentProcessingError("PERSISTENCE_FAILED") from exc
+
+    async def record_processing_failure(self, appointment_id, source, user_id, errors):
+        await self._lock_scope(appointment_id, source, user_id)
+        rows = await self.get_all_by_appointment_id_and_source(appointment_id, source)
+        from src.app.services.summary_outcomes import outcome_metadata
+        failure_metadata = outcome_metadata("unavailable", errors)
+        preserved = []
+        for row in rows:
+            metadata = row.summary_metadata or {}
+            if str(row.user_id) != str(user_id) or metadata.get("validation_status") != "passed":
+                continue
+            previous_attempt = max(metadata.get("attempt_started_at", ""), (metadata.get("last_refresh_outcome") or {}).get("attempt_started_at", ""))
+            if previous_attempt > failure_metadata["attempt_started_at"]:
+                preserved.append(row)
+                continue
+            row.summary_metadata = {**metadata, "last_refresh_outcome": failure_metadata}
+            notice = "We couldn’t update this summary. The previous summary is shown below.\n\n"
+            if not row.summary_text.startswith(notice):
+                row.summary_text = notice + row.summary_text
+            preserved.append(row)
+        await self._commit_validated(preserved)
+        return preserved
+
     async def create(self, conversation_summary: dict) -> ConversationSummaries:
         try:
-            print(conversation_summary)
             db_summary = ConversationSummaries(**conversation_summary)
             self.session.add(db_summary)
-            await self.session.commit()
-            await self.session.refresh(db_summary)
+            await self._commit_validated([db_summary])
             return db_summary
-        
+
         except IntegrityError as e:
             await self.session.rollback()
-            logger.error("Error creating conversation summary", exc_info=e)
+            logger.error("Error creating conversation summary", exc_info=False)
             raise e
         except Exception as e:
-            logger.error("Error creating conversation summary", exc_info=e)
+            logger.error("Error creating conversation summary", exc_info=False)
             raise e
 
     async def get_by_id(self, summary_id: UUID) -> Optional[ConversationSummaries]:
@@ -36,7 +150,7 @@ class ConversationSummariesRepository:
             )
             return result.scalar_one_or_none()
         except Exception as e:
-            logger.error(f"Error fetching summary with ID: {summary_id}", exc_info=e)
+            logger.error(f"Error fetching summary with ID: {summary_id}", exc_info=False)
             raise e
 
     async def get_by_appointment_id(self, appointment_id: UUID) -> Optional[ConversationSummaries]:
@@ -48,27 +162,27 @@ class ConversationSummariesRepository:
             )
             return result.scalar_one_or_none()
         except Exception as e:
-            logger.error(f"Error fetching summary for transcript ID: {appointment_id}", exc_info=e)
+            logger.error(f"Error fetching summary for transcript ID: {appointment_id}", exc_info=False)
             raise e
-    
+
     # async def get_by_appointment_id_and_source(
-    #     self, 
-    #     appointment_id: UUID, 
+    #     self,
+    #     appointment_id: UUID,
     #     source: str
     # ) -> Optional[ConversationSummaries]:
     #     """
     #     Get conversation summary by appointment_id and metadata source.
-        
+
     #     Args:
     #         appointment_id: UUID of the appointment
     #         source: Source of the summary (e.g., 'fhir_analysis', 'transcript')
-            
+
     #     Returns:
     #         ConversationSummaries object or None if not found
     #     """
     #     try:
     #         from sqlalchemy import cast, String
-            
+
     #         result = await self.session.execute(
     #             select(ConversationSummaries).where(
     #                 ConversationSummaries.appointment_id == appointment_id,
@@ -78,8 +192,8 @@ class ConversationSummariesRepository:
     #         return result.scalar_one_or_none()
     #     except Exception as e:
     #         logger.error(
-    #             f"Error fetching summary for appointment_id: {appointment_id}, source: {source}", 
-    #             exc_info=e
+    #             f"Error fetching summary for appointment_id: {appointment_id}, source: {source}",
+    #             exc_info=False
     #         )
     #         raise e
 
@@ -110,12 +224,12 @@ class ConversationSummariesRepository:
         except Exception as e:
             logger.error(
                 f"Error fetching summary for appointment_id: {appointment_id}, source: {source}",
-                exc_info=True,
+                exc_info=False,
             )
             raise
 
 
-    
+
     async def get_all_by_appointment_id_and_source(
         self,
         appointment_id: UUID,
@@ -141,7 +255,7 @@ class ConversationSummariesRepository:
         except Exception:
             logger.error(
                 f"Error fetching summaries for appointment_id: {appointment_id}, source: {source}",
-                exc_info=True,
+                exc_info=False,
             )
             raise
 
@@ -154,14 +268,22 @@ class ConversationSummariesRepository:
         appointment rows predating this key) resolve to "" and are always treated as stale by
         `upsert_many_for_source`, since "" never matches a real row's key.
         """
-        ids = (summary_metadata or {}).get("source_document_ids") or []
-        return ",".join(sorted(ids))
+        if not isinstance(summary_metadata, dict):
+            return ""
+        ids = summary_metadata.get("source_document_ids") or []
+        if not isinstance(ids, list) or not all(isinstance(value, str) for value in ids):
+            return ""
+        return json.dumps(sorted(set(ids)), ensure_ascii=False, separators=(",", ":")) if ids else ""
 
+    @_retry_transaction
     async def upsert_many_for_source(
         self,
         appointment_id: UUID,
         source: str,
         rows: List[dict],
+        allow_prune: bool = False,
+        user_id=None,
+        attempt_started_at=None,
     ) -> List[ConversationSummaries]:
         """
         Replace ALL conversation_summaries rows for (appointment_id, source) with `rows` -
@@ -180,19 +302,39 @@ class ConversationSummariesRepository:
         shape), with `summary_metadata` containing `source` and `source_document_ids`.
         """
         try:
+            owner_id = rows[0]["user_id"] if rows else user_id
+            if allow_prune and owner_id is None:
+                raise ValueError("EMPTY_REPLACEMENT_REQUIRES_OWNER")
+            await self._lock_scope(appointment_id, source, owner_id)
+            for row_data in rows:
+                self._validate_payload(row_data)
             existing_rows = await self.get_all_by_appointment_id_and_source(appointment_id, source)
-            existing_by_key = {
-                self._document_ids_key(row.summary_metadata): row for row in existing_rows
-            }
+            if owner_id is not None and any(str(row.user_id) != str(owner_id) for row in existing_rows):
+                raise ValueError("SUMMARY_SCOPE_MISMATCH")
+            incoming_started = (rows[0].get("summary_metadata") or {}).get("attempt_started_at", "") if rows else attempt_started_at
+            if incoming_started and any((row.summary_metadata or {}).get("attempt_started_at", "") > incoming_started for row in existing_rows):
+                return existing_rows
+            existing_by_key = {}
+            for row in existing_rows:
+                key = self._document_ids_key(row.summary_metadata)
+                if key:
+                    existing_by_key.setdefault(key, row)
 
             result: List[ConversationSummaries] = []
             used_keys = set()
             for row_data in rows:
                 key = self._document_ids_key(row_data.get("summary_metadata"))
+                if not key or key in used_keys:
+                    raise ValueError("DUPLICATE_OR_MISSING_SUMMARY_IDENTITY")
                 used_keys.add(key)
                 existing_row = existing_by_key.get(key)
                 if existing_row is not None:
                     for field_name, value in row_data.items():
+                        if field_name in {"id", "appointment_id", "created_by", "created_at"}:
+                            continue
+                        if field_name == "summary_metadata":
+                            value = {**(existing_row.summary_metadata or {}), **value}
+                            value.pop("last_refresh_outcome", None)
                         if hasattr(existing_row, field_name):
                             setattr(existing_row, field_name, value)
                     result.append(existing_row)
@@ -201,9 +343,19 @@ class ConversationSummariesRepository:
                     self.session.add(new_row)
                     result.append(new_row)
 
-            stale_rows = [
-                row for key, row in existing_by_key.items() if key not in used_keys
-            ]
+            stale_rows = [row for row in existing_rows if allow_prune and row not in result]
+            if not allow_prune:
+                for row in existing_rows:
+                    if row in result:
+                        continue
+                    metadata = row.summary_metadata or {}
+                    if metadata.get("validation_status") != "passed":
+                        continue
+                    row.summary_metadata = {**metadata, "last_refresh_outcome": {"processing_outcome": "partial"}}
+                    notice = "We couldn’t update this summary. The previous summary is shown below.\n\n"
+                    if not row.summary_text.startswith(notice):
+                        row.summary_text = notice + row.summary_text
+                    result.append(row)
             for row in stale_rows:
                 await self.session.delete(row)
 
@@ -213,16 +365,13 @@ class ConversationSummariesRepository:
                     f"appointment_id: {appointment_id}, source: {source}"
                 )
 
-            await self.session.commit()
-            for row in result:
-                await self.session.refresh(row)
-
+            await self._commit_validated(result, deleted_ids=tuple(row.id for row in stale_rows))
             return result
         except Exception:
             await self.session.rollback()
             logger.error(
                 f"Error upserting summaries for appointment_id: {appointment_id}, source: {source}",
-                exc_info=True,
+                exc_info=False,
             )
             raise
 
@@ -235,7 +384,7 @@ class ConversationSummariesRepository:
             )
             return result.scalars().all()
         except Exception as e:
-            logger.error(f"Error fetching summary for user ID: {user_id}", exc_info=e)
+            logger.error(f"Error fetching summary for user ID: {user_id}", exc_info=False)
             raise e
 
     async def update(self, summary_id: UUID, summary_data: dict) -> Optional[ConversationSummaries]:
@@ -249,7 +398,7 @@ class ConversationSummariesRepository:
                 await self.session.refresh(db_summary)
             return db_summary
         except Exception as e:
-            logger.error(f"Error updating summary with ID: {summary_id}", exc_info=e)
+            logger.error(f"Error updating summary with ID: {summary_id}", exc_info=False)
             raise e
 
     async def delete(self, summary_id: UUID) -> bool:
@@ -261,36 +410,57 @@ class ConversationSummariesRepository:
                 return True
             return False
         except Exception as e:
-            logger.error(f"Error deleting summary with ID: {summary_id}", exc_info=e)
+            logger.error(f"Error deleting summary with ID: {summary_id}", exc_info=False)
             raise e
-        
+
+    @_retry_transaction
     async def upsert(self, appointment_id: UUID, summary_data: dict) -> Optional[ConversationSummaries]:
         """
         Upsert a conversation summary based on appointment_id and metadata source.
         If a summary with the same appointment_id and source exists, update it.
         Otherwise, create a new summary.
-        
+
         Args:
             appointment_id: UUID of the appointment
             summary_data: Dictionary containing summary fields (must include summary_metadata with source)
-            
+
         Returns:
             ConversationSummaries object (created or updated)
         """
         try:
             # Extract source from metadata
             source = summary_data.get("summary_metadata", {}).get("source", "unknown")
-            
+
+            self._validate_payload(summary_data)
+            await self._lock_scope(appointment_id, source, summary_data["user_id"])
             # Try to find existing summary with same appointment_id and source
             db_summary = await self.get_by_appointment_id_and_source(appointment_id, source)
-            
+
+            if db_summary and str(db_summary.user_id) != str(summary_data["user_id"]):
+                raise ValueError("SUMMARY_SCOPE_MISMATCH")
             if db_summary:
+                incoming = summary_data.get("summary_metadata") or {}
+                previous = db_summary.summary_metadata or {}
+                if incoming.get("attempt_started_at") and previous.get("attempt_started_at", "") > incoming["attempt_started_at"]:
+                    return db_summary
+                if incoming.get("processing_outcome") in {"unavailable", "no_documents"} and previous.get("processing_outcome") in {"complete", "partial"} and previous.get("validation_status") == "passed":
+                    # Whole-dict assignment is required for plain SQLAlchemy JSON columns.
+                    db_summary.summary_metadata = {**previous, "last_refresh_outcome": incoming}
+                    notice = "We couldn’t update this summary. The previous summary is shown below.\n\n"
+                    if not db_summary.summary_text.startswith(notice):
+                        db_summary.summary_text = notice + db_summary.summary_text
+                    await self._commit_validated([db_summary])
+                    return db_summary
+                summary_data["summary_metadata"] = {**previous, **incoming}
+                summary_data["summary_metadata"].pop("last_refresh_outcome", None)
                 # Update existing summary
                 logger.info(
                     f"Updating existing summary for appointment_id: {appointment_id}, "
                     f"source: {source}, summary_id: {db_summary.id}"
                 )
                 for key, value in summary_data.items():
+                    if key in {"id", "appointment_id", "created_by", "created_at"}:
+                        continue
                     if hasattr(db_summary, key):
                         setattr(db_summary, key, value)
             else:
@@ -300,45 +470,45 @@ class ConversationSummariesRepository:
                 )
                 db_summary = ConversationSummaries(appointment_id=appointment_id, **summary_data)
                 self.session.add(db_summary)
-            
-            await self.session.commit()
-            await self.session.refresh(db_summary)
+
+            await self._commit_validated([db_summary])
             return db_summary
         except Exception as e:
+            await self.session.rollback()
             logger.error(
                 f"Error upserting summary for appointment_id: {appointment_id}, "
-                f"source: {summary_data.get('summary_metadata', {}).get('source', 'unknown')}", 
-                exc_info=e
+                f"source: {summary_data.get('summary_metadata', {}).get('source', 'unknown')}",
+                exc_info=False
             )
             raise e
-    
+
     async def create_with_metadata(
-        self, 
-        summary_data: dict, 
+        self,
+        summary_data: dict,
         source: str
     ) -> ConversationSummaries:
         """
         Create a conversation summary with metadata indicating the source
-        
+
         Args:
             summary_data: Dictionary containing summary fields
             source: Source of the summary (e.g., 'fhir_analysis', 'transcript_summarization')
-            
+
         Returns:
             Created ConversationSummaries object
         """
         try:
             from datetime import datetime
-            
+
             # Add metadata to the summary data
             if "metadata" not in summary_data:
                 summary_data["metadata"] = {}
-            
+
             summary_data["metadata"]["source"] = source
             summary_data["metadata"]["created_at"] = datetime.utcnow().isoformat()
             summary_data["metadata"]["analysis_version"] = "1.0"
-            
+
             return await self.create(summary_data)
         except Exception as e:
-            logger.error(f"Error creating summary with metadata: {e}", exc_info=e)
+            logger.error(f"Error creating summary with metadata: {type(e).__name__}", exc_info=False)
             raise e

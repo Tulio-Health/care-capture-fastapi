@@ -33,6 +33,7 @@ dependencies = [
     "python-multipart>=0.0.9",  # Required for multipart/form-data file uploads
     "pydantic-ai-slim[openai]>=1.0,<2",
     "pgvector>=0.4.2",
+    "pillow>=12.3.0,<13",  # Bounded image decoding for dedicated OCR
     "striprtf>=0.0.26,<0.1",  # RTF -> plain text (pure Python, no transitive deps)
 ]
 

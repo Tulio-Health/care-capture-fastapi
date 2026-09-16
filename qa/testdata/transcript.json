@@ -1,0 +1,19 @@
+{
+  "segments": [
+    {
+      "id": "t3",
+      "timestamp": 30,
+      "text": "Plan: ultrasound ordered."
+    },
+    {
+      "id": "t1",
+      "timestamp": 10,
+      "text": "No procedure performed today."
+    },
+    {
+      "id": "t2",
+      "timestamp": 20,
+      "text": "Assessment: iron deficiency anemia."
+    }
+  ]
+}

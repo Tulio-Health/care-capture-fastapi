@@ -1,0 +1,28 @@
+{
+  "summary": {
+    "id": "00000000-0000-0000-0000-000000000001",
+    "created_by": "00000000-0000-0000-0000-000000000002",
+    "summary_text": "ECG was performed. Return in 2 weeks.",
+    "summary_metadata": {
+      "source": "attachment_summary",
+      "qa_unrelated_key": "preserve-me",
+      "processing_version": "old"
+    }
+  },
+  "procedure_rows": [
+    {
+      "id": "qa-proc-a",
+      "document_id": "doc-a",
+      "summary_text": "ECG was performed."
+    },
+    {
+      "id": "qa-proc-b",
+      "document_id": "doc-b",
+      "summary_text": "Prior validated procedure."
+    }
+  ],
+  "other_source": {
+    "source": "transcript",
+    "summary_text": "Prior transcript summary."
+  }
+}

@@ -2,7 +2,7 @@
 
 from typing import Dict, List, Any
 
-from sqlalchemy import select
+from sqlalchemy import select, cast, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.app.chains.fhir_analysis.chain import FhirAnalysisChain
@@ -16,13 +16,16 @@ from src.app.db.objects.repositories.fhir_resources import FhirResourcesReposito
 from src.app.models.conversation_summaries import ConversationSummary
 from src.app.models.fhir_analysis import FhirAnalysisRequest
 
+from src.app.services.summary_runtime import bounded_summary
+from src.app.services.summary_outcomes import outcome_metadata
+
 logger = get_logger(__name__)
 
 
 class FhirAnalysisService:
     """
     Service for analyzing FHIR resources and generating clinical insights.
-    
+
     This service handles the business logic for:
     - Fetching FHIR resources for specific appointments/encounters
     - Analyzing clinical data using AI
@@ -37,7 +40,7 @@ class FhirAnalysisService:
     def __init__(self, db: AsyncSession):
         """
         Initialize the FHIR analysis service.
-        
+
         Args:
             db: Database session for repository operations
         """
@@ -46,24 +49,25 @@ class FhirAnalysisService:
         self.summaries_repo = ConversationSummariesRepository(db)
         self.logger = logger
 
+    @bounded_summary
     async def analyze_fhir_resources(
         self, request: FhirAnalysisRequest
     ) -> ConversationSummary:
         """
         Analyze FHIR resources for a patient appointment and generate clinical insights.
-        
+
         This method:
         1. Fetches appointment and provider details
         2. Retrieves FHIR resources for the encounter
         3. Analyzes resources using AI
         4. Stores analysis in database
-        
+
         Args:
             request: Contains appointment_id, user_id, and optional filters
-        
+
         Returns:
             ConversationSummary: Clinical insights stored in the database
-        
+
         Raises:
             ValueError: If appointment or FHIR resources not found
             Exception: If analysis or database operations fail
@@ -76,40 +80,58 @@ class FhirAnalysisService:
         # Fetch appointment and provider details
         appointment, provider_name = await self._fetch_appointment_details(request)
 
-        # Fetch FHIR resources
-        fhir_resources = await self._fetch_fhir_resources(request, appointment)
+        stage = "inventory"
+        try:
+            # Fetch FHIR resources
+            fhir_resources = await self._fetch_fhir_resources(request, appointment)
 
-        # Get resource counts
-        resource_counts = await self._get_resource_counts(request, appointment)
+            if not fhir_resources:
+                from src.app.services.document_extraction import DocumentProcessingError
+                raise DocumentProcessingError("NO_DOCUMENTS")
 
-        # Build FHIR summary
-        fhir_summary_by_type = self._group_resources_by_type(fhir_resources)
-        fhir_summary_text = self._format_fhir_summary(fhir_summary_by_type)
+            # Get resource counts
+            resource_counts = {}
+            for resource in fhir_resources:
+                resource_counts[resource.resource_type] = resource_counts.get(resource.resource_type, 0) + 1
 
-        # Build appointment context
-        appointment_context = self._build_appointment_context(appointment, provider_name)
+            # Build FHIR summary
+            stage = "parsing"
+            fhir_summary_by_type = self._group_resources_by_type(fhir_resources)
+            fhir_summary_text = self._format_fhir_summary(fhir_summary_by_type)
 
-        # Run AI analysis
-        analysis_result = await self._run_ai_analysis(
-            appointment_context, fhir_summary_text, resource_counts
-        )
+            # Build appointment context
+            appointment_context = self._build_appointment_context(appointment, provider_name)
 
-        # Extract structured data
-        conditions_list = self._extract_conditions(fhir_resources)
-        medications_list = self._extract_medications(fhir_resources)
+            # Run AI analysis
+            stage = "extraction"
+            analysis_result = await self._run_ai_analysis(
+                appointment_context, fhir_summary_text, resource_counts
+            )
 
-        # Store analysis in database
-        summary_data = self._prepare_summary_data(
-            request,
-            appointment,
-            provider_name,
-            analysis_result,
-            conditions_list,
-            medications_list,
-            fhir_resources,
-            resource_counts,
-            fhir_summary_by_type,
-        )
+            # Extract structured data
+            conditions_list = self._extract_conditions(fhir_resources)
+            medications_list = self._extract_medications(fhir_resources)
+
+            # Store analysis in database
+            summary_data = self._prepare_summary_data(
+                request,
+                appointment,
+                provider_name,
+                analysis_result,
+                conditions_list,
+                medications_list,
+                fhir_resources,
+                resource_counts,
+                fhir_summary_by_type,
+            )
+
+        except Exception as exc:
+            from src.app.services.summary_outcomes import nonclinical_payload
+            from src.app.services.summary_runtime import model_error_code
+            await self.db.rollback()
+            empty = getattr(exc, "code", None) == "NO_DOCUMENTS"
+            code = "SOURCE_INVENTORY_FAILED" if stage == "inventory" else model_error_code(exc)
+            summary_data = nonclinical_payload(request, "fhir_analysis", state="no_documents" if empty else "unavailable", errors=[] if empty else [{"error": code}])
 
         db_summary = await self.summaries_repo.upsert(
             appointment_id=request.appointment_id, summary_data=summary_data
@@ -127,19 +149,19 @@ class FhirAnalysisService:
     ) -> tuple[Appointment, str]:
         """
         Fetch appointment and provider details.
-        
+
         Args:
             request: FHIR analysis request
-        
+
         Returns:
             tuple: (Appointment object, provider name)
-        
+
         Raises:
             ValueError: If appointment not found
         """
         # Fetch appointment
         appointment_stmt = select(Appointment).where(
-            Appointment.id == request.appointment_id
+            Appointment.id == request.appointment_id, cast(Appointment.user_id, String) == str(request.user_id)
         )
         appointment_result = await self.db.execute(appointment_stmt)
         appointment = appointment_result.scalar_one_or_none()
@@ -172,14 +194,14 @@ class FhirAnalysisService:
     ) -> List[Any]:
         """
         Fetch FHIR resources for the appointment's encounter.
-        
+
         Args:
             request: FHIR analysis request
             appointment: Appointment object
-        
+
         Returns:
             List of FHIR resource objects
-        
+
         Raises:
             ValueError: If no FHIR resources found or appointment has no EHR entity ID
         """
@@ -195,12 +217,6 @@ class FhirAnalysisService:
             resource_types=request.resource_types,
         )
 
-        if not fhir_resources:
-            raise ValueError(
-                f"No FHIR resources found for appointment {request.appointment_id} "
-                f"(encounter: {appointment.ehr_entity_id})"
-            )
-
         self.logger.debug(
             f"Fetched {len(fhir_resources)} FHIR resources - "
             f"appointment_id: {request.appointment_id}"
@@ -213,11 +229,11 @@ class FhirAnalysisService:
     ) -> Dict[str, int]:
         """
         Get resource counts for the encounter.
-        
+
         Args:
             request: FHIR analysis request
             appointment: Appointment object
-        
+
         Returns:
             Dictionary mapping resource types to counts
         """
@@ -235,10 +251,10 @@ class FhirAnalysisService:
     def _group_resources_by_type(self, fhir_resources: List[Any]) -> Dict[str, List[Dict]]:
         """
         Group FHIR resources by resource type.
-        
+
         Args:
             fhir_resources: List of FHIR resource objects
-        
+
         Returns:
             Dictionary mapping resource types to lists of resource data
         """
@@ -254,62 +270,47 @@ class FhirAnalysisService:
     def _format_fhir_summary(self, fhir_summary_by_type: Dict[str, List[Dict]]) -> str:
         """
         Format FHIR summary for AI prompt.
-        
+
         Args:
             fhir_summary_by_type: Dictionary of resources grouped by type
-        
+
         Returns:
             Formatted text summary of FHIR resources
         """
-        fhir_summary_text = ""
-
-        for resource_type, resources in fhir_summary_by_type.items():
-            fhir_summary_text += f"\n**{resource_type}** ({len(resources)} records):\n"
-
-            # Limit to first MAX_RECORDS_PER_TYPE to avoid context overflow
-            for idx, resource_data in enumerate(resources[: self.MAX_RECORDS_PER_TYPE]):
-                # Extract key fields based on resource type
-                if resource_type == "Condition":
-                    code_text = resource_data.get("codeText", "N/A")
-                    category = (
-                        resource_data.get("categoryText", ["N/A"])[0]
-                        if resource_data.get("categoryText")
-                        else "N/A"
-                    )
-                    fhir_summary_text += f"  {idx + 1}. {code_text} ({category})\n"
-                elif resource_type == "Observation":
-                    code_text = resource_data.get("codeText", "N/A")
-                    value = resource_data.get("valueQuantity", {}).get("value", "N/A")
-                    unit = resource_data.get("valueQuantity", {}).get("unit", "")
-                    fhir_summary_text += f"  {idx + 1}. {code_text}: {value} {unit}\n"
-                elif resource_type == "MedicationRequest":
-                    medication = resource_data.get("medicationCodeText", "N/A")
-                    status = resource_data.get("status", "N/A")
-                    fhir_summary_text += f"  {idx + 1}. {medication} (Status: {status})\n"
-                else:
-                    # Generic summary for other types
-                    metadata = resource_data.get("metadata", {})
-                    fhir_summary_text += (
-                        f"  {idx + 1}. {metadata.get('resourceType', resource_type)}\n"
-                    )
-
-            if len(resources) > self.MAX_RECORDS_PER_TYPE:
-                fhir_summary_text += (
-                    f"  ... and {len(resources) - self.MAX_RECORDS_PER_TYPE} more records\n"
-                )
-
-        return fhir_summary_text
+        import json
+        from src.app.services.document_extraction import DocumentProcessingError
+        # Preserve statuses, components, dates, dosage and all resource value variants.
+        # Larger payloads fail explicitly rather than silently dropping clinical records.
+        if any(kind in fhir_summary_by_type for kind in ("Binary", "DocumentReference", "Media")):
+            raise DocumentProcessingError("FHIR_DOCUMENT_REQUIRES_EXTRACTION")
+        payload = json.dumps(fhir_summary_by_type, ensure_ascii=False, default=str)
+        if len(payload) > 100_000:
+            raise DocumentProcessingError("FHIR_CONTEXT_LIMIT_EXCEEDED")
+        from src.app.services.document_extraction import DocumentTextExtractor
+        import re
+        extractor = DocumentTextExtractor()
+        def normalize(value):
+            if isinstance(value, dict):
+                return {key: normalize(child) for key, child in value.items()}
+            if isinstance(value, list):
+                return [normalize(child) for child in value]
+            if isinstance(value, str) and value.lstrip().startswith("{\\rtf"):
+                return extractor.extract_text(value.encode(), "application/rtf")
+            if isinstance(value, str) and re.search(r"<[A-Za-z][^>]*>", value):
+                return extractor.extract_text(value.encode(), "text/html")
+            return value
+        return json.dumps(normalize(fhir_summary_by_type), ensure_ascii=False, default=str)
 
     def _build_appointment_context(
         self, appointment: Appointment, provider_name: str
     ) -> Dict[str, str]:
         """
         Build appointment context for AI analysis.
-        
+
         Args:
             appointment: Appointment object
             provider_name: Name of the provider
-        
+
         Returns:
             Dictionary with appointment context
         """
@@ -331,21 +332,21 @@ class FhirAnalysisService:
     ) -> Any:
         """
         Run AI analysis on FHIR resources.
-        
+
         Args:
             appointment_context: Context about the appointment
             fhir_summary: Formatted FHIR summary text
             resource_counts: Resource counts by type
-        
+
         Returns:
             Analysis result object
-        
+
         Raises:
             Exception: If AI analysis fails
         """
         try:
             analysis_chain = FhirAnalysisChain()
-            analysis_result = analysis_chain.analyze(
+            analysis_result = await analysis_chain.analyze(
                 appointment_context=appointment_context,
                 fhir_summary=fhir_summary,
                 resource_counts=resource_counts,
@@ -355,42 +356,53 @@ class FhirAnalysisService:
             return analysis_result
 
         except Exception as e:
-            self.logger.error(f"AI analysis failed: {str(e)}", exc_info=True)
-            raise Exception(f"AI analysis failed: {str(e)}")
+            self.logger.error("FHIR generation failed; error_type=%s", type(e).__name__)
+            raise
 
     def _extract_conditions(self, fhir_resources: List[Any]) -> List[str]:
         """
         Extract condition names from FHIR resources.
-        
+
         Args:
             fhir_resources: List of FHIR resource objects
-        
+
         Returns:
             List of condition names (limited to MAX_STORED_ITEMS)
         """
-        conditions = [
-            resource.data.get("codeText", "Unknown")
-            for resource in fhir_resources
-            if resource.resource_type == "Condition"
-        ][: self.MAX_STORED_ITEMS]
+        def code(value):
+            if isinstance(value, dict):
+                coding = value.get("coding") or []
+                return str(coding[0].get("code", "")) if coding and isinstance(coding[0], dict) else str(value.get("text", ""))
+            return str(value or "")
+        conditions = []
+        for resource in fhir_resources:
+            if resource.resource_type != "Condition" or not isinstance(resource.data, dict):
+                continue
+            verification = code(resource.data.get("verificationStatus")).casefold()
+            clinical = code(resource.data.get("clinicalStatus")).casefold()
+            if verification == "confirmed" and clinical in {"active", "recurrence", "relapse"}:
+                conditions.append(resource.data.get("codeText", "Documented condition"))
 
         return conditions
 
     def _extract_medications(self, fhir_resources: List[Any]) -> List[Dict[str, str]]:
         """
         Extract medication information from FHIR resources.
-        
+
         Args:
             fhir_resources: List of FHIR resource objects
-        
+
         Returns:
             List of medication dictionaries (limited to MAX_STORED_ITEMS)
         """
-        medications = [
-            {"name": resource.data.get("medicationCodeText", "Unknown")}
-            for resource in fhir_resources
-            if resource.resource_type == "MedicationRequest"
-        ][: self.MAX_STORED_ITEMS]
+        medications = []
+        for resource in fhir_resources:
+            if resource.resource_type != "MedicationRequest" or not isinstance(resource.data, dict):
+                continue
+            data = resource.data
+            status = data.get("status") or "status not documented"
+            medications.append({"name": f"{data.get('medicationCodeText', 'Documented medication')} ({status})",
+                                "status": status, "dosage": data.get("dosageInstruction", data.get("dosage", []))})
 
         return medications
 
@@ -408,7 +420,7 @@ class FhirAnalysisService:
     ) -> Dict[str, Any]:
         """
         Prepare summary data for database storage.
-        
+
         Args:
             request: Original request
             appointment: Appointment object
@@ -419,7 +431,7 @@ class FhirAnalysisService:
             fhir_resources: All FHIR resources
             resource_counts: Resource counts by type
             fhir_summary_by_type: Resources grouped by type
-        
+
         Returns:
             Dictionary ready for database insertion
         """
@@ -431,13 +443,18 @@ class FhirAnalysisService:
             "key_points": analysis_result.key_insights,
             "medications": medications_list,
             "diagnoses": conditions_list,
+            "data": {"reported_conditions": [
+                {key: condition[key] for key in ("codeText", "verificationStatus", "clinicalStatus", "onsetDateTime", "abatementDateTime") if key in condition}
+                for condition in fhir_summary_by_type.get("Condition", []) if isinstance(condition, dict)
+            ]},
             "instructions": [],  # FHIR analysis doesn't have instructions
             "recommendations": [
                 r.model_dump() for r in analysis_result.recommendations
             ],
             "summary_metadata": {
                 "source": "fhir_analysis",
-                "analysis_version": "1.0",
+                "analysis_version": "2.0",
+                **outcome_metadata("complete"),
                 "total_resources": len(fhir_resources),
                 "resource_counts": resource_counts,
                 "analysis_focus": request.analysis_focus,

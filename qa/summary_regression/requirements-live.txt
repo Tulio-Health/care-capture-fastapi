@@ -1,0 +1,4 @@
+# Install within the project's locked environment when possible (uv sync).
+# This range matches the application's OpenAI dependency.
+openai>=1.51.2,<2
+httpx>=0.27.0
