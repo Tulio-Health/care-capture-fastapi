@@ -60,7 +60,7 @@ REGRESSION_OPENAI_API_KEY=your-regression-key
 REGRESSION_OPENAI_MODEL=gpt-4o-mini
 REGRESSION_OPENAI_VISION_MODEL=gpt-4.1-mini
 REGRESSION_MAX_AI_CALLS=20
-REGRESSION_MAX_OUTPUT_TOKENS=2048
+REGRESSION_MAX_OUTPUT_TOKENS=4096
 REGRESSION_AI_TIMEOUT_SECONDS=45
 REGRESSION_MAX_TOTAL_TOKENS=100000
 ```
@@ -179,3 +179,45 @@ python qa/summary_regression/prepare_client_review.py
 ```
 
 This overwrites `qa/client_review/` and `qa/client_review.zip`. The portable HTML includes linked synthetic source documents, saved extracted text, returned summaries/messages, and expected-versus-actual checks. Mock OCR/model responses are explicitly labeled and cannot establish live accuracy. The export excludes application code, environment files and runtime logs. Extract the ZIP before opening `client_review/index.html`.
+
+## Full regression plus the clinical OCR sample set
+
+```sh
+python qa/summary_regression/run_regression_with_ocr.py --live-ocr
+```
+
+Runs QA unit/safety tests, the full 494-case mock catalog, and nine image-only clinical PDFs through real OCR and clinical summarization. Uses the same production code and existing `qa/.env.regression.local`, never the production key or database. Without `--live-ocr`, no real AI requests are made. Activate the project/QA environment so optional parsers such as antiword are available.
+
+The nine samples comprise six rasterized public clinical PDFs (42 pages), two simple synthetic clinical controls, and one public pen-written prescription demonstration. Their originals, image-only PDFs, provenance, hashes and expectations are under `qa/testdata/web_clinical_samples` and `qa/testdata/clinical_ocr_positive`. QA reference text is never fed to the models. Every selected result remains visible; samples are not removed when they fail.
+
+- Combined overview: `qa/results/regression.html` (overwritten per combined run).
+- Mock report: `qa/results/report.html` (overwritten per mock run).
+- Live OCR/summary report: `qa/results/clinical_ocr_all_live/report.html` (overwritten per live sample run).
+- Both reports remain local/ignored. Source documents and regression code remain versionable.
+- Inspect live statuses: successful application validation still requires clinical review. Rejection is evidence of containment, not accurate usable extraction. A rejected page stops that document, so later pages are unverified.
+
+OCR verification now defaults to 2,048 output tokens in application settings. A truncated response or a structurally valid but internally inconsistent evidence verdict may be rechecked once at up to 4,096, bounded by job/output/request budgets. These conditions share one retry allowance; they do not stack. Evidence-backed negative verdicts, malformed responses, refusals and content-filtered responses remain rejected. Persistent inconsistency also remains rejected. No new deployment variables are required. Regression output budgets should allow 4,096; the existing 20-call default cannot cover all 45 pages plus summaries. The current full-sample local run uses the existing QA settings at 150 calls and 500,000 total tokens, with per-call output capped at 4,096.
+
+### Evidence-based verification and repeated runs
+
+OCR discrepancies now include their kind, image region, exact candidate line and quote, source reading and reason. Code checks candidate references and contradictions before accepting a verdict. This validates the verdict's internal consistency, not image truth: source readings still require model verification and clinical review. A contradiction triggers one independent recheck of the unchanged evidence, never an automatic pass.
+
+The summary verifier uses the actual candidate fields. Final summaries retain unperformed orders in recommendations; `procedures_mentioned` remains performed-only. Lab prompts forbid interpreting reference intervals as documented normal/abnormal findings. Synthesis can regenerate a validation-rejected candidate once from unchanged validated records, followed by the same full validation. Unsupported candidates are never published.
+
+Repeat all live examples twice under one shared configured AI budget:
+
+```sh
+python qa/summary_regression/run_clinical_ocr.py --summarize --all-samples --repeat 2
+```
+
+Both attempts remain visible in the same overwritten report, including rejections, errors and budget blocks. A previous acceptance does not excuse a later rejection. The mock catalog remains 494 cases; the evidence/retry unit tests and live sample executions are additional checks, not silently added to that count.
+
+### Production grounding cost and provider outages
+
+For attachment jobs with at most 80,000 source characters (half the existing 160,000-character audit envelope), intermediate extraction and synthesis retain code-based validation, and one AI audit checks the final candidate against successful original parsed source chunks. A simple successful job needs two generation calls plus one grounding call, excluding retries and OCR. Rejected final candidates are not sealed or published.
+
+Larger jobs retain the previous staged audit/partial-success path. If an otherwise small job produces an oversized final audit payload, stored intermediate evidence is audited instead; evidence is never truncated to save calls. Request-local context isolates concurrent jobs. FHIR, transcript, procedure-only and translation verification are unchanged, as is OCR verification. No new environment variables, response fields or database schema are required. Existing cache fingerprints include the updated pipeline policy version.
+
+Provider unavailability, timeouts, rate limits and authentication failures produce a service-unavailable message in the existing summary text field, with processing_outcome remaining unavailable. Existing validated summaries remain preserved with the established refresh-failure notice. Missing documents and unsupported formats keep their distinct messages. Provider exceptions and credentials are never displayed.
+
+The grounding-cost/outage change is tested with mocked model calls and in-memory publication boundaries. The earlier live OCR results predate this cost consolidation and are not evidence of a live test of the new policy.

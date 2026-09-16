@@ -23,7 +23,7 @@ class AIConfig:
     model: str = 'gpt-4o-mini'
     vision_model: str = 'gpt-4.1-mini'
     max_calls: int = 20
-    max_output_tokens: int = 2048
+    max_output_tokens: int = 4096
     timeout_seconds: int = 45
     max_total_tokens: int = 100000
 
@@ -73,7 +73,7 @@ def load_config(env_file=None):
     return AIConfig(key, model('REGRESSION_OPENAI_MODEL','gpt-4o-mini'),
                     model('REGRESSION_OPENAI_VISION_MODEL','gpt-4.1-mini'),
                     integer('REGRESSION_MAX_AI_CALLS',20,1,1000),
-                    integer('REGRESSION_MAX_OUTPUT_TOKENS',2048,128,16000),
+                    integer('REGRESSION_MAX_OUTPUT_TOKENS',4096,128,16000),
                     integer('REGRESSION_AI_TIMEOUT_SECONDS',45,1,300),
                     integer('REGRESSION_MAX_TOTAL_TOKENS',100000,1,10000000))
 

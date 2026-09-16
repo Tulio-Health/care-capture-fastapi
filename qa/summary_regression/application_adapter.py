@@ -112,7 +112,7 @@ async def _run(case, fixture_dir, context):
             capture.setdefault("vision_requests", []).append(messages)
             if "You verify a transcription" in str(messages[0].get("content", "")):
                 missing = inject.get("vision_omit_page") == capture["vision_pages"]
-                response = {"matches": not missing, "issues": ["Page text omitted"] if missing else []}
+                response = {"matches": not missing, "issues": [{"kind": "missing_text", "region": "page", "candidate_line": None, "candidate_quote": None, "source_quote": capture.get("last_ocr_gold", "Page text"), "reason": "Page text omitted"}] if missing else []}
             elif inject.get("vision_response_key"):
                 response = canned[inject["vision_response_key"]]
             else:
@@ -158,7 +158,7 @@ async def _run(case, fixture_dir, context):
                 response = {"procedures": [{"source_document_title": document.title, "event_source_quote": event["source_quote"], "procedure_type": event["description"], "reason": "Not documented in this procedure report.", "procedure_details": event["source_quote"], "outcome": "Not documented in this procedure report.", "follow_up": "Not documented in this procedure report."} for event in events if event["status"] == "performed" and event["source_quote"] in document.extracted_text], "evidence_quotes": [document.extracted_text]}
             elif "clinical_summary" in props:
                 observations["calls"]["final_synthesis"] += 1
-                records = json.loads(messages[-1]["content"])["validated_source_records"]
+                records = json.JSONDecoder().raw_decode(messages[-1]["content"])[0]["validated_source_records"]
                 response = {"clinical_summary": "\n\n".join(r.get("narrative_summary", r.get("clinical_summary", "")) for r in records), "documents_analyzed": len(records)}
                 # Synthetic long-input fixtures contain repeated administrative
                 # filler. The mock reduce response compresses that fixture noise;
