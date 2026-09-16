@@ -171,3 +171,11 @@ python -m unittest discover -s qa/summary_regression -p 'test_*safety*.py'
 ```
 
 See [routing and deferred persistence verification](ROUTING_AND_PERSISTENCE_REVIEW.md) for supported logo geometry, access limitations and the later deployed-instance checklist. Passing memory-backed tests does not verify database transactions or caregiver integration.
+
+To export the completed run for client review without rerunning AI or regression:
+
+```sh
+python qa/summary_regression/prepare_client_review.py
+```
+
+This overwrites `qa/client_review/` and `qa/client_review.zip`. The portable HTML includes linked synthetic source documents, saved extracted text, returned summaries/messages, and expected-versus-actual checks. Mock OCR/model responses are explicitly labeled and cannot establish live accuracy. The export excludes application code, environment files and runtime logs. Extract the ZIP before opening `client_review/index.html`.
