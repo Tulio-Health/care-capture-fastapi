@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 
 class DocumentAttachment(BaseModel):
@@ -24,6 +24,10 @@ class DocumentAttachment(BaseModel):
             }
         }
     )
+
+    parsed_text_sha256: Optional[str] = None
+    content_sha256: Optional[str] = None
+    parser_version: Optional[str] = None
 
     file_path: str = Field(..., description="S3 file path")
     content_type: str = Field(..., description="MIME type of the document")
@@ -66,7 +70,7 @@ class DiagnosisDetail(BaseModel):
     )
     lay_explanation: str = Field(
         ...,
-        description="One short plain-language sentence explaining what this diagnosis means for the patient.",
+        description="A plain-language explanation only if explicitly supported by the source; otherwise return an empty string. Do not add medical knowledge.",
     )
 
 
@@ -84,6 +88,8 @@ class RecommendationDetail(BaseModel):
 
 class ProcedureMention(BaseModel):
     """A single procedure or intervention named in a document, tagged with its status."""
+
+    source_quote: str = Field(..., description="Exact source passage establishing this procedure identity AND status")
 
     description: str = Field(
         ...,
@@ -130,7 +136,11 @@ class FollowUpDetail(BaseModel):
 
 
 class DocumentSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     """Structured clinical data extracted from a single medical document. Only include information explicitly stated in the source text."""
+
+    source_document_id: str = Field(..., description="Exact source ID supplied with this document/chunk; never invent an ID")
+    evidence_quotes: List[str] = Field(..., description="Verbatim source passages supporting all clinical claims, including narrative")
 
     source_document_title: str = Field(
         ..., description="Title of the source document as provided in the metadata"
@@ -156,7 +166,7 @@ class DocumentSummary(BaseModel):
         description=(
             "Confirmed diagnoses and active conditions from Assessment/Impression/Diagnosis sections. For each, "
             "return official_diagnosis (verbatim clinician wording, ICD-10 codes stripped but not translated) "
-            "and lay_explanation (one plain-language line). Combine related diagnoses for the same condition."
+            "and lay_explanation (source-supported wording, or an empty string). Combine related diagnoses for the same condition."
         ),
     )
     medications: List[str] = Field(
@@ -211,11 +221,12 @@ class DocumentSummary(BaseModel):
     )
     narrative_summary: str = Field(
         ...,
-        description="A 2-4 sentence free-text summary capturing the overall clinical context and key findings not fully covered by the structured fields above",
+        description="A brief extractive summary: select verbatim source passages covering diagnosis, documented plan, medication list, and follow-up when present. Preserve labels such as Medication. Do not convert listed medication into a prescription or invent visit framing.",
     )
 
 
 class AttachmentSummarizationRequest(BaseModel):
+    force_regenerate: bool = Field(default=False, description="Refresh this summary source even when current bytes and processing versions match.")
     """Request model for attachment summarization."""
 
     model_config = ConfigDict(
@@ -236,7 +247,9 @@ class AttachmentSummarizationRequest(BaseModel):
 
 
 class AttachmentSummarizationResponse(BaseModel):
-    """Unified patient-facing summary synthesized from multiple clinical document extractions. Use second person ('you', 'your'). Deduplicate across documents. Preserve conflicting values as-is."""
+    """Unified patient-facing summary of validated clinical document extractions."""
+
+    _validation_digest: str | None = PrivateAttr(default=None)
 
     model_config = ConfigDict(
         json_schema_extra={

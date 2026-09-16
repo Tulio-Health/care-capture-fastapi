@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +28,9 @@ from ..services.summarization import (
 )
 from ..services.summarization.attachment_summarization import AttachmentSummarizationService
 from ..services.summarization.procedure_summarization import ProcedureSummarizationService
+
+from src.app.services.document_extraction import DocumentProcessingError
+from src.app.services.summary_authorization import authorize_summary_scope
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/care-capture", tags=["care-capture"])
@@ -58,6 +61,7 @@ router = APIRouter(prefix="/care-capture", tags=["care-capture"])
     },
 )
 async def transcript_summarize_text(
+    http_request: Request,
     request: TranscriptSummarizationRequest, db: AsyncSession = Depends(get_db)
 ) -> ConversationSummary:
     """
@@ -73,17 +77,24 @@ async def transcript_summarize_text(
     Raises:
         HTTPException: If summarization fails
     """
+    await authorize_summary_scope(http_request, request.user_id, db)
+
     try:
         # Initialize service and delegate business logic
         service = TranscriptSummarizationService(db)
         return await service.summarize_transcript(request)
 
+    except ValidationError:
+        raise HTTPException(status_code=500, detail="The summary could not be validated safely.")
+    except DocumentProcessingError as e:
+        status = 503 if e.reason_code in {"SUMMARY_BUSY", "SUMMARY_DEADLINE_EXCEEDED", "MODEL_CALL_BUDGET_EXCEEDED", "PROCEDURE_SUMMARY_UNAVAILABLE", "PERSISTENCE_FAILED"} else 500
+        raise HTTPException(status_code=status, detail="The summary could not be created safely. Please try again later.")
     except ValueError as e:
         # Raise a 400 error if input is invalid
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail="The summary request could not be processed.")
     except Exception as e:
         # Raise a 500 error if any other exception occurs
-        raise HTTPException(status_code=500, detail=f"Failed to process summary: {str(e)}")
+        raise HTTPException(status_code=500, detail="Unable to create the summary. Please try again later.")
 
 
 @router.post(
@@ -197,8 +208,8 @@ async def playground_summarize_text(request: PlaygroundSummarizationRequest) -> 
         raise
     except Exception as e:
         logger.error(
-            f"Unexpected error in playground summarization - request_id: {request.request_id}, error: {str(e)}",
-            exc_info=True,
+            f"Unexpected error in playground summarization - request_id: {request.request_id}, error: {type(e).__name__}",
+            exc_info=False,
         )
         # This will be caught by the general exception handler
         raise
@@ -275,7 +286,7 @@ async def playground_summarize_text(request: PlaygroundSummarizationRequest) -> 
 #         await PatientHealthInsightsRepository(db).create(user_id=user_id, health_insights=health_insights_dict)
 #         return health_insights_dict
 #     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
+#         raise HTTPException(status_code=500, detail="The summary request could not be processed.")
 
 # ## TODO: Remove this endpoint after testing...
 # @router.post("/users/health-insights/batch",
@@ -336,6 +347,7 @@ async def playground_summarize_text(request: PlaygroundSummarizationRequest) -> 
     },
 )
 async def analyze_fhir_resources(
+    http_request: Request,
     request: FhirAnalysisRequest, db: AsyncSession = Depends(get_db)
 ) -> ConversationSummary:
     """
@@ -354,6 +366,8 @@ async def analyze_fhir_resources(
     Raises:
         HTTPException: If appointment not found or analysis fails
     """
+    await authorize_summary_scope(http_request, request.user_id, db)
+
     try:
         # Initialize service and delegate business logic
         service = FhirAnalysisService(db)
@@ -362,12 +376,17 @@ async def analyze_fhir_resources(
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
+    except ValidationError:
+        raise HTTPException(status_code=500, detail="The summary could not be validated safely.")
+    except DocumentProcessingError as e:
+        status = 503 if e.reason_code in {"SUMMARY_BUSY", "SUMMARY_DEADLINE_EXCEEDED", "MODEL_CALL_BUDGET_EXCEEDED", "PROCEDURE_SUMMARY_UNAVAILABLE", "PERSISTENCE_FAILED"} else 500
+        raise HTTPException(status_code=status, detail="The summary could not be created safely. Please try again later.")
     except ValueError as e:
-        logger.error(f"Validation error in FHIR analysis: {str(e)}", exc_info=e)
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Validation error in FHIR analysis: {type(e).__name__}", exc_info=False)
+        raise HTTPException(status_code=400, detail="The summary request could not be processed.")
     except Exception as e:
-        logger.error(f"Error analyzing FHIR resources: {str(e)}", exc_info=e)
-        raise HTTPException(status_code=500, detail=f"Failed to analyze FHIR resources: {str(e)}")
+        logger.error(f"Error analyzing FHIR resources: {type(e).__name__}", exc_info=False)
+        raise HTTPException(status_code=500, detail="Unable to create the summary. Please try again later.")
 
 
 @router.post(
@@ -377,22 +396,30 @@ async def analyze_fhir_resources(
     description="Analyze document attachments (PDF, DOCX, TXT) for a patient appointment and generate clinical insights.",
 )
 async def attachment_summary(
+    http_request: Request,
     request: AttachmentSummarizationRequest,
     db: AsyncSession = Depends(get_db),
 ) -> ConversationSummary:
+    await authorize_summary_scope(http_request, request.user_id, db)
+
     try:
         service = AttachmentSummarizationService(db)
         return await service.analyze_attachments(request)
+    except ValidationError:
+        raise HTTPException(status_code=500, detail="The summary could not be validated safely.")
+    except DocumentProcessingError as e:
+        status = 503 if e.reason_code in {"SUMMARY_BUSY", "SUMMARY_DEADLINE_EXCEEDED", "MODEL_CALL_BUDGET_EXCEEDED", "PROCEDURE_SUMMARY_UNAVAILABLE", "PERSISTENCE_FAILED"} else 500
+        raise HTTPException(status_code=status, detail="The summary could not be created safely. Please try again later.")
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail="The summary request could not be processed.")
     except HTTPException:
         raise
     except Exception as e:
         logger.error(
-            f"Attachment summarization failed - appointment_id: {request.appointment_id}: {str(e)}",
-            exc_info=True,
+            f"Attachment summarization failed - appointment_id: {request.appointment_id}: {type(e).__name__}",
+            exc_info=False,
         )
-        raise HTTPException(status_code=500, detail=f"Attachment summarization failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Unable to create the summary. Please try again later.")
 
 
 @router.post(
@@ -409,27 +436,35 @@ async def attachment_summary(
         "a {procedure_type} on {date}. {procedure_details}') and the translatable "
         "reason/procedure_details/outcome/follow_up fields in the 'data' column - "
         "replacing the old single-row-per-appointment/metadata.procedures[] shape. Returns an empty "
-        "list (and prunes any previously-persisted rows) when the appointment has no documents "
-        "flagged as procedure documents, or every extraction was consolidated away as a duplicate."
+        "list after a fully successful extraction establishes that there are no performed events. "
+        "Missing or failed documents do not authorize deletion of prior validated summaries."
     ),
 )
 async def procedure_summary(
+    http_request: Request,
     request: ProcedureSummarizationRequest,
     db: AsyncSession = Depends(get_db),
 ) -> List[ConversationSummary]:
+    await authorize_summary_scope(http_request, request.user_id, db)
+
     try:
         service = ProcedureSummarizationService(db)
         return await service.analyze_procedures(request)
+    except ValidationError:
+        raise HTTPException(status_code=500, detail="The summary could not be validated safely.")
+    except DocumentProcessingError as e:
+        status = 503 if e.reason_code in {"SUMMARY_BUSY", "SUMMARY_DEADLINE_EXCEEDED", "MODEL_CALL_BUDGET_EXCEEDED", "PROCEDURE_SUMMARY_UNAVAILABLE", "PERSISTENCE_FAILED"} else 500
+        raise HTTPException(status_code=status, detail="The summary could not be created safely. Please try again later.")
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail="The summary request could not be processed.")
     except HTTPException:
         raise
     except Exception as e:
         logger.error(
-            f"Procedure summarization failed - appointment_id: {request.appointment_id}: {str(e)}",
-            exc_info=True,
+            f"Procedure summarization failed - appointment_id: {request.appointment_id}: {type(e).__name__}",
+            exc_info=False,
         )
-        raise HTTPException(status_code=500, detail=f"Procedure summarization failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Unable to create the summary. Please try again later.")
 
 
 @router.post(
@@ -540,6 +575,7 @@ async def procedure_summary(
     },
 )
 async def comprehensive_summary(
+    http_request: Request,
     request: ComprehensiveSummarizationRequest, db: AsyncSession = Depends(get_db)
 ) -> ComprehensiveSummarizationResponse:
     """
@@ -605,6 +641,8 @@ async def comprehensive_summary(
         f"include_fhir: {request.has_fhir_data_requested()}"
     )
 
+    await authorize_summary_scope(http_request, request.user_id, db)
+
     try:
         # Initialize service and delegate business logic
         service = ComprehensiveSummarizationService(db)
@@ -619,7 +657,7 @@ async def comprehensive_summary(
             f"fhir_count: {len(response.fhir_summaries)}, "
             f"has_error: {response.error is not None}"
         )
-        logger.info(f"Response: {response}")
+        logger.debug("Summary response prepared")
 
         # Log detailed results for each summary type
         for summary in response.summaries:
@@ -635,14 +673,17 @@ async def comprehensive_summary(
 
     except ValidationError as e:
         logger.error(
-            f"Validation error in comprehensive summary - appointment_id: {request.appointment_id}, error: {str(e)}",
-            exc_info=True,
+            f"Validation error in comprehensive summary - appointment_id: {request.appointment_id}, error: {type(e).__name__}",
+            exc_info=False,
         )
-        raise HTTPException(status_code=400, detail=f"Request validation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="The summary could not be validated safely.")
+
+    except DocumentProcessingError:
+        raise HTTPException(status_code=503, detail="Summarization is temporarily unavailable. Please try again later.")
 
     except Exception as e:
         logger.error(
-            f"Unexpected error in comprehensive summary - appointment_id: {request.appointment_id}, error: {str(e)}",
-            exc_info=True,
+            f"Unexpected error in comprehensive summary - appointment_id: {request.appointment_id}, error: {type(e).__name__}",
+            exc_info=False,
         )
-        raise HTTPException(status_code=500, detail=f"Failed to execute comprehensive summarization: {str(e)}")
+        raise HTTPException(status_code=500, detail="Unable to create the summaries. Please try again later.")

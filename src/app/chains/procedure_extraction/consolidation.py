@@ -19,6 +19,7 @@ Pipeline (see `ProcedureConsolidator.consolidate`):
    generation.
 """
 
+from src.app.services.summary_runtime import model_call
 import difflib
 import json
 import logging
@@ -139,23 +140,27 @@ class ProcedureConsolidator:
         """Consolidate a list of per-document procedure extractions into one entry per
         real-world procedure event. Zero LLM calls when there's nothing to consolidate
         (<=1 procedure, or the heuristic flags no candidate pairs at all)."""
-        if len(extracted) <= 1:
-            return [self._singleton(e) for e in extracted]
-
-        candidate_pairs = self._find_candidate_pairs(extracted)
-        if not candidate_pairs:
-            return [self._singleton(e) for e in extracted]
-
-        confirmed_pairs = await self._confirm_pairs(extracted, candidate_pairs)
-        groups = self._build_groups(len(extracted), confirmed_pairs)
-
-        consolidated: List[ConsolidatedProcedure] = []
-        for group in groups:
-            if len(group) == 1:
-                consolidated.append(self._singleton(extracted[group[0]]))
-            else:
-                consolidated.append(self._merge_group([extracted[i] for i in group]))
-        return consolidated
+        # Only merge identical clinical events. Similar wording is not sufficient evidence
+        # that two procedures (particularly different dates/sites) are the same event.
+        import json
+        groups = {}
+        for item in extracted:
+            clinical = item.summary.model_dump(exclude={"source_document_title"})
+            key = json.dumps(clinical, sort_keys=True, ensure_ascii=False)
+            groups.setdefault(key, []).append(item)
+        result = [self._merge_group(group) if len(group) > 1 else self._singleton(group[0])
+                  for group in groups.values()]
+        outcomes = {}
+        for item in result:
+            key = (_normalize(item.summary.procedure_type), item.summary.procedure_date)
+            if key[1]:
+                outcomes.setdefault(key, set()).add(_normalize(item.summary.outcome))
+        for item in result:
+            key = (_normalize(item.summary.procedure_type), item.summary.procedure_date)
+            if len(outcomes.get(key, ())) > 1:
+                item.summary = item.summary.model_copy(update={"outcome":
+                    "Reports with this procedure name and date contain different outcomes and may describe separate events. This source states: " + item.summary.outcome})
+        return result
 
     @staticmethod
     def _singleton(item: ExtractedProcedure) -> ConsolidatedProcedure:
@@ -200,7 +205,7 @@ class ProcedureConsolidator:
             for idx, (i, j) in enumerate(candidate_pairs)
         ]
 
-        result = await self.agent.run(json.dumps(payload, ensure_ascii=False))
+        result = await model_call(self.agent.run, json.dumps(payload, ensure_ascii=False))
         confirmed_indices = {
             c.pair_index for c in result.output.confirmations if c.same_procedure
         }
@@ -274,9 +279,9 @@ class ProcedureConsolidator:
             dict.fromkeys(name for s in summaries for name in s.performed_by)
         )
 
-        reason = max((s.reason for s in summaries), key=len)
-        procedure_details = max((s.procedure_details for s in summaries), key=len)
-        outcome = max((s.outcome for s in summaries), key=len)
+        reason = "\n".join(dict.fromkeys(s.reason for s in summaries))
+        procedure_details = "\n".join(dict.fromkeys(s.procedure_details for s in summaries))
+        outcome = "\n".join(dict.fromkeys(s.outcome for s in summaries))
 
         # follow_up and follow_up_source_quote are kept as a matching pair from the SAME
         # source summary - never mixing a quote from one document with follow-up text
@@ -285,15 +290,15 @@ class ProcedureConsolidator:
             s for s in summaries if s.follow_up != NOT_DOCUMENTED_FOLLOW_UP
         ]
         if real_follow_ups:
-            chosen = max(real_follow_ups, key=lambda s: len(s.follow_up))
-            follow_up = chosen.follow_up
-            follow_up_source_quote = chosen.follow_up_source_quote
+            follow_up = "\n".join(dict.fromkeys(s.follow_up for s in real_follow_ups))
+            follow_up_source_quote = "\n".join(dict.fromkeys(s.follow_up_source_quote for s in real_follow_ups if s.follow_up_source_quote))
         else:
             follow_up = NOT_DOCUMENTED_FOLLOW_UP
             follow_up_source_quote = None
 
         merged = ProcedureSummary(
             source_document_title=source_document_title,
+            event_source_quote=summaries[0].event_source_quote,
             procedure_type=procedure_type,
             procedure_date=procedure_date,
             performed_by=performed_by,

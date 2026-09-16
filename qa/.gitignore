@@ -1,0 +1,3 @@
+# Regression-only local credentials. Keep the example tracked.
+.env.regression.local
+.env.regression.*.local
