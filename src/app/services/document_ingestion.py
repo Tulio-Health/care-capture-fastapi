@@ -3,8 +3,11 @@ import base64
 import binascii
 from datetime import datetime
 from hashlib import sha256
+from src.app.common.logging import get_logger
 from src.app.models.attachment_summarization import DocumentAttachment
 from src.app.services.document_extraction import DocumentTextExtractor, DocumentProcessingError
+
+logger = get_logger(__name__)
 
 MAX_DOCUMENTS = 100
 
@@ -28,6 +31,9 @@ def require_parsed(document: DocumentAttachment):
 
 async def process_attachments(references, storage, extractor):
     result = []
+    # checksum/content_sha256 (both SHA-256 hex of the exact stored bytes) -> ehr_resource_id kept.
+    # Scoped to this call, i.e. per-appointment, since callers invoke this once per appointment.
+    seen: dict[str, str] = {}
     for reference in references:
         data = reference.data if isinstance(reference.data, dict) else {}
         attachments = data.get("attachments")
@@ -41,6 +47,20 @@ async def process_attachments(references, storage, extractor):
                 return result
             item = attachment if isinstance(attachment, dict) else {}
             path = safe_string(item.get("filePath"), "")
+            # Pre-download dedup: only trust the vendor checksum when the download actually
+            # succeeded (840/840 successful downloads carry a checksum; failed ones never do,
+            # and must keep going through their existing DOCUMENT_NOT_READY path unchanged).
+            checksum = safe_string(item.get("checksum"), "")
+            if checksum and item.get("downloadStatus") == "success":
+                kept_resource_id = seen.get(checksum)
+                if kept_resource_id is not None:
+                    logger.info(
+                        "document_ingestion: skipping duplicate attachment content (checksum match) "
+                        "kept_resource_id=%s dropped_resource_id=%s checksum=%s",
+                        kept_resource_id, reference.ehr_resource_id, checksum,
+                    )
+                    continue
+                seen[checksum] = reference.ehr_resource_id
             identity = sha256(f"{reference.ehr_resource_id}\0{path}\0{index}".encode()).hexdigest()
             document = DocumentAttachment(
                 file_path=path or "unavailable", content_type=safe_string(item.get("contentType"), "application/octet-stream"),
@@ -73,6 +93,18 @@ async def process_attachments(references, storage, extractor):
                     document.file_path = f"inline://{identity}"
                 document.size = len(content)
                 document.content_sha256 = sha256(content).hexdigest()
+                if not path:
+                    # Inline base64 attachments carry no vendor checksum field, so fall back to
+                    # the content hash we just computed ourselves as the dedup key.
+                    kept_resource_id = seen.get(document.content_sha256)
+                    if kept_resource_id is not None:
+                        logger.info(
+                            "document_ingestion: skipping duplicate inline attachment (content hash match) "
+                            "kept_resource_id=%s dropped_resource_id=%s checksum=%s",
+                            kept_resource_id, reference.ehr_resource_id, document.content_sha256,
+                        )
+                        continue
+                    seen[document.content_sha256] = reference.ehr_resource_id
                 document.extracted_text = await extractor.extract_text_async(content, document.content_type, document.file_name or path)
                 mark_parsed(document)
             except DocumentProcessingError as exc:
