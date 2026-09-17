@@ -1,0 +1,32 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - run: uv sync --frozen
+
+      - name: Unit tests (credential-less)
+        run: |
+          uv run pytest src/app/tests/unit/ \
+            --ignore=src/app/tests/unit/test_chat.py \
+            --ignore=src/app/tests/unit/test_health.py \
+            --ignore=src/app/tests/unit/test_document_type_inference.py \
+            -q --no-cov -rA
+
+      - name: QA summary regression safety guards
+        run: |
+          uv run pytest qa/summary_regression/test_completion_safety.py qa/summary_regression/test_routing_safety.py \
+            -q --no-cov \
+            --deselect qa/summary_regression/test_completion_safety.py::LegacyAndFallbackSafety::test_real_legacy_word_parser_preserves_order_status
+            # PR-7 removes this deselect when antiword is dropped and :58-61 asserts the safe decline.
