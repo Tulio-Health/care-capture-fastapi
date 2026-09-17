@@ -48,6 +48,14 @@ class Settings(BaseSettings):
     # Defaults require no deployment/environment changes. Retry is only for truncation.
     DOCUMENT_OCR_VERIFICATION_OUTPUT_TOKENS: int = Field(default=2048, ge=256, le=4096)
     DOCUMENT_OCR_VERIFICATION_RETRY_OUTPUT_TOKENS: int = Field(default=4096, ge=256, le=4096)
+    # Per-document vision-call catastrophe-stop, not the primary cost control: the shared
+    # appointment-level WorkBudget.max_model_calls (64, summary_runtime.py) covers every model
+    # call across an entire appointment and binds first in virtually every real scenario. This
+    # only matters when OCR runs outside that budget context. Worst case is 20 OCR pages (the
+    # render worker's OCR_PAGE_LIMIT_EXCEEDED cap) times up to 3 vision calls per transcribed
+    # image (1 initial + up to 2 verification attempts, see transcribe_verified_image) times up
+    # to MAX_REGIONS (12) tiles when a page needs region tiling: 20 * 3 * (1 + 12) = 780.
+    MAX_VISION_CALLS_PER_DOCUMENT: int = Field(default=120, ge=20, le=780)
 
     # Summarization Configuration
     ENABLE_FHIR_FALLBACK: bool = Field(

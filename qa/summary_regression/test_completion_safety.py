@@ -60,6 +60,22 @@ class ReleasePolicySafety(unittest.TestCase):
         sizes=[Image.open(io.BytesIO(base64.b64decode(region))).size for region in regions]
         self.assertEqual(sizes,[(10,2200),(10,540)])
 
+    def test_max_vision_calls_per_document_bounds_use_real_per_image_and_region_costs(self):
+        from src.app.core.settings import Settings
+        from src.app.services.document_ocr import MAX_VISION_CALLS_PER_IMAGE
+        from src.app.services.ocr_regions import MAX_REGIONS
+        default=Settings.model_fields['MAX_VISION_CALLS_PER_DOCUMENT'].default
+        # Floor: a full 20-page OCR document (render worker's OCR_PAGE_LIMIT_EXCEEDED cap) with
+        # every page needing its worst-case verification retries must never fail closed.
+        self.assertLessEqual(20*MAX_VISION_CALLS_PER_IMAGE,default)
+        # Ceiling: bounded by the post-restructure worst case (every page tiled to MAX_REGIONS).
+        self.assertLessEqual(default,20*MAX_VISION_CALLS_PER_IMAGE*MAX_REGIONS)
+
+    def test_join_regions_keeps_interior_lines_and_drops_cut_edges(self):
+        from src.app.services.ocr_regions import join_regions
+        self.assertEqual(join_regions(['A\nB\nC','C\nD\nE']),'A\nB\nD\nE')
+        self.assertEqual(join_regions(['solo']),'solo')
+
 class LegacyAndFallbackSafety(unittest.IsolatedAsyncioTestCase):
     async def test_real_legacy_word_parser_preserves_order_status(self):
         text=await DocumentTextExtractor().extract_text_async((DATA/'legacy_word.doc').read_bytes(),'application/msword')

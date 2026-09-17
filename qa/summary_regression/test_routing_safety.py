@@ -50,6 +50,19 @@ class RoutingSafety(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(text.count('ordered; not performed'), 3)
         self.assertLess(text.index('[Page 3]'), text.index('[OCR page 4]'))
 
+    async def test_region_tiling_skips_full_page_call_and_joins_tiles(self):
+        from src.app.services.document_ocr import extract_scanned_document
+        transcribe = AsyncMock(side_effect=['Tile-1-text', 'Tile-2-text'])
+        with patch('src.app.services.document_ocr.transcribe_verified_image', transcribe), \
+             patch('src.app.services.ocr_regions.overlapping_regions', return_value=['crop-a', 'crop-b']), \
+             patch('src.app.core.settings.get_settings', return_value=SimpleNamespace(ENABLE_DOCUMENT_OCR=True, DOCUMENT_OCR_MODEL='mock')):
+            text = await extract_scanned_document((DATA / 'mixed_scan.pdf').read_bytes(), 'application/pdf', client=object(), model='mock')
+        # Tiling replaces the full-page call entirely: only the two crops are transcribed.
+        self.assertEqual(transcribe.await_count, 2)
+        self.assertTrue(all(call.kwargs.get('region') is True for call in transcribe.await_args_list))
+        self.assertIn('Tile-1-text', text)
+        self.assertIn('Tile-2-text', text)
+
     def test_blank_page_does_not_trigger_ocr_but_body_image_does(self):
         pdf = fitz.open(); pdf.new_page()
         with self.assertRaises(DocumentProcessingError) as error:

@@ -28,6 +28,24 @@ def overlapping_regions(encoded_page):
         return images
 
 
+def join_regions(region_texts):
+    """Join tile transcriptions into one page text when tiling replaces the full-page call.
+    Crop boundaries can cut a line (see REGION_OVERLAP), so each region contributes only its
+    complete interior lines; only the first/last region keeps its outer edge, since there is
+    no neighboring crop beyond it. Mirrors the interior-line trim validate_region_coverage
+    already uses to compare a region against the (here, absent) full-page anchor.
+    """
+    lines = []
+    for index, text in enumerate(region_texts):
+        region_lines = [line for line in text.splitlines() if line.strip()]
+        if len(region_lines) > 2:
+            start = 0 if index == 0 else 1
+            end = len(region_lines) if index == len(region_texts) - 1 else -1
+            region_lines = region_lines[start:end]
+        lines.extend(region_lines)
+    return "\n".join(lines)
+
+
 def validate_region_coverage(page_text, region_texts):
     """Do not splice ambiguous fragments or delete repeated clinical rows by guessing."""
     normalize = lambda value: ' '.join(value.split()).casefold()

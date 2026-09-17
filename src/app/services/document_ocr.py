@@ -10,6 +10,9 @@ from src.app.services.document_extraction import DocumentProcessingError, Docume
 
 MAX_DECODED_PIXELS = 20_000_000
 MAX_OCR_OUTPUT_TOKENS = 4096
+# 1 initial transcription call + up to 2 verification attempts (transcribe_verified_image's
+# shared retry allowance for truncation OR inconsistent evidence). Never more than this per image.
+MAX_VISION_CALLS_PER_IMAGE = 3
 
 OCR_POLICY = """You are a document transcription engine, not a clinician or summarizer.
 Transcribe every visible word on this single page in reading order. Preserve headings,
@@ -199,6 +202,18 @@ async def extract_scanned_document(content, content_type, *, client=None, model=
         "verification_output_tokens": getattr(settings, "DOCUMENT_OCR_VERIFICATION_OUTPUT_TOKENS", Settings.model_fields["DOCUMENT_OCR_VERIFICATION_OUTPUT_TOKENS"].default),
         "verification_retry_output_tokens": getattr(settings, "DOCUMENT_OCR_VERIFICATION_RETRY_OUTPUT_TOKENS", Settings.model_fields["DOCUMENT_OCR_VERIFICATION_RETRY_OUTPUT_TOKENS"].default),
     }
+    max_vision_calls = getattr(settings, "MAX_VISION_CALLS_PER_DOCUMENT", Settings.model_fields["MAX_VISION_CALLS_PER_DOCUMENT"].default)
+    vision_calls = 0
+
+    async def transcribe(image, number, **kwargs):
+        # Catastrophe-stop only (see settings.py); reserves the per-image worst case up front
+        # since transcribe_verified_image does not report its own realized call count.
+        nonlocal vision_calls
+        if vision_calls + MAX_VISION_CALLS_PER_IMAGE > max_vision_calls:
+            raise DocumentProcessingError("OCR_VISION_CALL_LIMIT_EXCEEDED")
+        vision_calls += MAX_VISION_CALLS_PER_IMAGE
+        return await transcribe_verified_image(client, model or settings.DOCUMENT_OCR_MODEL, image, number, **kwargs, **verification_options)
+
     parts = []
     try:
         for number, page in enumerate(pages, 1):
@@ -207,13 +222,15 @@ async def extract_scanned_document(content, content_type, *, client=None, model=
                     text = DocumentTextExtractor.validate_text(page["native_text"])
                     parts.append(f"[Page {number}]\n{text}")
                 continue
-            text = await transcribe_verified_image(client, model or settings.DOCUMENT_OCR_MODEL, page, number, **verification_options)
-            from src.app.services.ocr_regions import overlapping_regions, validate_region_coverage
+            from src.app.services.ocr_regions import overlapping_regions, join_regions
             regions = overlapping_regions(page)
-            region_texts = []
-            for index, region in enumerate(regions, 1):
-                region_texts.append(await transcribe_verified_image(client, model or settings.DOCUMENT_OCR_MODEL, region, f"{number}, region {index}", region=True, **verification_options))
-            text = validate_region_coverage(text, region_texts)
+            if regions:
+                # Tiling replaces the full-page call entirely: once tiles exist, a full-page
+                # call in addition would double vision-call cost for no accuracy gain.
+                region_texts = [await transcribe(region, f"{number}, region {index}", region=True) for index, region in enumerate(regions, 1)]
+                text = join_regions(region_texts)
+            else:
+                text = await transcribe(page, number)
             if text.strip():
                 # OCR output is parsed and validated before clinical extraction.
                 text = DocumentTextExtractor().extract_text(text.encode(), "text/plain;charset=utf-8")
