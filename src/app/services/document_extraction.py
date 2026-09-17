@@ -400,7 +400,9 @@ class DocumentTextExtractor:
                 if not void and (self.hidden or tag in {"script", "style", "template", "noscript"} or "hidden" in attributes or "display:none" in style or "visibility:hidden" in style):
                     self.hidden.append(tag)
                 if tag == "img" and not self.hidden:
-                    raise DocumentProcessingError("OCR_REQUIRED")
+                    from src.app.services.document_image_routing import html_image_is_decorative
+                    if not html_image_is_decorative(attributes, text_seen=bool(self.parts)):
+                        self.parts.append("[Embedded image not transcribed]")
             def handle_endtag(self, tag):
                 if self.hidden and tag == self.hidden[-1]:
                     self.hidden.pop()
@@ -436,9 +438,10 @@ class DocumentTextExtractor:
                 depth -= 1
             if depth < 0 or depth > 256:
                 raise DocumentProcessingError("MALFORMED_RTF")
-        if depth or re.search(r"\\(?:object|objdata|bin|pict)\b", raw):
+        if depth or re.search(r"\\(?:object|objdata|bin)\b", raw):
             raise DocumentProcessingError("UNSUPPORTED_EMBEDDED_CONTENT" if not depth else "MALFORMED_RTF")
-        return rtf_to_text(raw, encoding=encoding, errors="strict")
+        text = rtf_to_text(raw, encoding=encoding, errors="strict")
+        return text + "\n[Embedded image not transcribed]" if re.search(r"\\pict\b", raw) else text
 
     def _extract_from_txt(self, content: bytes, file_name=None) -> str:
         return self.validate_text(self._decode(content))

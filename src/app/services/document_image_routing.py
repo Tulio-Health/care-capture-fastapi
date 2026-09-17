@@ -45,3 +45,27 @@ def docx_has_unsupported_images(root, *, marginal_part=False):
             if not (0 < width <= 1371600 and 0 < height <= 685800):
                 return True
     return False
+
+
+def html_image_is_decorative(attributes, *, text_seen):
+    """Letterhead test for HTML, mirroring pdf_page_requires_ocr: marginal AND small.
+
+    HTML carries no rendered geometry, so 'marginal' degrades to 'appears before any
+    visible clinical text'. Unknown dimensions are treated as content, never decoration.
+    """
+    import re
+    style = (attributes.get("style") or "").replace(" ", "").lower()
+
+    def declared(axis):
+        match = re.search(rf"(?:^|;){axis}:(\d+(?:\.\d+)?)px", style)
+        raw = match.group(1) if match else (attributes.get(axis) or "").strip().lower().removesuffix("px")
+        try:
+            return int(float(raw))
+        except (TypeError, ValueError):
+            return None
+
+    width, height = declared("width"), declared("height")
+    if width is None or height is None:
+        return False                        # unknown size -> assume content
+    # 144 x 72 CSS px == the 108 x 54 pt box pdf_page_requires_ocr already calls decorative.
+    return text_seen is False and width <= 144 and height <= 72
