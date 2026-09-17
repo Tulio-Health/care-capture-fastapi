@@ -3,6 +3,7 @@
 from src.app.services.summary_runtime import model_call
 import asyncio
 from contextvars import ContextVar
+import hashlib
 import json
 import logging
 import re
@@ -29,6 +30,13 @@ logger = logging.getLogger(__name__)
 
 # Per-request state, including parallel map tasks; never shared between requests.
 _deferred_grounding = ContextVar("attachment_deferred_grounding", default=None)
+
+# Fix D (PR-9): verify_grounding's own procedure-splitting transform (`procedures` -> up to
+# three `procedures_<status>` keys) can grow a candidate's serialized size after chain.py
+# already measured it as fitting under GROUNDING_MAX_CHARACTERS. This margin keeps the
+# single-audit eligibility check in _verify_final apples-to-apples with verify_grounding's
+# own re-check of the same constant.
+_GROUNDING_SIZE_MARGIN = 4096
 
 BATCH_CHAR_LIMIT = 30_000  # ~7,500-10,000 tokens of content per batch
 
@@ -341,7 +349,16 @@ GUARDRAILS - Do:
 - Present conflicting values as-is (e.g., "BP on admission: 165/98 mmHg; BP at discharge: 128/76 mmHg")"""
 
 
-CHUNK_CHAR_LIMIT = 12000
+# BATCH_CHAR_LIMIT is the real per-call budget already run through extraction safely on
+# develop/production; 12,000 was a novel, untested value this branch introduced, using only
+# ~40% of the real budget. Exhaustiveness (every character of a document lands in some chunk)
+# is a property of the overlapping chunking loop below, not of this constant's value -- raising
+# it changes call volume, not coverage. The overlap floor `min(1000, CHUNK_CHAR_LIMIT // 10)`
+# stays a small, sane fraction of the new limit (1000/30000 ~= 3%) rather than growing with it,
+# since it only needs to re-anchor a follow-up/plan sentence that straddled a chunk boundary.
+# BATCH_CHAR_LIMIT is the real ceiling here because _MAX_DOC_CHARS_ATTACHMENT (the per-document
+# cap enforced elsewhere in this file) is itself defined in terms of it, not a separate number.
+CHUNK_CHAR_LIMIT = BATCH_CHAR_LIMIT
 
 def _create_batches(
     documents: List[DocumentAttachment],
@@ -538,11 +555,16 @@ def _check_follow_up_grounding(
 
     dropped_ungrounded = len(dropped_quotes)
     if dropped_ungrounded:
+        # PR-9: this pass was previously unreachable (zero callers); now that
+        # _extract_batch_attempt wires it in, this log line is live in production. Log a
+        # count + content hash, never the raw source_quote text -- that text is PHI copied
+        # verbatim from a clinical document.
+        content_hash = hashlib.sha256("\x1e".join(dropped_quotes).encode("utf-8")).hexdigest()[:16]
         logger.warning(
             "dropped_ungrounded: %d follow_up entries not found (verbatim/fuzzy) in the "
-            "source batch, dropped: %s",
+            "source batch (content_hash=%s)",
             dropped_ungrounded,
-            dropped_quotes,
+            content_hash,
         )
 
     suspected_omission = bool(_PLAN_SECTION_PATTERN.search(source)) and not any(
@@ -633,6 +655,14 @@ class AttachmentSummarizationChain:
         ids = [summary.source_document_id for summary in result.output]
         if len(ids) != len(set(ids)) or set(ids) != set(expected):
             raise DocumentProcessingError("MODEL_SOURCE_RECONCILIATION_FAILED")
+        # PR-9: deep-copy every element before this call. _check_follow_up_grounding mutates
+        # its input's follow_up lists in place -- if it ran on result.output directly, or even
+        # on a shallow `list(result.output)` copy (which still shares the same inner
+        # DocumentSummary objects), a hallucinated follow_up quote would be silently dropped
+        # here BEFORE the validate_quotes loop below ever inspects it, turning a fail-closed
+        # rejection into a silent success. The return value is discarded on purpose and
+        # result.output is never reassigned -- only the deep copies are touched.
+        _check_follow_up_grounding([s.model_copy(deep=True) for s in result.output], prompt)
         for summary in result.output:
             source = expected[summary.source_document_id].extracted_text
             validate_quotes(summary.evidence_quotes, source)
@@ -737,16 +767,30 @@ class AttachmentSummarizationChain:
         audits.append((stage, source, candidate.model_copy(deep=True)))
 
     async def _verify_final(self, source, candidate, accepted_ids):
-        if _deferred_grounding.get() is None:
+        audits = _deferred_grounding.get()
+        if audits is None:
             return  # Large requests already used the unchanged staged audit path.
         size = len(source) + len(json.dumps(candidate.model_dump(), ensure_ascii=False, default=str))
-        if size <= GROUNDING_MAX_CHARACTERS:
-            # One semantic audit of the final candidate against original parsed text.
-            await verify_grounding(self.model, source, candidate)
-            return
+        # Fix D: compare against a margin below GROUNDING_MAX_CHARACTERS, not the raw constant.
+        # verify_grounding splits `procedures` into up to three procedures_<status> keys before
+        # its own re-check of the same constant, which can grow the payload past what we
+        # measured here; the margin keeps this eligibility check apples-to-apples with that
+        # re-check.
+        if size <= GROUNDING_MAX_CHARACTERS - _GROUNDING_SIZE_MARGIN:
+            # One semantic audit of the final candidate against original parsed text. Fix C: on
+            # failure, fall through to the staged per-chunk audits below instead of losing the
+            # whole appointment to a single audit call -- the per-chunk snapshots already exist
+            # in memory either way, so this costs nothing when the single audit passes.
+            try:
+                await verify_grounding(self.model, source, candidate)
+                return
+            except DocumentProcessingError:
+                logger.warning(
+                    "Deferred single-audit failed; falling back to the staged per-chunk audits "
+                    "instead of failing the whole appointment."
+                )
         # Preserve large-document support without truncating evidence or raising the
         # existing per-audit budget. Reuse the former staged validation graph.
-        audits = _deferred_grounding.get()
         if not audits:
             raise DocumentProcessingError("VALIDATION_BUDGET_EXCEEDED")
         for stage, evidence, output in audits:
