@@ -24,7 +24,7 @@ def _retry_transaction(operation):
                 while current is not None and id(current) not in seen:
                     seen.add(id(current))
                     original = getattr(current, "orig", current)
-                    if getattr(original, "sqlstate", getattr(original, "pgcode", None)) in {"40001", "40P01"}:
+                    if getattr(original, "sqlstate", getattr(original, "pgcode", None)) in {"40001", "40P01", "55P03"}:
                         aborted = True
                     current = current.__cause__ or current.__context__
                 if attempt or not aborted:
@@ -46,6 +46,21 @@ async def appointment_belongs_to(session, appointment_id, user_id) -> bool:
     return result.scalar_one_or_none() is not None
 
 
+def _attempt_at(value):
+    """Parse an `attempt_started_at` ISO-8601 string into a comparable, timezone-aware
+    datetime, so a 'Z'-suffixed and a '+00:00'-suffixed timestamp for the same instant
+    compare equal instead of being compared as unequal raw strings. A naive (no offset)
+    timestamp is treated as UTC. An empty/missing value normalizes to the minimum
+    representable datetime so it always sorts older than any real timestamp.
+    """
+    from datetime import datetime, timezone
+    if not value:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    parsed = datetime.fromisoformat(normalized)
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+
+
 class ConversationSummariesRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -53,13 +68,8 @@ class ConversationSummariesRepository:
     async def _lock_scope(self, appointment_id, source, user_id=None):
         """Serialize publication using PostgreSQL transaction locks; no schema changes."""
         import hashlib
-        if user_id is not None:
-            from src.app.db.models.appointments import Appointment
-            from sqlalchemy import cast, String
-            owner = await self.session.execute(select(Appointment.id).where(
-                Appointment.id == appointment_id, cast(Appointment.user_id, String) == str(user_id)))
-            if owner.scalar_one_or_none() is None:
-                raise ValueError("APPOINTMENT_SCOPE_MISMATCH")
+        if user_id is not None and not await appointment_belongs_to(self.session, appointment_id, user_id):
+            raise ValueError("APPOINTMENT_SCOPE_MISMATCH")
         key = int.from_bytes(hashlib.sha256(f"{appointment_id}:{source}".encode()).digest()[:8], "big", signed=True)
         await self.session.execute(text("SET LOCAL lock_timeout = '5s'"))
         await self.session.execute(select(__import__("sqlalchemy").func.pg_advisory_xact_lock(key)))
@@ -119,6 +129,7 @@ class ConversationSummariesRepository:
                 pass
             raise DocumentProcessingError("PERSISTENCE_FAILED") from exc
 
+    @_retry_transaction
     async def record_processing_failure(self, appointment_id, source, user_id, errors):
         await self._lock_scope(appointment_id, source, user_id)
         rows = await self.get_all_by_appointment_id_and_source(appointment_id, source)
@@ -278,8 +289,9 @@ class ConversationSummariesRepository:
         sorted, comma-joined `source_document_ids` from its metadata. A merged row's identity
         is therefore stable across re-syncs regardless of which contributing document happens
         to be listed first. Rows without `source_document_ids` (e.g. legacy single-row-per-
-        appointment rows predating this key) resolve to "" and are always treated as stale by
-        `upsert_many_for_source`, since "" never matches a real row's key.
+        appointment rows predating this key) resolve to "" - `upsert_many_for_source` never
+        matches or prunes these keyless rows; it collects them into `keyless_rows`, logs a
+        warning, and leaves them untouched (never silently deleted).
         """
         if not isinstance(summary_metadata, dict):
             return ""
@@ -299,25 +311,39 @@ class ConversationSummariesRepository:
         attempt_started_at=None,
     ) -> List[ConversationSummaries]:
         """
-        Replace ALL conversation_summaries rows for (appointment_id, source) with `rows` -
+        Replace conversation_summaries rows for (appointment_id, source) with `rows` -
         "upsert-then-prune": each row is matched against an existing row by
         `_document_ids_key` (derived from `summary_metadata.source_document_ids`); a match
         updates the existing row in place (keeping its id/created_at), a non-match creates a
-        new row, and any existing row whose key isn't present in `rows` is DELETED. This covers
-        both a document being reclassified/removed since the last sync, and two previously-
-        separate rows just having been consolidated into one (the old second row is deleted).
+        new row. An existing row whose key isn't present in `rows` is DELETED only when
+        `allow_prune=True` AND an owner is established (from `rows[0]["user_id"]`, or the
+        explicit `user_id` kwarg when `rows` is empty) - with `allow_prune=False` (the
+        default) unmatched rows are kept and flagged with a "partial" outcome notice instead
+        of being deleted. Existing rows with no `_document_ids_key` (legacy keyless rows) are
+        never matched or pruned regardless of `allow_prune`; they are collected into
+        `keyless_rows`, logged, and left untouched - deleting them is never automatic.
 
-        Passing an empty `rows` list deletes every existing row for (appointment_id, source) -
-        the correct "no procedures found" signal for the one-row-per-procedure model (no
-        placeholder row is created).
+        Passing an empty `rows` list only deletes anything when `allow_prune=True` and an
+        owner is established via `user_id` - the correct "no procedures found" signal for
+        the one-row-per-procedure model (no placeholder row is created). Without
+        `allow_prune`, an empty `rows` list is a no-op: nothing is deleted.
 
         Each dict in `rows` must be a full summary_data dict (see `upsert`'s docstring for
         shape), with `summary_metadata` containing `source` and `source_document_ids`.
+
+        Locking caveat: `_lock_scope`'s advisory lock only serializes writers that go through
+        this fastapi repository method - it is fastapi-internal serialization, not a
+        table-wide exclusive lock. nodeapi has at least one live write path that updates
+        conversation_summaries rows directly via TypeORM (e.g. re-pointing `appointmentId`
+        on appointment merges in `appointment.service.ts`, unfiltered by `source`) without
+        acquiring this lock.
         """
         try:
             owner_id = rows[0]["user_id"] if rows else user_id
             if allow_prune and owner_id is None:
                 raise ValueError("EMPTY_REPLACEMENT_REQUIRES_OWNER")
+            if any(str(row_data.get("user_id")) != str(owner_id) for row_data in rows):
+                raise ValueError("SUMMARY_SCOPE_MISMATCH")
             await self._lock_scope(appointment_id, source, owner_id)
             for row_data in rows:
                 self._validate_payload(row_data)
@@ -325,13 +351,23 @@ class ConversationSummariesRepository:
             if owner_id is not None and any(str(row.user_id) != str(owner_id) for row in existing_rows):
                 raise ValueError("SUMMARY_SCOPE_MISMATCH")
             incoming_started = (rows[0].get("summary_metadata") or {}).get("attempt_started_at", "") if rows else attempt_started_at
-            if incoming_started and any((row.summary_metadata or {}).get("attempt_started_at", "") > incoming_started for row in existing_rows):
+            if incoming_started and any(_attempt_at((row.summary_metadata or {}).get("attempt_started_at", "")) > _attempt_at(incoming_started) for row in existing_rows):
+                await self.session.rollback()
                 return existing_rows
             existing_by_key = {}
+            keyless_rows = []
             for row in existing_rows:
                 key = self._document_ids_key(row.summary_metadata)
                 if key:
                     existing_by_key.setdefault(key, row)
+                else:
+                    keyless_rows.append(row)
+            if keyless_rows:
+                logger.warning(
+                    f"Retaining {len(keyless_rows)} keyless conversation_summaries row(s) "
+                    f"(no source_document_ids) for appointment_id: {appointment_id}, "
+                    f"source: {source} - never eligible for pruning"
+                )
 
             result: List[ConversationSummaries] = []
             used_keys = set()
@@ -356,7 +392,7 @@ class ConversationSummariesRepository:
                     self.session.add(new_row)
                     result.append(new_row)
 
-            stale_rows = [row for row in existing_rows if allow_prune and row not in result]
+            stale_rows = [row for row in existing_rows if allow_prune and row not in result and row not in keyless_rows]
             if not allow_prune:
                 for row in existing_rows:
                     if row in result:
@@ -388,44 +424,6 @@ class ConversationSummariesRepository:
             )
             raise
 
-    async def get_by_user_id(self, user_id: UUID) -> Optional[ConversationSummaries]:
-        try:
-            result = await self.session.execute(
-                select(ConversationSummaries).where(
-                    ConversationSummaries.user_id == user_id
-                )
-            )
-            return result.scalars().all()
-        except Exception as e:
-            logger.error(f"Error fetching summary for user ID: {user_id}", exc_info=False)
-            raise e
-
-    async def update(self, summary_id: UUID, summary_data: dict) -> Optional[ConversationSummaries]:
-        try:
-            db_summary = await self.get_by_id(summary_id)
-            if db_summary:
-                for key, value in summary_data.items():
-                    if hasattr(db_summary, key):
-                        setattr(db_summary, key, value)
-                await self.session.commit()
-                await self.session.refresh(db_summary)
-            return db_summary
-        except Exception as e:
-            logger.error(f"Error updating summary with ID: {summary_id}", exc_info=False)
-            raise e
-
-    async def delete(self, summary_id: UUID) -> bool:
-        try:
-            db_summary = await self.get_by_id(summary_id)
-            if db_summary:
-                await self.session.delete(db_summary)
-                await self.session.commit()
-                return True
-            return False
-        except Exception as e:
-            logger.error(f"Error deleting summary with ID: {summary_id}", exc_info=False)
-            raise e
-
     @_retry_transaction
     async def upsert(self, appointment_id: UUID, summary_data: dict) -> Optional[ConversationSummaries]:
         """
@@ -454,7 +452,8 @@ class ConversationSummariesRepository:
             if db_summary:
                 incoming = summary_data.get("summary_metadata") or {}
                 previous = db_summary.summary_metadata or {}
-                if incoming.get("attempt_started_at") and previous.get("attempt_started_at", "") > incoming["attempt_started_at"]:
+                if incoming.get("attempt_started_at") and _attempt_at(previous.get("attempt_started_at", "")) > _attempt_at(incoming["attempt_started_at"]):
+                    await self.session.rollback()
                     return db_summary
                 if incoming.get("processing_outcome") in {"unavailable", "no_documents"} and previous.get("processing_outcome") in {"complete", "partial"} and previous.get("validation_status") == "passed":
                     # Whole-dict assignment is required for plain SQLAlchemy JSON columns.
@@ -493,35 +492,4 @@ class ConversationSummariesRepository:
                 f"source: {summary_data.get('summary_metadata', {}).get('source', 'unknown')}",
                 exc_info=False
             )
-            raise e
-
-    async def create_with_metadata(
-        self,
-        summary_data: dict,
-        source: str
-    ) -> ConversationSummaries:
-        """
-        Create a conversation summary with metadata indicating the source
-
-        Args:
-            summary_data: Dictionary containing summary fields
-            source: Source of the summary (e.g., 'fhir_analysis', 'transcript_summarization')
-
-        Returns:
-            Created ConversationSummaries object
-        """
-        try:
-            from datetime import datetime
-
-            # Add metadata to the summary data
-            if "metadata" not in summary_data:
-                summary_data["metadata"] = {}
-
-            summary_data["metadata"]["source"] = source
-            summary_data["metadata"]["created_at"] = datetime.utcnow().isoformat()
-            summary_data["metadata"]["analysis_version"] = "1.0"
-
-            return await self.create(summary_data)
-        except Exception as e:
-            logger.error(f"Error creating summary with metadata: {type(e).__name__}", exc_info=False)
             raise e
