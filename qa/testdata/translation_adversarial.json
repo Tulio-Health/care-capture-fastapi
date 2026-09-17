@@ -1,0 +1,33 @@
+{
+  "source": {
+    "medications": [
+      {
+        "name": "A",
+        "dose": 5
+      },
+      {
+        "name": "B",
+        "dose": 10
+      }
+    ],
+    "active": false,
+    "summary_text": "No fracture. Right knee. Follow-up 2026-10-01."
+  },
+  "reordered": [
+    {
+      "name": "B",
+      "dose": 5
+    },
+    {
+      "name": "A",
+      "dose": 10
+    }
+  ],
+  "wrong_type": {
+    "active": "false"
+  },
+  "empty_narrative": "",
+  "wrong_date": "Follow-up 2026-01-10.",
+  "wrong_status": "Medication continued.",
+  "wrong_laterality": "Left knee."
+}

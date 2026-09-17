@@ -1,0 +1,40 @@
+{
+  "documents": [
+    {
+      "file": "clear_visit_note_ocr.pdf",
+      "original": "../clear_visit_note.pdf",
+      "source_url": "Locally authored synthetic control",
+      "fixture_kind": "synthetic printed clinical document",
+      "reference_text": "SYNTHETIC CLINICAL TEST DOCUMENT\nVisit note\nPatient: Test Patient A\nVisit date: 2026-09-01\nChief complaint: Cough for three days.\nNo fever. No shortness of breath.\nAssessment: Viral upper respiratory infection.\nPlan: Rest and oral fluids.\nChest X-ray ordered. Not yet performed.\nFollow up in one week.",
+      "expected": "Preserve stated facts, values, units, negation and ordered/not-performed status. Invent no diagnosis, medication or procedure.",
+      "pages": 1,
+      "sha256": "b6c575b24cb33ca27dc4409190428d86df97bbcbea09cb943c9b4ddb3afcc870",
+      "original_sha256": "bfbabe8ab7563476f8fbcc8c5aaa99bd16018da32e7534ae555d970354bea97e",
+      "native_text_characters": 0
+    },
+    {
+      "file": "clear_lab_report_ocr.pdf",
+      "original": "../clear_lab_report.pdf",
+      "source_url": "Locally authored synthetic control",
+      "fixture_kind": "synthetic printed clinical document",
+      "reference_text": "SYNTHETIC CLINICAL TEST DOCUMENT\nLaboratory report\nPatient: Test Patient B\nSpecimen collected: 2026-09-02\nHemoglobin: 13.5 g/dL. Reference range: 12.0-16.0 g/dL.\nSodium: 140 mmol/L. Reference range: 135-145 mmol/L.\nPotassium: 4.2 mmol/L. Reference range: 3.5-5.0 mmol/L.\nReport status: Final.",
+      "expected": "Preserve stated facts, values, units, negation and ordered/not-performed status. Invent no diagnosis, medication or procedure.",
+      "pages": 1,
+      "sha256": "4e5d4f344a2bef3c191cd4465b646ac68bc4f8d957ac6907383f948010e2e3fb",
+      "original_sha256": "91f14ac8c840c01b1e2a2ca7ab490a4c1ff2d229e7f73cf7144bbe969cb35c76",
+      "native_text_characters": 0
+    },
+    {
+      "file": "public_handwritten_prescription_ocr.pdf",
+      "original": "../public_handwritten_prescription.jpeg",
+      "source_url": "https://raw.githubusercontent.com/ShubhamRaorane/Handwritten-Prescription-Medicine-Recognition/master/PrescriptionDetection/static/uploadedFiles/demo.jpeg",
+      "fixture_kind": "public pen-written prescription demonstration; not a complete visit note",
+      "expected": "Preserve both handwritten blocks and differing Mixtard quantities. Do not infer frequency, dose units, medication status, diagnosis or performed procedures from x1/x2.",
+      "reference_text": "Visual reference: two handwritten blocks dated 15/04/20, each labelled Doctor XYZ. First: Aciloc x2, Norvasc x1, Mixtard x2. Second: Aciloc x2, Norvasc x1, Mixtard x1. This manual reading is for review only, not passed to any model.",
+      "pages": 1,
+      "sha256": "3c5fa6d9d8d113c2b8493147fec5aeed5f13754970a072f7c41ead0ea0fedbc5",
+      "original_sha256": "1247c109b409de7eed90b73e2625d0cdc1d60bfa9fa5eea4117e612d81431577",
+      "native_text_characters": 0
+    }
+  ]
+}

@@ -15,21 +15,21 @@ def get_chat_model(model_name: str = LLM_MODEL.GPT_4O_MINI, temperature: float =
     """
     Get or create a chat model with SSM-loaded OpenAI API key.
     This function is cached to avoid recreating the model multiple times.
-    
+
     Args:
         model_name: The model to use (default: GPT_4O_MINI)
         temperature: Model temperature (default: 0.2)
-    
+
     Returns:
         Initialized chat model
     """
     settings = get_settings()
-    
+
     if not settings.OPENAI_API_KEY:
         raise ValueError("OpenAI API key not configured. Check SSM parameters.")
-    
+
     logger.info(f"Initializing chat model: {model_name} with temperature: {temperature}")
-    
+
     model = init_chat_model(
         model=model_name,
         model_provider=LLM_PROVIDER.OPENAI,
@@ -41,7 +41,7 @@ def get_chat_model(model_name: str = LLM_MODEL.GPT_4O_MINI, temperature: float =
         timeout=45,
         max_retries=1,
     )
-    
+
     return model
 
 
@@ -72,4 +72,22 @@ def get_pydantic_ai_model(model_name: str = LLM_MODEL.GPT_4O_MINI):
     if not settings.OPENAI_API_KEY:
         raise ValueError("OpenAI API key not configured. Check SSM parameters.")
 
+    from src.app.services.summary_runtime import _current_budget
+    if _current_budget.get() is not None:
+        return OpenAIChatModel(model_name, provider=OpenAIProvider(openai_client=create_document_ai_client()))
     return OpenAIChatModel(model_name, provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY))
+
+def create_document_ai_client():
+    """Dedicated injectable OCR client; never falls back to an alternate API endpoint."""
+    from openai import AsyncOpenAI
+    settings = get_settings()
+    if not settings.OPENAI_API_KEY:
+        raise ValueError("AI_NOT_CONFIGURED")
+    import httpx
+    from src.app.services.summary_runtime import reserve_provider_request, register_client
+    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=45, max_retries=0,
+                         base_url="https://api.openai.com/v1",
+                         http_client=httpx.AsyncClient(timeout=45, trust_env=False,
+                             event_hooks={"request": [reserve_provider_request]}))
+    register_client(client)
+    return client

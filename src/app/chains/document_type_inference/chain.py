@@ -7,6 +7,7 @@ human-readable prompt-formatting helper, since this chain's input is compact str
 JSON (minimal CodeableConcept-derived fields), not long-form document prose.
 """
 
+from src.app.services.summary_runtime import model_call
 import json
 import logging
 from typing import List
@@ -77,6 +78,19 @@ class DocumentTypeInferenceChain:
         self, items: List[DocumentTypeInferenceRequest]
     ) -> List[DocumentTypeInferenceResponse]:
         """Classify a batch of minimal DocumentReference metadata items in a single LLM call."""
-        payload_json = json.dumps([item.model_dump(exclude_none=True) for item in items])
-        result = await self.agent.run(payload_json)
-        return result.output
+        from src.app.services.document_extraction import DocumentProcessingError
+        ids = [item.id for item in items]
+        if len(ids) != len(set(ids)) or len(items) > 100:
+            raise DocumentProcessingError("INVALID_CLASSIFICATION_BATCH")
+        responses = []
+        for offset in range(0, len(items), 5):
+            batch = items[offset:offset + 5]
+            payload_json = json.dumps([item.model_dump(exclude_none=True) for item in batch])
+            if len(payload_json) > 20_000:
+                raise DocumentProcessingError("CLASSIFICATION_INPUT_LIMIT")
+            result = await model_call(self.agent.run, payload_json)
+            returned_ids = [item.id for item in result.output]
+            if len(returned_ids) != len(set(returned_ids)) or set(returned_ids) != {item.id for item in batch}:
+                raise DocumentProcessingError("CLASSIFICATION_ID_MISMATCH")
+            responses.extend(result.output)
+        return responses

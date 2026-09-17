@@ -9,6 +9,7 @@ deduplicate across documents itself — that is `procedure_extraction.consolidat
 run as a separate step over this chain's output (see `ExtractedProcedure`/`extract()` below).
 """
 
+from src.app.services.summary_runtime import model_call
 import asyncio
 import difflib
 import logging
@@ -26,7 +27,12 @@ from src.app.models.attachment_summarization import DocumentAttachment
 from src.app.models.procedure_summarization import (
     NOT_DOCUMENTED_FOLLOW_UP,
     ProcedureSummary,
+    ProcedureDocumentExtraction,
 )
+
+from src.app.services.document_ingestion import require_parsed, mark_parsed
+from src.app.services.document_extraction import DocumentProcessingError
+from src.app.services.clinical_grounding import GROUNDING_POLICY, verify_grounding
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +41,11 @@ _FOLLOWUP_SECTION_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Was 20_000 (an unexamined leftover doubled from attachment_summarization's per-doc cap,
-# which was sized for a smaller-context model). gpt-4.1-mini has a ~1M token context window;
-# 100k chars ~= 25k tokens gives 5x headroom over any realistic procedure report while keeping
-# cost and spurious-retry exposure bounded. Deliberately NOT 200k: at that length, common
-# section-header keywords (recommendation/follow-up/plan/etc.) appear in almost every document
-# somewhere, making the anti-omission validator (see _validate_follow_up_grounding) fire a
-# near-guaranteed extra round-trip on most long documents, for ~10x the cost per document with
-# no diagnosed benefit.
-_MAX_DOC_CHARS = 100_000
+# Bound each model input; larger parsed documents are fully covered by overlapping
+# chunks. A failed chunk fails the document and cannot authorize deletion.
+_MAX_DOC_CHARS = 48_000
+_CHUNK_OVERLAP = 2_000
+_MAX_CHUNKS = 32
 
 # Process-wide cap on concurrent LLM calls from this chain. ProcedureExtractionChain is
 # instantiated fresh per HTTP request, so this MUST be a module-level semaphore (not an
@@ -92,7 +94,9 @@ of what happened and what the patient should know next.
 
 INPUT: one or more procedure documents, each with a title, date, and extracted text.
 
-OUTPUT: exactly one ProcedureSummary object for THE document below.
+OUTPUT: a ProcedureDocumentExtraction envelope with zero or more distinct performed events.
+An order or referral is not a performed event. For each performed event, provide a
+unique event_source_quote copied verbatim from the document.
 It has these fields:
 - source_document_title: the document's title, as given.
 - procedure_type: a short, specific description of the procedure performed (e.g. "Cardiac
@@ -140,7 +144,7 @@ CRITICAL RULES (non-negotiable):
    (e.g. "You were told to..." not "Take...").
 4. Translate medical terminology into plain language while preserving clinical accuracy (e.g.
    "myocardial infarction" -> "heart attack", "aortic stenosis" -> "narrowing of the aortic valve").
-5. Return exactly one ProcedureSummary for the document provided.
+5. Include every distinct, explicitly performed event; return an empty procedures list when none is supported.
 """
 
 
@@ -159,9 +163,7 @@ def _format_document_prompt(doc: DocumentAttachment) -> str:
     header += f"Content-Type: {doc.content_type}\n"
     header += "---\n\n"
 
-    content = doc.extracted_text[:_MAX_DOC_CHARS]
-    if len(doc.extracted_text) > _MAX_DOC_CHARS:
-        content += f"\n\n[... truncated, total: {len(doc.extracted_text)} chars]"
+    content = doc.extracted_text
 
     return header + content
 
@@ -186,61 +188,69 @@ class ProcedureExtractionChain:
         if self._agent is None:
             self._agent = Agent(
                 self.model,
-                output_type=ProcedureSummary,
-                system_prompt=_SYSTEM_PROMPT,
+                output_type=ProcedureDocumentExtraction,
+                system_prompt=_SYSTEM_PROMPT + "\n" + GROUNDING_POLICY + "\nReturn procedures: a list of ZERO OR MORE distinct performed events. Return an empty list for orders, referrals, recommendations, historical mentions without a described performed event, or no procedure. Do not force one result per document. Supply evidence_quotes for every returned event.",
                 model_settings=ModelSettings(
-                    temperature=0.0, timeout=30.0, max_tokens=1500
+                    temperature=0.0, timeout=30.0, max_tokens=4096
                 ),
                 retries=2,
                 deps_type=str,
             )
 
             @self._agent.output_validator
-            async def _validate_follow_up_grounding(
-                ctx: RunContext[str], output: ProcedureSummary
-            ) -> ProcedureSummary:
-                """Enforces the quote-grounding contract from _SYSTEM_PROMPT rule 2: every real
-                follow_up must be traceable to a verbatim quote from the source (anti-fabrication),
-                and a sentinel follow_up is challenged once if the source looks like it has a
-                follow-up section the model may have missed (anti-omission)."""
-                source = ctx.deps
-
-                if output.follow_up == NOT_DOCUMENTED_FOLLOW_UP:
-                    match = _FOLLOWUP_SECTION_PATTERN.search(source)
-                    if match and not output.follow_up_source_quote:
-                        raise ModelRetry(
-                            "The source document appears to contain a follow-up/recommendation/"
-                            f"disposition section (matched keyword: {match.group(0)!r}). Re-check it "
-                            "carefully — if it truly contains no follow-up instructions for the "
-                            "patient, keep the sentinel, but if you find relevant content, extract "
-                            "it into follow_up_source_quote and follow_up."
-                        )
-                    output.follow_up_source_quote = None
-                    return output
-
-                if not output.follow_up_source_quote or not _quote_supported(
-                    output.follow_up_source_quote, source
-                ):
-                    raise ModelRetry(
-                        "follow_up must be supported by follow_up_source_quote copied VERBATIM "
-                        "from the document. Your quote was missing or not found in the source. "
-                        "Either provide the exact quote, or set follow_up to exactly "
-                        f"{NOT_DOCUMENTED_FOLLOW_UP!r} with a null quote."
-                    )
+            async def _validate_follow_up_grounding(ctx: RunContext[str], output: ProcedureDocumentExtraction):
+                from src.app.services.clinical_grounding import validate_quotes
+                if output.procedures:
+                    validate_quotes(output.evidence_quotes, ctx.deps)
+                ranges = []
+                for procedure in output.procedures:
+                    validate_quotes([procedure.event_source_quote], ctx.deps)
+                    if ctx.deps.count(procedure.event_source_quote) != 1:
+                        raise ModelRetry("Use a unique verbatim passage identifying this event, including its local context.")
+                    start = ctx.deps.index(procedure.event_source_quote)
+                    ranges.append((start, start + len(procedure.event_source_quote)))
+                    if procedure.follow_up != NOT_DOCUMENTED_FOLLOW_UP:
+                        validate_quotes([procedure.follow_up_source_quote], ctx.deps)
+                    elif procedure.follow_up_source_quote:
+                        raise ModelRetry("Do not attach a quote to an absent follow-up.")
+                ranges.sort()
+                if any(left[1] > right[0] for left, right in zip(ranges, ranges[1:])):
+                    raise ModelRetry("Each distinct event needs its own non-overlapping evidence passage; do not duplicate an event.")
                 return output
 
         return self._agent
 
-    async def _extract_one(self, doc: DocumentAttachment) -> ProcedureSummary:
+    async def _extract_one(self, doc: DocumentAttachment) -> ProcedureDocumentExtraction:
+        require_parsed(doc)
+        if len(doc.extracted_text) > _MAX_DOC_CHARS:
+            offsets = range(0, len(doc.extracted_text), _MAX_DOC_CHARS - _CHUNK_OVERLAP)
+            if len(offsets) > _MAX_CHUNKS:
+                raise DocumentProcessingError("PROCEDURE_CONTEXT_LIMIT_EXCEEDED")
+            events = {}
+            for offset in offsets:
+                chunk = mark_parsed(doc.model_copy(update={
+                    "extracted_text": doc.extracted_text[offset:offset + _MAX_DOC_CHARS]}))
+                result = await self._extract_one(chunk)
+                for event in result.procedures:
+                    quote = event.event_source_quote
+                    if doc.extracted_text.count(quote) != 1:
+                        raise DocumentProcessingError("INVALID_SOURCE_EVIDENCE")
+                    if quote in events and events[quote].model_dump() != event.model_dump():
+                        raise DocumentProcessingError("CLINICAL_EVIDENCE_FAILED")
+                    events[quote] = event
+            ordered = sorted(events.values(), key=lambda event: doc.extracted_text.index(event.event_source_quote))
+            return ProcedureDocumentExtraction(procedures=ordered,
+                                               evidence_quotes=[event.event_source_quote for event in ordered])
         prompt = _format_document_prompt(doc)
         # deps must match exactly what the model was shown in `prompt` (both capped at
         # _MAX_DOC_CHARS) — the output_validator reads ctx.deps to check quote-grounding and
         # the anti-omission challenge, so a deps/prompt mismatch lets the validator demand
         # content the model was never shown, causing an unwinnable ModelRetry loop.
         async with _LLM_SEMAPHORE:
-            result = await self.agent.run(
+            result = await model_call(self.agent.run,
                 prompt, deps=doc.extracted_text[:_MAX_DOC_CHARS]
             )
+        await verify_grounding(self.model, doc.extracted_text, result.output, scope="performed_events")
         return result.output
 
     async def extract(
@@ -267,19 +277,15 @@ class ProcedureExtractionChain:
         failures: List[dict] = []
         for doc, result in zip(documents, results):
             if isinstance(result, Exception):
-                if isinstance(result, UnexpectedModelBehavior):
-                    logger.error(
-                        f"Procedure extraction failed for document '{doc.title}': model exhausted "
-                        f"retries against the follow_up quote-grounding validator: {result}",
-                        exc_info=result,
-                    )
-                else:
-                    logger.error(
-                        f"Procedure extraction failed for document '{doc.title}': {result}",
-                        exc_info=result,
-                    )
-                failures.append({"file_path": doc.file_path, "error": str(result)})
+                logger.warning("Procedure extraction failed; error_type=%s", type(result).__name__)
+                failures.append({"source_id": doc.resource_id or "unknown", "error": getattr(result, "code", "PROCEDURE_EXTRACTION_FAILED")})
                 continue
             document_id = doc.resource_id or doc.file_path
-            extracted.append(ExtractedProcedure(document_id=document_id, summary=result))
+            import hashlib
+            import json
+            ordered_events = sorted(result.procedures, key=lambda event: doc.extracted_text.find(event.event_source_quote))
+            for ordinal, event in enumerate(ordered_events):
+                identity = json.dumps([doc.content_sha256 or hashlib.sha256(doc.extracted_text.encode()).hexdigest(), ordinal], ensure_ascii=False)
+                event_id = hashlib.sha256(identity.encode()).hexdigest()
+                extracted.append(ExtractedProcedure(document_id=f"{document_id}:event:{event_id}", summary=event))
         return extracted, failures

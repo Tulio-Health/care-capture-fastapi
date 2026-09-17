@@ -1,5 +1,6 @@
 """PydanticAI translation chain for medical conversation summaries."""
 
+from src.app.services.summary_runtime import model_call
 import json
 import logging
 from typing import Dict, Any
@@ -60,7 +61,13 @@ def _same_structure(original: Any, translated: Any) -> bool:
             and len(original) == len(translated)
             and all(_same_structure(o, t) for o, t in zip(original, translated))
         )
-    return True
+    if type(original) is not type(translated):
+        return False
+    if not isinstance(original, str):
+        return original == translated
+    import re
+    # Preserve numeric literals in the same array position, including doses and dates.
+    return re.findall(r"[-+]?\d+(?:[.,]\d+)*", original) == re.findall(r"[-+]?\d+(?:[.,]\d+)*", translated)
 
 
 # Mirrored independently in care-capture-nodeapi's translation fingerprint field list
@@ -200,7 +207,7 @@ class TranslationChain:
                 f"{json.dumps(translatable, ensure_ascii=False, indent=2)}"
             )
 
-            result = await self.agent.run(user_prompt)
+            result = await model_call(self.agent.run, user_prompt)
             translated: TranslatedSummary = result.output
 
             # ponytail: whole-field fallback - one corrupted item reverts the entire field to
@@ -208,6 +215,11 @@ class TranslationChain:
             # List[str] fields the guard is length-only, it cannot detect same-length
             # placeholder/untranslated items
             guarded: Dict[str, Any] = {}
+            fallback_fields = []
+            original_text = summary_data.get("summary_text", "")
+            if not translated.summary_text.strip() or not _same_structure(original_text, translated.summary_text):
+                translated.summary_text = original_text
+                fallback_fields.append("summary_text")
             for field in _GUARDED_FIELDS:
                 original_value = summary_data.get(field)
                 translated_value = getattr(translated, field)
@@ -216,6 +228,8 @@ class TranslationChain:
                     guarded[field] = _guard_translated_data(
                         original_value, translated_value
                     )
+                    if guarded[field] != translated_value:
+                        fallback_fields.append(field)
                     continue
 
                 corrupted = (
@@ -231,16 +245,32 @@ class TranslationChain:
                         field,
                     )
                     guarded[field] = original_value
+                    fallback_fields.append(field)
                 else:
                     guarded[field] = translated_value
+
+            from src.app.services.clinical_grounding import verify_grounding
+            # Reject changed clinical meaning, including negation/status and warning removal.
+            candidate = translated.model_copy(update=guarded)
+            await verify_grounding(self.model, json.dumps(translatable, ensure_ascii=False), candidate, scope="translation")
 
             # Merge translated fields back with original metadata
             merged = dict(summary_data)
             merged.update({"summary_text": translated.summary_text, **guarded})
 
+            if fallback_fields:
+                merged["translation_status"] = "partial"
+                merged["translation_fallback_fields"] = fallback_fields
+                merged["summary_text"] = "Some content could not be translated. The original wording is shown where needed.\n\n" + merged["summary_text"]
+            else:
+                merged["translation_status"] = "complete"
             logger.info(f"Successfully translated summary to {target_language}")
             return merged
 
         except Exception as e:
-            logger.error(f"Translation failed for language {target_language}: {str(e)}")
-            raise ValueError(f"Translation failed: {str(e)}")
+            logger.warning("Translation unavailable; error_type=%s", type(e).__name__)
+            # A translation failure must not replace valid clinical content with a bad draft.
+            merged = dict(summary_data)
+            merged["translation_status"] = "unavailable"
+            merged["summary_text"] = "We couldn’t translate this summary. The original summary is shown below.\n\n" + summary_data.get("summary_text", "")
+            return merged

@@ -38,6 +38,25 @@ class Settings(BaseSettings):
     # Playground (dev-only)
     PLAYGROUND_API_KEY: str = ""
 
+    # Document Storage (S3 download scope allowlist)
+    DOCUMENT_S3_BUCKET: str = ""
+    DOCUMENT_S3_KEY_PREFIX: str = "documents/"
+
+    ENABLE_DOCUMENT_OCR: bool = True
+    DOCUMENT_OCR_MODEL: str = "gpt-4o-mini"
+    DOCUMENT_VERIFICATION_MODEL: str = "gpt-4.1-mini"
+    # Defaults require no deployment/environment changes. Retry is only for truncation.
+    DOCUMENT_OCR_VERIFICATION_OUTPUT_TOKENS: int = Field(default=2048, ge=256, le=4096)
+    DOCUMENT_OCR_VERIFICATION_RETRY_OUTPUT_TOKENS: int = Field(default=4096, ge=256, le=4096)
+    # Per-document vision-call catastrophe-stop, not the primary cost control: the shared
+    # appointment-level WorkBudget.max_model_calls (64, summary_runtime.py) covers every model
+    # call across an entire appointment and binds first in virtually every real scenario. This
+    # only matters when OCR runs outside that budget context. Worst case is 20 OCR pages (the
+    # render worker's OCR_PAGE_LIMIT_EXCEEDED cap) times up to 3 vision calls per transcribed
+    # image (1 initial + up to 2 verification attempts, see transcribe_verified_image) times up
+    # to MAX_REGIONS (12) tiles when a page needs region tiling: 20 * 3 * (1 + 12) = 780.
+    MAX_VISION_CALLS_PER_DOCUMENT: int = Field(default=120, ge=20, le=780)
+
     # Summarization Configuration
     ENABLE_FHIR_FALLBACK: bool = Field(
         default=False,
@@ -156,3 +175,27 @@ def reset_settings() -> None:
     """Call immediately after SSM parameters are injected into os.environ."""
     global _settings
     _settings = None
+
+
+def document_allowed_prefixes() -> list:
+    """
+    Compute the allowed S3 URI prefixes for document downloads.
+
+    This is the only real access control on S3 document downloads today —
+    the production instance role is not scoped to these prefixes — so an
+    unset bucket must never silently resolve to an empty/None allowlist.
+    That exact ambiguity previously turned a deny-all bug into an
+    allow-all one. Fail loud in production instead: raise RuntimeError so
+    misconfiguration is caught at call time, not discovered as an open
+    download endpoint.
+
+    In dev/test, an unset bucket returns [] (deny-all is the safe default
+    when not configured, in non-prod).
+    """
+    settings = get_settings()
+    bucket = settings.DOCUMENT_S3_BUCKET
+    if not bucket:
+        if os.getenv("APP_ENV") == "production":
+            raise RuntimeError("DOCUMENT_S3_BUCKET is required in production")
+        return []
+    return [f"s3://{bucket}/{settings.DOCUMENT_S3_KEY_PREFIX}"]

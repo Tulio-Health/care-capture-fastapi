@@ -1,0 +1,27 @@
+{
+  "summary": {
+    "id": "00000000-0000-0000-0000-000000000010",
+    "created_by": "00000000-0000-0000-0000-000000000002",
+    "summary_text": "SYNTHETIC QA summary",
+    "key_points": [
+      "Iron deficiency anemia"
+    ],
+    "diagnoses": [
+      "Iron deficiency anemia"
+    ],
+    "medications": [
+      {
+        "name": "Medication Q",
+        "dose": "5 mg"
+      }
+    ],
+    "data": {
+      "qa": "preserve",
+      "follow_up": "2 weeks"
+    },
+    "summary_metadata": {
+      "source": "attachment_summary",
+      "unrelated": "preserve"
+    }
+  }
+}

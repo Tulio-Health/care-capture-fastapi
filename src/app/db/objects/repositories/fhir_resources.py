@@ -39,6 +39,9 @@ def _build_exclude_predicates(rules: list) -> list:
     type_col = FhirResource.data["type"].astext
 
     for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        count_before = len(clauses)
         # D-07: only exclude rules
         if rule.get("action") != "exclude":
             continue
@@ -72,6 +75,9 @@ def _build_exclude_predicates(rules: list) -> list:
                 )
                 continue
             clauses.append(type_col.op("~")(value))
+        if len(clauses) > count_before and rule.get("sourceEmr") not in (None, "", "all", "ALL", "*"):
+            source = str(rule["sourceEmr"]).upper()
+            clauses[-1] = and_(clauses[-1], cast(FhirResource.ehr_provider, String) == source)
         # unknown strategy: skip silently (defensive)
 
     return clauses
@@ -360,34 +366,23 @@ class FhirResourcesRepository:
             # Uses three-tier fallback: live → stale → HARDCODED_DOCREF_EXCLUDES floor.
             # D-04: if exclude_clauses is empty, ~or_() is not applied (qualify-all).
             rules_client = get_document_type_rules_client()
-            exclude_rules = await rules_client.get_active_rules_with_fallback()
+            exclude_rules, provenance = await rules_client.resolve_rules()
+            self.eligibility_provenance = provenance
             exclude_clauses = _build_exclude_predicates(exclude_rules)
 
             # Query for DocumentReferences with attachments
             # data ? 'attachments' checks if the key exists
             # jsonb_array_length > 0 ensures the array is not empty
-            query = select(FhirResource).where(
+            from sqlalchemy import case as sql_case, literal
+            decision = sql_case(*[(func.coalesce(clause, False), literal(f"document_type_rule:{index}")) for index, clause in enumerate(exclude_clauses)], else_=None) if exclude_clauses else literal(None)
+            query = select(FhirResource, decision.label("exclusion_reason")).where(
                 and_(
                     FhirResource.user_id == user_id,
                     cast(FhirResource.resource_type, String) == "DocumentReference",
-                    FhirResource.data.op("?")("attachments"),
-                    func.jsonb_array_length(FhirResource.data.op("->")("attachments"))
-                    > 0,
-                    FhirResource.data.op("@>")(
-                        literal_column("'{\"attachments\": [{\"downloadStatus\": \"success\"}]}'::jsonb")
-                    ),
                     func.jsonb_extract_path_text(
                         FhirResource.data, "encounterReference"
                     )
                     == encounter_reference,
-                ),
-                and_(
-                    # Dynamic exclude predicates from DocumentTypeRulesClient (PIPE-05).
-                    # If exclude_clauses is empty (zero exclude rules loaded), use
-                    # sqlalchemy.true() — a documented no-op literal that lets all
-                    # documents pass (qualify-all behavior, consistent with D-04).
-                    # WR-05: avoids undocumented bool coercion in and_(True).
-                    ~or_(*exclude_clauses) if exclude_clauses else true(),
                 ),
             )
 
@@ -396,8 +391,17 @@ class FhirResourcesRepository:
                 func.jsonb_extract_path_text(FhirResource.data, "date").desc()
             )
 
-            result = await self.session.execute(query)
-            resources = result.scalars().all()
+            result = await self.session.execute(query.limit(101).execution_options(populate_existing=True))
+            inventory = result.all()
+            if len(inventory) > 100:
+                from src.app.services.document_extraction import DocumentProcessingError
+                raise DocumentProcessingError("DOCUMENT_LIMIT_EXCEEDED")
+            resources = [resource for resource, reason in inventory if reason is None]
+            excluded = [{"source_id": str(resource.ehr_resource_id), "reason": reason} for resource, reason in inventory if reason is not None]
+            from src.app.services.summary_outcomes import source_manifest
+            self.document_inventory = {"total_references": len(inventory), "excluded_documents": len(excluded),
+                "exclusions": excluded[:20], "exclusions_omitted": max(0, len(excluded)-20),
+                "manifest": source_manifest([resource for resource, reason in inventory])}
 
             logger.info(
                 f"Found {len(resources)} DocumentReferences with attachments for "

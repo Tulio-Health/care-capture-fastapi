@@ -1,5 +1,11 @@
 """S3 client utility for downloading documents from AWS S3."""
 
+import asyncio
+import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from botocore.config import Config
+from src.app.services.document_extraction import DocumentTextExtractor, DocumentProcessingError
 import mimetypes
 import re
 from typing import Tuple
@@ -7,9 +13,11 @@ import boto3
 from botocore.exceptions import ClientError
 
 from src.app.common.logging import get_logger
-from src.app.core.settings import get_settings
+from src.app.core.settings import document_allowed_prefixes
 
 logger = get_logger(__name__)
+_DOWNLOAD_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="document-download")
+_DOWNLOAD_CAPACITY = threading.BoundedSemaphore(4)
 
 
 class S3DocumentClient:
@@ -21,18 +29,21 @@ class S3DocumentClient:
     stored in FHIR DocumentReference resources.
     """
 
-    def __init__(self):
-        """Initialize S3 client using the ambient AWS credentials (IAM role or env vars)."""
-        try:
-            session = boto3.Session()
-            self.s3_client = session.client("s3")
-            self.settings = get_settings()
+    def __init__(self, *, allowed_prefixes=None):
+        self.allowed_prefixes = allowed_prefixes
+        self._s3_client = None
+        self.download_versions = {}
+        self.transport_decode_counts = {}
 
-            logger.info("S3 client initialized")
+    @property
+    def s3_client(self):
+        if self._s3_client is None:
+            self._s3_client = boto3.Session().client("s3", config=Config(connect_timeout=5, read_timeout=15, retries={"max_attempts": 1}))
+        return self._s3_client
 
-        except Exception as e:
-            logger.error(f"Failed to initialize S3 client: {str(e)}")
-            raise
+    @s3_client.setter
+    def s3_client(self, client):
+        self._s3_client = client
 
     def parse_s3_url(self, file_path: str) -> Tuple[str, str]:
         """
@@ -53,24 +64,51 @@ class S3DocumentClient:
             >>> client.parse_s3_url("s3://my-bucket/folder/file.pdf")
             ('my-bucket', 'folder/file.pdf')
         """
-        if not file_path:
+        if not isinstance(file_path, str) or not file_path:
             raise ValueError("File path cannot be empty")
+        if any(ord(character) < 32 or ord(character) == 127 for character in file_path):
+            raise ValueError("Invalid document storage URI")
 
         # Parse S3 URI: s3://bucket/key
         s3_pattern = r"^s3://([^/]+)/(.+)$"
-        match = re.match(s3_pattern, file_path)
+        match = re.fullmatch(s3_pattern, file_path)
 
         if not match:
             raise ValueError(
-                f"Invalid S3 URI format: {file_path}. Expected: s3://bucket/key"
+                "Invalid document storage URI"
             )
 
         bucket = match.group(1)
         key = match.group(2)
 
-        logger.debug(f"Parsed S3 URL - bucket: {bucket}, key: {key}")
+        logger.debug("Validated document storage URI")
 
         return bucket, key
+
+    def authorize_location(self, file_path):
+        """Restrict document downloads to an explicit allowlist of S3 URI prefixes.
+
+        The production instance role is NOT scoped to these prefixes (it has
+        unscoped S3 access), so this allowlist is the only real access
+        control on document downloads today — not defense-in-depth on top
+        of IAM. A restricted caller may inject `allowed_prefixes` explicitly
+        (e.g. tests, internal tooling); otherwise the scope comes from the
+        configured `document_allowed_prefixes()`. Never accept arbitrary
+        request URLs here.
+        """
+        bucket, key = self.parse_s3_url(file_path)
+        if not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", bucket):
+            raise DocumentProcessingError("DOCUMENT_ACCESS_DENIED")
+        prefixes = self.allowed_prefixes
+        if prefixes is None:
+            prefixes = document_allowed_prefixes()
+        for prefix in prefixes:
+            if not isinstance(prefix, str) or not prefix.startswith("s3://"):
+                continue
+            allowed_bucket, separator, allowed_key = prefix[5:].partition("/")
+            if separator and bucket == allowed_bucket and (key == allowed_key or prefix.endswith("/") and key.startswith(allowed_key)):
+                return bucket, key
+        raise DocumentProcessingError("DOCUMENT_ACCESS_DENIED")
 
     async def download_document(self, file_path: str) -> bytes:
         """
@@ -87,50 +125,73 @@ class S3DocumentClient:
             ClientError: If S3 download fails (file not found, access denied, etc.)
             Exception: For other download errors
         """
-        try:
-            # Parse S3 URL
-            bucket, key = self.parse_s3_url(file_path)
+        bucket, key = self.authorize_location(file_path)
+        def download():
+            try:
+                response = self.s3_client.get_object(Bucket=bucket, Key=key)
+            except ClientError as exc:
+                code = exc.response.get("Error", {}).get("Code")
+                mapped = "DOCUMENT_NOT_FOUND" if code in {"NoSuchKey", "404"} else "DOCUMENT_ACCESS_DENIED" if code in {"AccessDenied", "403"} else "DOWNLOAD_UNAVAILABLE"
+                raise DocumentProcessingError(mapped) from exc
+            body = response["Body"]
+            try:
+                limit = DocumentTextExtractor.MAX_FILE_SIZE
+                if response.get("ContentLength", 0) > limit:
+                    raise DocumentProcessingError("FILE_TOO_LARGE")
+                chunks, total = [], 0
+                deadline = time.monotonic() + 45
+                while True:
+                    if time.monotonic() >= deadline:
+                        raise DocumentProcessingError("DOWNLOAD_TIMEOUT")
+                    chunk = body.read(min(64 * 1024, limit + 1 - total))
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > limit:
+                        raise DocumentProcessingError("FILE_TOO_LARGE")
+                    chunks.append(chunk)
+                content = b"".join(chunks)
+                encoding = (response.get("ContentEncoding") or "identity").strip().lower()
+                self.transport_decode_counts[file_path] = 0
+                if encoding == "gzip":
+                    import gzip
+                    import io
+                    try:
+                        with gzip.GzipFile(fileobj=io.BytesIO(content)) as compressed:
+                            content = compressed.read(limit + 1)
+                    except (OSError, EOFError) as exc:
+                        raise DocumentProcessingError("INVALID_COMPRESSION") from exc
+                    if len(content) > limit:
+                        raise DocumentProcessingError("FILE_TOO_LARGE")
+                    self.transport_decode_counts[file_path] = 1
+                elif encoding != "identity":
+                    raise DocumentProcessingError("UNSUPPORTED_FORMAT")
+                self.download_versions[file_path] = response.get("VersionId") or response.get("ETag")
+                return content
+            finally:
+                body.close()
+        if not _DOWNLOAD_CAPACITY.acquire(blocking=False):
+            raise DocumentProcessingError("DOWNLOAD_BUSY")
+        def bounded_download():
+            try:
+                return download()
+            finally:
+                _DOWNLOAD_CAPACITY.release()
+        return await asyncio.get_running_loop().run_in_executor(_DOWNLOAD_POOL, bounded_download)
 
-            logger.info(f"Downloading document from S3 - bucket: {bucket}, key: {key}")
-
-            # Download file from S3
-            response = self.s3_client.get_object(Bucket=bucket, Key=key)
-            content = response["Body"].read()
-
-            content_length = len(content)
-            logger.info(
-                f"Successfully downloaded document - "
-                f"bucket: {bucket}, key: {key}, size: {content_length} bytes"
-            )
-
-            return content
-
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "Unknown")
-            error_message = e.response.get("Error", {}).get("Message", str(e))
-
-            if error_code == "NoSuchKey":
-                logger.error(f"S3 file not found - bucket: {bucket}, key: {key}")
-                raise ValueError(f"File not found in S3: {file_path}") from e
-            elif error_code == "AccessDenied":
-                logger.error(f"S3 access denied - bucket: {bucket}, key: {key}")
-                raise ValueError(f"Access denied to S3 file: {file_path}") from e
-            else:
-                logger.error(
-                    f"S3 download failed - bucket: {bucket}, key: {key}, "
-                    f"error: {error_code} - {error_message}"
-                )
-                raise Exception(f"Failed to download from S3: {error_message}") from e
-
-        except ValueError:
-            # Re-raise ValueError (from parse_s3_url)
-            raise
-
-        except Exception as e:
-            logger.error(
-                f"Unexpected error downloading from S3: {file_path}", exc_info=e
-            )
-            raise Exception(f"Failed to download document: {str(e)}") from e
+    async def validate_download_versions(self):
+        for path, version in self.download_versions.items():
+            bucket, key = self.authorize_location(path)
+            if not _DOWNLOAD_CAPACITY.acquire(blocking=False):
+                raise DocumentProcessingError("DOWNLOAD_BUSY")
+            def bounded_head(bucket=bucket, key=key):
+                try:
+                    return self.s3_client.head_object(Bucket=bucket, Key=key)
+                finally:
+                    _DOWNLOAD_CAPACITY.release()
+            current = await asyncio.get_running_loop().run_in_executor(_DOWNLOAD_POOL, bounded_head)
+            if not version or (current.get("VersionId") or current.get("ETag")) != version:
+                raise DocumentProcessingError("SOURCE_VERSION_CHANGED")
 
     def get_content_type_from_path(self, file_path: str) -> str:
         """
@@ -151,5 +212,5 @@ class S3DocumentClient:
         mime_type, _ = mimetypes.guess_type(file_path)
         if mime_type:
             return mime_type
-        logger.warning(f"Unknown file extension for {file_path}, defaulting to application/octet-stream")
+        logger.debug("Unknown file extension; content signature detection required")
         return "application/octet-stream"

@@ -95,6 +95,8 @@ class SSMParameterLoader:
                 "internal/service_key", "INTERNAL_SERVICE_KEY", is_secure=True
             ),
             SSMParameterMapping("urls/node_api_url", "NODE_API_URL"),
+            # Document Storage (S3 download scope allowlist)
+            SSMParameterMapping("care-capture-emr/s3/bucket_name", "DOCUMENT_S3_BUCKET"),
             # Playground (dev-only)
             SSMParameterMapping(
                 "playground/api_key", "PLAYGROUND_API_KEY", is_secure=True

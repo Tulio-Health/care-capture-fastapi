@@ -232,19 +232,25 @@ class DocumentTypeRulesClient:
         Every tier drop is logged (D-05). The INTERNAL_SERVICE_KEY is never
         included in any log message (T-04-01).
         """
+        return (await self.resolve_rules())[0]
+
+    async def resolve_rules(self):
+        """Return a rule set and the provenance of that exact resolution."""
+        import hashlib
+        import json
         try:
-            return await self.get_active_rules()
+            rules = await self.get_active_rules()
+            tier = "live"
         except Exception:
             if self._last_known_good is not None:
-                logger.error(
-                    "[DocumentTypeRulesClient] fetch failed; serving last-known-good (stale) tier"
-                )
-                return self._last_known_good
+                rules = self._last_known_good
+                tier = "stale"
             else:
-                logger.error(
-                    "[DocumentTypeRulesClient] fetch failed; no prior fetch — serving HARDCODED floor (15 rules)"
-                )
-                return list(HARDCODED_DOCREF_EXCLUDES)  # IN-01: return a copy to prevent mutation
+                rules = list(HARDCODED_DOCREF_EXCLUDES)
+                tier = "floor"
+            logger.warning("Document rules using %s fallback", tier)
+        digest = hashlib.sha256(json.dumps(rules, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        return rules, {"tier": tier, "digest": digest}
 
     async def warm_up(self) -> None:
         """

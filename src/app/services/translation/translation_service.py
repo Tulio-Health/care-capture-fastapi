@@ -64,6 +64,7 @@ class TranslationService:
                 "instructions": summary.instructions,
                 "recommendations": summary.recommendations,
                 "data": summary.data,
+                "summary_metadata": summary.summary_metadata,
                 "created_at": summary.created_at.isoformat(),
                 "updated_at": summary.updated_at.isoformat(),
                 "created_by": str(summary.created_by),
@@ -116,10 +117,10 @@ class TranslationService:
             return translation_response.model_dump(by_alias=True)
             
         except ValueError as e:
-            logger.error(f"Translation failed for summary {summary_id}: {str(e)}")
+            logger.error("Translation failed; error_type=%s", type(e).__name__)
             raise
         except Exception as e:
-            logger.error(f"Unexpected error during translation of summary {summary_id}: {str(e)}")
-            raise ValueError(f"Translation failed: {str(e)}")
+            logger.error("Translation failed; error_type=%s", type(e).__name__)
+            raise ValueError("Translation could not be completed safely") from e
     
 

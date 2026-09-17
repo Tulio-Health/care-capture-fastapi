@@ -1,0 +1,4 @@
+SYNTHETIC QA
+2026-09-01: Medication Q 5 mg daily.
+2026-09-08: Medication Q 10 mg daily.
+Undated note: Medication Q 20 mg daily.

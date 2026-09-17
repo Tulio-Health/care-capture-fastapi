@@ -14,7 +14,7 @@ documents before persisting one `conversation_summaries` row per CONSOLIDATED pr
 from datetime import datetime
 from typing import Any, List
 
-from sqlalchemy import select
+from sqlalchemy import select, cast, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.app.chains.procedure_extraction.chain import ProcedureExtractionChain
@@ -35,7 +35,10 @@ from src.app.models.procedure_summarization import (
     ProcedureSummary,
 )
 from src.app.services.document_extraction import DocumentTextExtractor
+from src.app.services.summary_outcomes import outcome_metadata, MESSAGES
 from src.app.utils.s3_client import S3DocumentClient
+
+from src.app.services.summary_runtime import bounded_summary
 
 logger = get_logger(__name__)
 
@@ -76,9 +79,12 @@ class ProcedureSummarizationService:
         self.fhir_repo = FhirResourcesRepository(db)
         self.summaries_repo = ConversationSummariesRepository(db)
         self.s3_client = S3DocumentClient()
+        from src.app.core.settings import get_settings
+        settings = get_settings()
         self.text_extractor = DocumentTextExtractor()
         self.logger = logger
 
+    @bounded_summary
     async def analyze_procedures(
         self, request: ProcedureSummarizationRequest
     ) -> List[ConversationSummary]:
@@ -114,11 +120,13 @@ class ProcedureSummarizationService:
             )
             return await self._persist(request, consolidated=[], documents_analyzed=0, extraction_errors=[])
 
+        from src.app.services.summary_outcomes import source_manifest
+        initial_manifest = source_manifest(doc_references)
         extracted_documents = await self._process_attachments(doc_references)
 
         valid_documents = [doc for doc in extracted_documents if not doc.extraction_error]
         extraction_errors = [
-            {"file_path": doc.file_path, "error": doc.extraction_error}
+            {"source_id": doc.resource_id or "unknown", "error": doc.extraction_error}
             for doc in extracted_documents
             if doc.extraction_error
         ]
@@ -140,6 +148,13 @@ class ProcedureSummarizationService:
 
         consolidator = ProcedureConsolidator()
         consolidated = await consolidator.consolidate(extracted)
+        current = await self._fetch_procedure_document_references(request, appointment)
+        try:
+            if source_manifest(current) != initial_manifest:
+                raise ValueError("SOURCE_MANIFEST_CHANGED")
+            await self.s3_client.validate_download_versions()
+        except Exception:
+            return await self._persist(request, [], 0, [{"error": "SOURCE_CHANGED"}])
 
         self.logger.info(
             f"Procedure summarization completed - appointment_id: {request.appointment_id}, "
@@ -180,11 +195,31 @@ class ProcedureSummarizationService:
                 f"Procedure extraction errors for appointment {request.appointment_id}: {extraction_errors}"
             )
 
+        if not consolidated and documents_analyzed and not extraction_errors:
+            # Authoritative, fully successful extraction found no performed events.
+            preserved = await self.summaries_repo.upsert_many_for_source(request.appointment_id, _SOURCE, [], allow_prune=True,
+                user_id=request.user_id, attempt_started_at=outcome_metadata("complete")["attempt_started_at"])
+            return [ConversationSummary.model_validate(row) for row in preserved]
+        if not consolidated:
+            # Empty or unsuccessful inventory is not proof of deletion. Retain last good rows.
+            if extraction_errors:
+                existing = await self.summaries_repo.record_processing_failure(request.appointment_id, _SOURCE, request.user_id, extraction_errors)
+                if not existing:
+                    from src.app.services.document_extraction import DocumentProcessingError
+                    raise DocumentProcessingError("PROCEDURE_SUMMARY_UNAVAILABLE")
+            else:
+                existing = await self.summaries_repo.record_processing_failure(request.appointment_id, _SOURCE, request.user_id, [{"error": "NO_CURRENT_PROCEDURE_DOCUMENTS"}])
+            return [ConversationSummary.model_validate(row) for row in existing if str(row.user_id) == str(request.user_id)]
         rows = []
         for item in consolidated:
             p = item.summary
             summary_metadata: dict = {
                 "source": _SOURCE,
+                **outcome_metadata("partial" if extraction_errors else "complete", extraction_errors),
+                "processing_errors": extraction_errors,
+                "pipeline_version": "document-safety-1",
+                "is_clinical_summary": True,
+                "validation_status": "passed",
                 "summaryType": "procedure",
                 "source_document_title": p.source_document_title,
                 "source_document_ids": sorted(item.document_ids),
@@ -200,7 +235,7 @@ class ProcedureSummarizationService:
                     "user_id": request.user_id,
                     "created_by": request.user_id,
                     "updated_by": request.user_id,
-                    "summary_text": _build_summary_text(p),
+                    "summary_text": (MESSAGES["partial"] + "\n\n" if extraction_errors else "") + _build_summary_text(p),
                     "data": {
                         "procedure_type": p.procedure_type,
                         "reason": p.reason,
@@ -221,11 +256,12 @@ class ProcedureSummarizationService:
             appointment_id=request.appointment_id,
             source=_SOURCE,
             rows=rows,
+            allow_prune=not extraction_errors,
         )
         return [ConversationSummary.model_validate(s) for s in db_summaries]
 
     async def _fetch_appointment(self, request: ProcedureSummarizationRequest) -> Appointment:
-        appointment_stmt = select(Appointment).where(Appointment.id == request.appointment_id)
+        appointment_stmt = select(Appointment).where(Appointment.id == request.appointment_id, cast(Appointment.user_id, String) == str(request.user_id))
         appointment_result = await self.db.execute(appointment_stmt)
         appointment = appointment_result.scalar_one_or_none()
 
@@ -248,7 +284,7 @@ class ProcedureSummarizationService:
         )
 
         procedure_doc_references = [
-            doc_ref for doc_ref in doc_references if doc_ref.data.get("isProcedureDocument") is True
+            doc_ref for doc_ref in doc_references if isinstance(doc_ref.data, dict) and doc_ref.data.get("isProcedureDocument") is True
         ]
 
         self.logger.debug(
@@ -260,81 +296,5 @@ class ProcedureSummarizationService:
         return procedure_doc_references
 
     async def _process_attachments(self, doc_references: List[Any]) -> List[DocumentAttachment]:
-        """Download and extract text from all procedure-document attachments. Mirrors
-        AttachmentSummarizationService._process_attachments exactly (same S3/extraction
-        pattern), scoped to the already-filtered procedure doc_references."""
-        extracted_documents: List[DocumentAttachment] = []
-
-        for doc_ref in doc_references:
-            attachments_data = doc_ref.data.get("attachments")
-            if not attachments_data:
-                continue
-
-            attachments = attachments_data if isinstance(attachments_data, list) else [attachments_data]
-
-            for attachment in attachments:
-                file_path = attachment.get("filePath")
-                try:
-                    if attachment.get("downloadStatus") != "success":
-                        self.logger.debug(
-                            f"Skipping attachment with status '{attachment.get('downloadStatus')}' "
-                            f"for document {doc_ref.ehr_resource_id}"
-                        )
-                        continue
-
-                    if not file_path:
-                        self.logger.warning(f"Attachment missing filePath for document {doc_ref.ehr_resource_id}")
-                        continue
-
-                    content_type = attachment.get("contentType", "application/pdf")
-                    title = attachment.get("title") or doc_ref.data.get("type", "Procedure Document")
-                    file_name = attachment.get("fileName")
-                    size = attachment.get("size")
-
-                    doc_date = None
-                    if doc_ref.data.get("date"):
-                        try:
-                            doc_date = datetime.fromisoformat(doc_ref.data["date"].replace("Z", "+00:00"))
-                        except (ValueError, AttributeError):
-                            pass
-
-                    content = await self.s3_client.download_document(file_path)
-                    text = self.text_extractor.extract_text(content, content_type, file_name or file_path)
-
-                    extracted_documents.append(
-                        DocumentAttachment(
-                            file_path=file_path,
-                            content_type=content_type,
-                            title=title,
-                            date=doc_date,
-                            document_type=doc_ref.data.get("type"),
-                            file_name=file_name,
-                            size=size,
-                            extracted_text=text,
-                            extraction_error=None,
-                            resource_id=doc_ref.ehr_resource_id,
-                        )
-                    )
-
-                except Exception as e:
-                    error_msg = f"{type(e).__name__}: {str(e)}"
-                    self.logger.error(
-                        f"Failed to process procedure attachment: {file_path} - {error_msg}",
-                        exc_info=True,
-                    )
-                    extracted_documents.append(
-                        DocumentAttachment(
-                            file_path=file_path or "unknown",
-                            content_type=attachment.get("contentType", "unknown"),
-                            title=attachment.get("title", "Unknown Procedure Document"),
-                            date=None,
-                            document_type=doc_ref.data.get("type"),
-                            file_name=attachment.get("fileName"),
-                            size=attachment.get("size"),
-                            extracted_text="",
-                            extraction_error=error_msg,
-                            resource_id=doc_ref.ehr_resource_id,
-                        )
-                    )
-
-        return extracted_documents
+        from src.app.services.document_ingestion import process_attachments
+        return await process_attachments(doc_references, self.s3_client, self.text_extractor)

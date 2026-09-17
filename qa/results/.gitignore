@@ -1,0 +1,4 @@
+# Keep only folder documentation and these rules in version control.
+/*
+!/.gitignore
+!/README.md

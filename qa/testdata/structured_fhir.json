@@ -1,0 +1,8 @@
+[
+  {
+    "resourceType": "Condition",
+    "codeText": "Synthetic documented condition",
+    "clinicalStatus": "active",
+    "verificationStatus": "confirmed"
+  }
+]

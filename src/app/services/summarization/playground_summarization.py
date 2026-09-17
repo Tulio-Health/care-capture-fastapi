@@ -154,12 +154,12 @@ class PlaygroundSummarizationService:
         except Exception as e:
             self.logger.error(
                 f"Failed to initialize summarization chain - "
-                f"request_id: {request.request_id}, error: {str(e)}"
+                f"request_id: {request.request_id}, error: {type(e).__name__}"
             )
             raise ExternalServiceError(
                 service="TranscriptSummarizationChain",
                 message="Failed to initialize summarization service",
-                details=str(e),
+                details="Processing failed",
             )
 
         # Generate summary
@@ -171,12 +171,12 @@ class PlaygroundSummarizationService:
         except Exception as e:
             self.logger.error(
                 f"Summarization process failed - "
-                f"request_id: {request.request_id}, error: {str(e)}"
+                f"request_id: {request.request_id}, error: {type(e).__name__}"
             )
             raise ExternalServiceError(
                 service="OpenAI/LLM",
                 message="Summarization process failed",
-                details=f"Error during text processing: {str(e)}",
+                details=f"Error during text processing: {type(e).__name__}",
             )
 
         # Validate and parse response
@@ -191,7 +191,7 @@ class PlaygroundSummarizationService:
         except Exception as e:
             self.logger.error(
                 f"Summary model validation failed - "
-                f"request_id: {request.request_id}, error: {str(e)}"
+                f"request_id: {request.request_id}, error: {type(e).__name__}"
             )
             # Re-raise validation errors to be handled by error handlers
             raise

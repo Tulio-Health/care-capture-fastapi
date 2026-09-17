@@ -420,7 +420,7 @@ Reuse `EmptyPastVisitSummary` with status-specific title/description. Add a part
 Use separate concepts for the latest processing attempt and the latest valid clinical summary.
 
 - Record attempts with input checksum/manifest, parser version, prompt/model version, status, timing and coverage.
-- Prefer a dedicated processing-attempt record when changing an existing valid summary would otherwise destroy it. Confirm database migration ownership between TypeORM and SQLAlchemy before adding schema.
+- Record latest attempt outcomes in existing summary metadata while preserving validated clinical content. A separate attempt table and all schema changes are outside the approved scope.
 - On a transient reprocessing failure, preserve the last-good summary; display that it could not be refreshed. Do not label it as newly generated or complete for changed inputs.
 - If an old summary is confirmed inaccurate, explicitly mark it invalid/superseded and remove it from normal clinical consumption. Do not silently preserve known-wrong content as last-good.
 - A failed procedure extraction must not be converted into “no procedures” or prune valid procedure rows.
@@ -509,7 +509,7 @@ Use synthetic or appropriately de-identified fixtures. Keep the actual incident 
 
 Mock the model client and inspect every call's inputs:
 
-- Unsupported/failure fixtures must produce **zero** document-content model calls.
+- Unsupported container and parser-failure fixtures must produce **zero** content-model calls. An approved OCR/vision extraction failure may have extraction calls, but must produce **zero clinical summarization calls** if no accepted content remains.
 - Valid fixtures must contain extracted clinical text and provenance, not file markup or base64 envelopes.
 - Partial fixtures must contain only validated segments and preserve the failure manifest outside model-generated content.
 - Assert that no fallback branch constructs a valid input object from an extraction exception.
@@ -520,8 +520,8 @@ Use golden extracted-text fixtures and deterministic status tests for routine CI
 
 Current FastAPI `src/app/tests/conftest.py` imports application startup and uses a module-level property exported as `engine` with synchronous schema creation/deletion. Repair test isolation before running the full suite:
 
-- Dedicated disposable database only; enforce a test-only database identity.
-- Async engine/connection and `run_sync` for schema setup where appropriate.
+- For this regression pack, use only in-memory repository/session fakes; no database connection or schema setup/teardown.
+- Inspect ORM attribute state offline where appropriate; do not create an engine or execute SQL.
 - Override dependencies and disable real SSM, S3, scheduler, Redis and model calls in ordinary unit tests.
 - Keep protected-artifact and real-model tests opt-in and separate from default CI.
 - Do not allow test teardown to run against application/production configuration.
@@ -550,7 +550,7 @@ Exit: MIME/encoding routing and parser-failure regression tests pass; failed inp
 
 ### Phase 2 — Shared structured parser service
 
-Introduce adapters, typed results, encoding policy, provenance, coverage, resource limits and durable attempt tracking. Enable tested OCR and legacy converters only behind independent flags.
+Introduce adapters, typed results, encoding policy, provenance, coverage, resource limits and latest-outcome tracking in existing summary metadata. Do not add attempt tables or queue infrastructure. Enable tested OCR and legacy converters only behind independent flags.
 
 Exit: every model-facing document path uses the shared gate; unknown types are explicit; workers remain within tested resource budgets.
 
@@ -560,9 +560,9 @@ Replace silent slices with tracked chunk processing. Add evidence-backed procedu
 
 Exit: late/middle document content is processed, procedure-order cases pass, every failure affects completeness status, and real-model evaluation meets pre-agreed quality/cost/latency criteria.
 
-### Phase 4 — Cross-service and operational readiness
+### Phase 4 — FastAPI compatibility and operational readiness
 
-Verify Node metadata passthrough, translations, mobile display, notification rules, source-scoped persistence, metrics, dashboards and retry tooling. Add backend CI gates before deployment.
+Verify FastAPI translations, existing response/metadata contracts, source-scoped persistence, safe errors and metrics. Review existing Node/mobile/notification behavior read-only and record limitations; no sibling-service changes are required. Add backend CI gates before deployment.
 
 Exit: end-to-end tests cover no documents, total failure, partial success, successful regeneration and preservation of prior versions.
 
@@ -572,7 +572,7 @@ Exit: end-to-end tests cover no documents, total failure, partial success, succe
 - Shadow-run detection/extraction on an approved sample without publishing duplicate summaries or multiplying model calls.
 - Compare extraction success and clinical content retention across vendors and formats.
 - Canary the strict pipeline on a small, monitored cohort; expand only after acceptance gates pass.
-- Reprocess affected historical records through a separate scoped, idempotent job with a dry-run manifest.
+- Historical correction is deferred until separately authorized; any later job must be scoped and idempotent with a reviewed dry-run manifest.
 - Confirm the new result is visible on mobile and no stale translated/cache version remains.
 
 Exit: monitored rollout stable, incident replay approved, selected historical corrections verified, and support documentation ready.
@@ -626,7 +626,7 @@ The containment work can proceed without broad product decisions. Record the fol
 - Approved OCR/conversion engine and deployment isolation.
 - Per-format byte/page/time/memory limits, based on measurements.
 - Partial-summary policy for clinically important unreadable sections.
-- Migration ownership and storage design for processing attempts.
+- Existing metadata ownership and bounded storage design for latest processing outcomes; no migrations.
 - Exact supported charset/format registry and versioning policy.
 - Quality thresholds and clinical evaluation ownership.
 - Retry budgets and asynchronous processing behavior for large documents.
@@ -772,9 +772,9 @@ Evidence:
 
 A schema created from the stale Python model cannot represent the intended multi-summary design. With a migrated nonunique schema, concurrent first writes can race unless an external lock or database constraint protects the appropriate identity. Concurrent regenerations can also let older work overwrite newer output.
 
-Fix: align ORM definitions with migration ownership; inspect deployed constraints before changes; add source-appropriate uniqueness/idempotency and generation checks. Single-row summary sources and multiple procedure rows need different identities.
+Fix: align ORM definitions with migration ownership; inspect deployed constraints before changes; enforce source-appropriate idempotency and generation checks using existing schema and supported locking; do not add uniqueness constraints or migrations. Single-row summary sources and multiple procedure rows need different identities.
 
-Regression tests: fresh schema fidelity, concurrent same-source writes, multiple sources on one appointment, concurrent procedure batches, and stale-job completion.
+Regression specifications: static ORM mapping fidelity without DDL, concurrent same-source service decisions, multiple sources on one appointment, concurrent procedure batches, and stale-job completion. QA persistence is in memory; actual database isolation remains unverified.
 
 ### A11 — Medium: fixing cache validation alone will expose stale-result reuse
 
@@ -990,9 +990,9 @@ Initial integration:
 
 - Preserve successful summary/list response shapes.
 - Add processing metadata to persisted summaries and comprehensive responses where additive fields are supported.
-- Provide attempt-level status through a dedicated status contract for cases with no clinical rows.
+- When no procedure rows exist, return the existing endpoint’s safe typed failure; do not add a status endpoint or fake clinical row.
 - The procedure endpoint returns a typed non-2xx error for total processing failure, rather than a successful empty list that causes destructive interpretation. Genuine no-procedure output can remain an empty list when established by successful processing.
-- Current mobile can receive deterministic no-summary/partial copy through the existing Hospital Summary display as already agreed. Node must explicitly adapt attempt status to display data; HTTP errors alone are insufficient for persisted visit screens.
+- Current mobile can receive deterministic no-summary/partial copy through the existing Hospital Summary display as already agreed. FastAPI persists deterministic display copy through the existing summary-text contract where a summary row or permitted attachment placeholder exists. No Node adapter change is required; zero-row procedure failures retain the previously stated display limitation.
 
 HTTP policy for request/control endpoints:
 
@@ -1486,3 +1486,212 @@ Use the existing typed-error mechanism and canonical codes such as `OCR_REQUIRED
 Before enabling a model/adapter, use an approved representative corpus with verified transcriptions and clinical review. Set and record acceptance thresholds for clinical transcription errors, omission, false acceptance of unreadable content, coverage, latency and cost. Test real-model variability as well as deterministic routing/failure fixtures. Include multilingual reports and connector-specific examples.
 
 Roll out behind a dedicated vision-extraction flag, independently of the strict parsing gate. Disabling the adapter yields an explicit OCR-required/unsupported outcome; it must never restore raw forwarding. These requirements extend Sections 24–25 and do not delay the initial removal of unsafe parser fallbacks.
+
+## 27. Regression pack and execution constraints
+
+The regression pack is under `qa/summary_regression/`; start with [qa/README.md](README.md). The initial inventory contains 476 case specifications, 100 synthetic fixture files and 54 requirement groups in a traceable coverage map. Coverage spans the full fix plan, not only RTF: format/MIME/parameter matrices, encodings, malformed/unsupported content, scans, resource limits, grounding/translation, A01–A11, errors, display and safe persistence decisions.
+
+**User instruction: do not run regressions before the fixes are implemented.** All cases remain NOT RUN. Fixture generation and documentation consistency checks are not application regression results. No model evaluation or application/database access was performed to create the pack.
+
+**User instruction: regression results must not be stored in a database.** Future explicit runs write JSON and Markdown reports only under `qa/results/<UTC timestamp>/`. Every repository dependency in the regression adapter must be an in-memory fake; no production or test database connection, SQL, DDL or migration is permitted. These tests can verify service decisions but cannot certify actual database isolation or locking.
+
+The pack includes expected outcomes, adversarial response data, fault-injection specifications, an opt-in runner and a deliberately unimplemented adapter template. Wire actual fixed service code to the adapter before execution. Missing integrations, optional adapters and outstanding human review must remain BLOCKED/REVIEW_REQUIRED, never silently pass. `COVERAGE.md` and `RELEASE_CHECKLIST.md` identify limits and positive-quality fixture requirements before additional formats are enabled.
+
+## 28. Final FastAPI source review — additional gaps
+
+**Review method:** static inspection of current FastAPI routes, services, chains, repositories and middleware. No regression, application startup, database access or real-model call was performed. The code paths below are confirmed from source; production frequency and exploitability were not measured. These additions refine the earlier broad requirements and add missing concrete cases.
+
+### A12 — P0: bind patient, appointment, caller and stored-source ownership
+
+Evidence:
+
+- `src/app/services/summarization/attachment_summarization.py:209` and `procedure_summarization.py:228` select appointments by appointment ID alone.
+- `src/app/db/objects/repositories/conversation_summaries.py:86` retrieves cached summaries by appointment/source without a patient predicate.
+- Summarization routes in `src/app/routes/care_capture.py` accept request-body user IDs; global authentication in `common/middleware/clerk_auth.py` populates request identity but does not itself prove ownership of each appointment.
+
+Risk: mismatched patient/appointment input can use another appointment's context, retrieve a wrongly scoped cached summary, or target an existing row for update. Authentication is present; the missing explicit ownership binding must not be described as proof of an observed unauthorized disclosure. Caller/delegation rules still require verification.
+
+Required fix: authorize before cache lookup, FHIR inventory, downloads or model calls. Resolve Clerk identity versus internal patient UUID through the established mapping; do not compare incompatible identifiers as raw strings. Verify appointment ownership and approved caregiver/internal-service delegation. Carry authorized patient/appointment/source scope through every read and write. Validate allowed S3 bucket/key scope where FastAPI downloads attachment paths with ambient credentials (`utils/s3_client.py:63–97`). Keep all authorization errors separate from parsing errors and produce zero content-model calls and zero writes on failure.
+
+### A13 — P0: malformed attachment metadata can break failure handling
+
+Evidence:
+
+- `attachment_summarization.py:287–366`: `file_path` is assigned after `attachment.get(...)`, but referenced in the exception handler. An invalid first item can leave it unbound; a later invalid item can reuse the preceding attachment's path. The handler also repeats `.get(...)` and rebuilds a strict `DocumentAttachment` from the same invalid metadata.
+- `procedure_summarization.py:275–276`: `attachment.get("filePath")` occurs before the per-item `try` block.
+- `db/objects/repositories/fhir_resources.py:374` uses `jsonb_array_length` although both services claim to tolerate a singleton attachment object. A non-array value can fail inventory before service normalization.
+
+Required fix: validate resource data and each attachment's shape at the inventory boundary, including null/string/list entries, MIME types, paths, titles, sizes and dates. Normalize permitted singleton objects consistently with query selection. Initialize a fresh server-owned item identity before processing. Build error results from safe normalized primitives, not from revalidating the malformed source object. One bad item must not hide valid siblings or acquire their identity. Missing MIME must remain unknown for detection, not default to a claimed PDF.
+
+### A14 — P0: attachment identity and clinical event identity are different
+
+Evidence:
+
+- `procedure_summarization.py:315` assigns the parent DocumentReference ID to every attachment.
+- `chains/procedure_extraction/chain.py:283` uses that resource ID in preference to the file path.
+- `db/objects/repositories/conversation_summaries.py:149–158` builds a row key from sorted, comma-joined source document IDs; `:184–202` matches rows using that key.
+- `chains/procedure_extraction/chain.py:170–189` returns exactly one `ProcedureSummary` per document.
+
+Risk: two attachments belonging to one DocumentReference can share a persistence key. Two distinct procedures described by one report cannot be faithfully represented by a one-event output schema. Existing duplicate keys can overwrite the same row or create duplicate rows, independently of concurrency. Comma-joined opaque IDs are also an ambiguous key encoding when fallback IDs contain separators.
+
+Required fix: use separate server-owned identifiers for parent resource, attachment/version, chunk and clinical event. Extract zero-to-many procedure events internally. Give event rows stable identities in existing metadata without adding columns; distinguish event identity from the set of supporting documents. Use canonical structured key encoding/hashing, reject duplicate incoming event keys, and reconcile legacy rows without deleting failed-source evidence. Changing source-set membership during consolidation must have a defined preservation/update policy. Keep the public procedure list contract.
+
+### A15 — P1: the existing FHIR fallback itself loses clinical meaning
+
+Evidence: `services/summarization/fhir_analysis.py:34–35, 270–298, 371–393`.
+
+- Only the first 10 resources per type reach the formatter; stored condition/medication lists are separately capped at 20.
+- Condition formatting retains code/category but omits clinical/verification status.
+- Observation formatting handles `valueQuantity` only, omitting other value forms/components and relevant status/time context.
+- Other resource types are reduced to a resource-type label.
+- Stored medication objects retain only the name, even though the prompt receives status.
+
+The added “and N more” text is not equivalent to processing those records or propagating partial coverage. A truthful attachment failure warning does not repair this loss in the structured FHIR fallback.
+
+Required fix: normalize structured FHIR resources into evidence-bearing facts with status, subject, effective dates, units and supported value forms. Preserve cancelled/stopped/refuted/entered-in-error semantics. Handle native versus connector-normalized shapes explicitly. Use chunked coverage rather than silent first-N lists; persist disclosure when any relevant fields/resources cannot be interpreted. Apply the same grounding and clinical retention checks to the fallback and its persisted structured fields. Do not assume every FHIR resource is a document attachment.
+
+### A16 — P1: eligibility and classification can remove documents before parsing
+
+Evidence:
+
+- `routes/document_type_inference.py:98–128`: unknown output IDs are discarded, duplicate IDs overwrite dictionary entries and missing outputs are omitted from an otherwise successful response.
+- `models/document_type_inference.py` does not enforce a unique bounded input-ID set; `chains/document_type_inference/chain.py:71` uses a fixed output budget for a batch.
+- `db/objects/repositories/fhir_resources.py:38–75` builds exclusions on nullable `data["type"]`, does not scope predicates by `sourceEmr`, and skips LOINC-target rules. Negated predicates on SQL NULL can filter unknown-type documents instead of retaining them for detection.
+- `services/document_type_rules_client.py:223–247` can use stale or hardcoded rules; this provenance is not part of the returned document inventory.
+
+Required fix: reconcile classification input/output IDs and cardinality; reject duplicate request IDs, bound batches and represent unresolved classification explicitly using the existing contract or a typed request failure. A dropped classification is not proof that a document is nonclinical. Scope exclusion rules to available connector provenance; retain unknown/null types under an explicit policy. Record exclusion reasons, effective rule digest and fallback tier in existing processing metadata; include them in cache freshness. Test rule changes and unavailable rule service. Do not silently rewrite agreed exclusion policy without recording the decision.
+
+Scope clarification: document-type inference currently consumes minimal **metadata**, not document bodies. It needs metadata validation, injection resistance, bounded calls and classification coverage—not an unnecessary OCR/parser call for a title. If content is ever accepted, that content must use the document extraction gate. The earlier generic gate regression must reflect this distinction.
+
+### A17 — P1: named downstream consumers need outcome-aware context
+
+Evidence: `services/health_insights/health_insight_generator.py:74–99, 141–153` selects summaries by `created_at`, builds a simplified object without processing metadata, and concatenates summary text into the model context.
+
+Risk: a persisted failure notice can become health-insight input; a warning-prefixed partial summary loses its coverage context. A corrected summary updated in place may not be picked up by a created-time-only job. Section 25's general placeholder rule needs concrete reader and update-lifecycle work.
+
+Required fix: preserve provenance/outcome when reading summaries, exclude placeholders/invalidated clinical content, and supply only the retained validated clinical portion of partial/failed-refresh displays. Carry completeness limitations alongside it. Review FastAPI chat/insight readers of stored summaries under the same contract. Use existing update timestamps and source/version metadata to make regeneration idempotent; do not automatically launch historical production reprocessing. No new DB schema or external consumer change is implied.
+
+### A18 — P1: playground uploads and pasted text need explicit boundaries
+
+Evidence: `routes/playground_attachment.py:374–426` filters by filename/size, reads the whole upload before extraction, prefers extension-derived MIME and constructs `DocumentAttachment(extracted_text=documents_text)` directly in paste mode. The endpoint also permits extraction/synthesis prompt overrides behind a playground key.
+
+Required fix: share bounded upload, MIME detection and failure-manifest logic. Do not silently omit zero-byte or missing-filename submissions from expected coverage. Treat pasted input as untrusted text: detect/reject or parse pasted RTF/HTML/base64-like envelopes rather than blessing them as extracted text. Keep authorized prompt experimentation clearly separate from production policy; overrides must not disable mandatory code validation. Apply the same protection to other FastAPI plain-text test entry points without pretending every ordinary text prompt is a file. Existing test-only access controls remain necessary.
+
+### A19 — P1: distinguish failure before commit from failure after commit
+
+Evidence: `db/objects/repositories/conversation_summaries.py:304–305` and `:216–218` commit before refreshing ORM objects. Service response-model validation occurs after repository return, including `procedure_summarization.py:225`. A refresh, serialization or response-construction failure can therefore occur after a successful write.
+
+Required fix: validate clinical content and the intended persisted/response shape before commit wherever possible. Track publication state explicitly; after an ambiguous or acknowledged commit, reconcile by authorized source/input/event identity before retrying. A rollback attempted after a completed commit does not undo that commit. Do not overwrite a newly saved valid summary with a failure placeholder, rerun the model unnecessarily, or duplicate procedure rows because the response failed. Store only compatible bounded state in existing metadata; use safe HTTP errors when the committed state cannot be confirmed. Mock pre-commit failure, commit-success/refresh-failure, lost commit acknowledgement and response validation failure separately. These in-memory tests cannot prove real database isolation.
+
+### 28.1 Priority and acceptance
+
+- Add A12–A14 to containment priorities alongside raw-fallback removal and failure-driven pruning prevention.
+- Address A15–A19 before calling the complete FastAPI workflow source-grounded and safely recoverable.
+- Keep all changes FastAPI-only with existing summary fields; no Node/mobile changes, schema changes or new status endpoint.
+- New regression specifications are appended to the QA pack; all remain NOT RUN and use in-memory repositories only. Results remain local files under `qa/results/`.
+- Static source review cannot guarantee no further defects. This review identifies concrete remaining gaps; it does not certify implementation, production behavior or model accuracy.
+
+## 29. Mixed regression execution against the fixed FastAPI implementation
+
+**User clarification:** implement the FastAPI fixes first, then run regression against those actual fixes. Both mocked and live-AI modes must use the same application parser, prompts, chains, validators and orchestration. No separate model-evaluation summarizer substitutes for testing FastAPI.
+
+The QA runner now supports `--mode mock|live|mixed`. Mock mode controls AI responses for deterministic failures; live mode uses actual OpenAI responses for selected existing cases; mixed mode combines them. Live selections are in `qa/summary_regression/live_profile.json`. Gold transcriptions remain evaluator oracles and must not become mocked extraction results in live mode.
+
+Use the separate `REGRESSION_OPENAI_API_KEY` in the Git-ignored `qa/.env.regression.local`, explicitly loaded via `--env-file`. The application `.env` and `OPENAI_API_KEY` are not fallback sources. A tracked `.env.regression.example` contains placeholders only. The injected sync/async SDK clients enforce endpoint, model, output and request-budget policies while retaining application prompts/validators. Reports and actual application observations are local files under `qa/results/`; all repository dependencies remain in memory.
+
+The execution plumbing and adapter contract are prepared. The actual fixed-application adapter remains blocked pending implementation. No regression or AI call was executed during these changes. Follow `qa/README.md` for setup and future commands.
+
+## 30. Final resilience audit and release gate
+
+**Status:** design and static source audit only. A comprehensive plan is not proof that the app cannot fail. The required behavior is that anticipated failures are contained, accurately reported and recoverable, without unsafe clinical publication or damage to prior valid results. Unexpected failures must receive a safe boundary response. Process termination, machine failure and an unavailable database cannot always produce a persisted message; never promise otherwise.
+
+### 30.1 Additional implementation requirements from source inspection
+
+| Requirement | Source observation / gap | Required implementation behavior |
+|---|---|---|
+| R48 — Initialization and optional capabilities | `src/app/main.py` performs environment initialization before route imports; lifespan starts Redis, rules warm-up and the scheduler. `document_extraction.py` imports parser libraries at module load. | Separate app construction from network initialization so the real routes can be tested with injected dependencies. Missing optional converters/OCR must disable that adapter with a typed outcome, not break unrelated routes. Missing mandatory configuration must produce an explicit readiness failure rather than accepting requests that cannot complete. Bound startup calls. Do not disable authentication to make startup pass. |
+| R49 — Admission and service-wide budgets | Attachment extraction schedules batches with `asyncio.gather`; procedure concurrency uses a module-level semaphore. Neither alone specifies a cross-request/cross-worker resource budget. | Bound queued requests, active workers, batch fan-out, documents/pages/pixels, memory and model calls. Account for process/replica multiplication. Apply a safe busy response when capacity is exhausted, before downloading or creating unbounded tasks. Avoid introducing new queue infrastructure implicitly; never claim work is durably queued unless it is. Preserve ordinary endpoint responsiveness. |
+| R50 — Deadline covers the whole request | `ComprehensiveSummarizationService.execute_parallel_summarization` calls `_build_task_list` before `_execute_tasks_with_timeout`. Inventory, rule lookup and cache preparation can therefore consume time outside the current task timeout. | Set one monotonic deadline at request entry and pass the remaining budget through authorization, inventory, rules, cache, downloads, worker admission, parsing, model transport/corrections, persistence and response construction. Set bounded pool/lock waits. Collect completed sources accurately; cancel and reap pending work. A wrapper timeout does not stop a blocking native parser. |
+| R51 — Resource and shutdown lifecycle | `S3DocumentClient.download_document` reads the streaming body without an explicit body-close lifecycle; new OCR/rendering paths add files, clients and workers. The scheduler starts in application lifespan. | Close streaming bodies/clients and remove temporary decrypted/rendered files on success, rejection, timeout and cancellation. Bound shutdown and worker termination. Avoid duplicated background publication when multiple API workers each start a scheduler; define an existing-infrastructure ownership strategy or configuration. Do not launch historical reprocessing on deployment. |
+| R52 — Input snapshot consistency | Current downloads use bucket/key; source/version cache work is planned but replacement during a running attempt needs an explicit publication rule. | Pin an available object version or record the exact downloaded hash and source manifest. Reconcile authorized input/version before publication; an older attempt must not replace a newer source's result. Changed membership, content or eligibility rules invalidates freshness. Do not blindly prune based on a stale manifest. Keep bounded provenance in existing metadata. |
+| R53 — Metadata persistence and legacy rows | `ConversationSummaries.summary_metadata` and `data` are plain JSON columns; the plan introduces nested outcome updates and retained clinical content. | Construct and assign new JSON dictionaries or explicitly track ORM mutations; do not assume editing a nested dictionary is sufficient. Preserve unrelated keys, support null/legacy metadata, validate serializability and bounds before save, and verify response aliases (`summaryText`, `summaryMetadata`, `fhirSummaries`). A fake repository cannot certify real ORM flushing, so add an offline SQLAlchemy attribute-state check without engine/DB creation and record the remaining storage integration limitation. |
+| R54 — Real adapter and harness readiness | The 476-case catalog is specification data; `adapter_template.py` intentionally raises `NotImplementedError`. Socket restrictions and the memory declaration do not sandbox arbitrary Python. | Wire each in-scope case to actual fixed FastAPI code, including route/error/serialization behavior. Do not count a specification or template as an implemented test. Use one application adapter for both AI modes, a fake repository/transport for external systems, and the regression-only key for live calls. Validate the runner's checks, budget/report handling and fixture integrity before trusting its results; never substitute a mock algorithm for the application. No database access is permitted in this pack. |
+
+For R53, the current upsert generally assigns values from whole dictionaries; this is a requirement for the new metadata update implementation, not a claim that every existing metadata save is already lost. For R49/R51, replica configuration and deployed operational behavior have not been inspected or verified.
+
+### 30.2 Outcome decision matrix
+
+| Situation | Outcome/display obligation | Side-effect rule |
+|---|---|---|
+| Invalid request or unauthorized patient/appointment | Safe request/authentication error | No clinical model call, download or summary write |
+| Successful inventory with no applicable documents | Genuine no-documents message | No fabricated clinical absence; distinguish configured exclusions |
+| Pending/failed acquisition or unknown inventory | Pending/unavailable/infrastructure outcome as applicable | Never equate to empty clinical truth |
+| Unsupported, encrypted, corrupt or unreadable input | Typed reason and deterministic unavailable/partial text | No raw-content fallback |
+| Some required inputs fail | Partial only if remaining output is clinically coherent; otherwise unavailable | Publish only validated content and disclose missing coverage |
+| Unsupported clinical claims or invalid model output | Bounded correction; then partial/unavailable as justified | Unsafe draft never published |
+| Translation fails | Preserve validated original; disclose translation limitation | No corrupted replacement |
+| Refresh fails with a previous valid result | Prior clinical content plus idempotent refresh notice | No destructive deletion or false successful attempt |
+| Known-invalid prior result | Unavailable or validated replacement | Never retain it as last-good |
+| Persistence fails before commit | Safe server/dependency error; no false saved result | Preserve prior committed data |
+| Commit outcome uncertain or response fails afterward | Reconcile by scoped identity/version | No blind repeat that creates duplicates or overwrites a good result |
+| Capacity exceeded, worker crash or deadline exhausted | Safe busy/partial/unavailable result, according to completed work | Bound work and cleanup; do not claim durable queueing |
+| Unexpected exception | Safe internal error and restricted diagnostics | Never publish raw exception text or unvalidated clinical content |
+
+Message persistence is only possible when the existing storage path is available. A zero-row procedure failure still returns a safe typed error; a guaranteed mobile error card for that path is outside the unchanged-client contract.
+
+### 30.3 Mandatory release gates
+
+1. Every enabled document path and relevant fallback uses the real extraction/grounding gates. Disabled formats have a tested rejection path.
+2. Each in-scope case is implemented, executed and assessed. `BLOCKED`, `ERROR`, `REVIEW_REQUIRED`, `CANCELLED` and `NOT RUN` are unresolved; none counts as a pass. Optional adapters may be explicitly disabled with a passing containment case.
+3. Deterministic fault tests cover all stages in Section 30.2, including error-handler failure and cancellation, and demonstrate prior-result preservation.
+4. Live tests run through the same fixed FastAPI code using synthetic inputs; source-fact checks and qualified review meet recorded thresholds. Model self-review is insufficient.
+5. Real route/response tests preserve existing success contracts and verify safe errors. Use a dependency-injected test app with the real routes/middleware/handlers; do not start production SSM, scheduler or DB infrastructure.
+6. Resource limits, startup/shutdown, overload and deadline behavior are measured in a controlled environment. Synthetic fake memory results do not prove production-scale resource safety.
+7. Record actual database locking/transaction and deployed-client behavior as unverified where they cannot be checked under this pack's no-database rule. Do not claim end-to-end production certification from in-memory results.
+8. Roll out incrementally with bounded operational monitoring and an adapter-disable path. Rollback never restores raw forwarding. Production deployment and historical correction are separate tasks, not side effects of this QA work.
+
+**Current release assessment: NOT READY FOR CERTIFICATION.** The plan, assets and execution plumbing exist; FastAPI fixes, application-adapter wiring, regression execution, live evaluation and review remain outstanding. No tests were run during this audit.
+
+
+## 31. Implementation checkpoint — 2026-09-16
+
+FastAPI source implementation has started. [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) is the current implementation/verification record and explicitly lists unfinished integrations and operational qualification. Earlier source line references in this plan describe the pre-change audit.
+
+The shared extraction gate, bounded parsing/OCR, evidence checks, failure outcomes in existing summary JSON, preservation/pruning protections, ownership checks, scoped publication locks, inventory/timeout fixes, translation checks and reader changes are now in source. No database schema, Node API, mobile code or connector was changed. No regression, application startup, database operation or live model call was run.
+
+The default regression adapter now calls the actual parser/OCR/attachment chain in both mock and live modes. It is not yet a complete implementation of the 476-case integration matrix. Unwired injections remain BLOCKED. Static checks are not a release pass. Complete the documented remaining work and execute the authorized regression/review stages before marking this plan complete.
+
+## 32. Current regression report and retained evidence
+
+Every execution overwrites `qa/results/report.html` and its machine-readable `report.json` companion. Retain synthetic fixtures, validate catalog hashes/sizes before their cases, and link exact source documents from each case. Retain original observed outputs for both mock and live cases under `qa/results/outputs/`. Include every expected assertion, actual observation, verdict, purpose, plan reference, configuration, injected conditions, duration, AI usage and human-review checklist. Report requirement gaps, blocked cases and incomplete runs as unresolved health conditions; never count them as passed. Results and publication fakes remain filesystem/in-memory only, with no database schema or persistence changes.
+
+### Regression expectation correction: unclassified internal failures
+
+`POLICY-INTERNAL_PROCESSING_ERROR` now expects stage `internal`, not `synthesis`. Section 23’s taxonomy defines this code as an **unclassified internal failure**; such a failure may occur outside synthesis, and no stage is supplied by this fault injection. Assigning synthesis would invent diagnostic provenance. The test continues to require the same canonical error code, no automatic retry, and no secret leakage. Both the case generator and checked-in case specification use the corrected stage. No clinical-content or failure-containment assertion was relaxed.
+
+## Content-independent implementation requirement
+
+Synthetic regression documents are examples only. Do not encode their filenames, case IDs, patient details, diagnoses, medications, laboratory names or expected summaries in production decisions. Implement documented parser contracts, source evidence validation and bounded failure handling. Keep canned model outputs and fault injection in QA. Add varied positive and negative examples when a defect is found; preserve blocked and review-required outcomes when verification is incomplete.
+
+## Confirmed review decisions — 2026-09-16
+
+- Support FHIR JSON/XML and multipart transport. Return a clear unsupported-format outcome for the other optional formats discussed: NDJSON, gzip document containers and ZIP. Keep ordinary supported clinical formats. Distinguish HTTP Content-Encoding decoding from an uploaded gzip document; do not accidentally break connector HTTP transport decoding.
+- Legacy Word `.doc` is required. The existing fail-closed rejection is containment, not completed legacy support. Add a bounded isolated conversion/parser path and valid positive fixtures before claiming support.
+- S3 selection already exists. Review the current user/appointment/encounter ownership checks and stored attachment filePath flow. Do not redesign storage, hardcode per-user folders, or require a new list of every user's prefix. The current default-empty DOCUMENT_ALLOWED_S3_PREFIXES gate is a compatibility risk unless existing deployment configuration supplies an applicable scope; review this gate against the existing storage contract before rollout.
+- Clinical reviewer packet: `qa/CLINICAL_REVIEW.md`, regenerated from saved observations with `python qa/summary_regression/prepare_clinical_review.py`. Review remains pending; mocked outputs and blocked cases cannot qualify clinical accuracy.
+- These are accepted requirements, not a claim that the above application changes have been implemented or deployed.
+
+## Completion implementation — 2026-09-16
+
+Implemented the approved internal format policy without added application environment variables, restored original S3 lookup compatibility, packaged bounded legacy Word parsing, added nested FHIR bundle/attachment parsing, partial FHIR fallback, overlapping OCR region cross-checks, stage instrumentation and the remaining regression integrations. No production rules identify synthetic fixture names, patient details, diagnoses or medication names. Native Word parsing and the memory-limit mechanism were also exercised under Linux.
+
+See `qa/IMPLEMENTATION_STATUS.md` for exact supported/unsupported boundaries and `qa/ENGINEERING_REVIEW.md` for review closures. Clinical approval remains manual; live verification currently requires a valid key in the existing regression file after HTTP 401 responses. The current report records results rather than treating missing prerequisites as passes.
+
+
+## OCR routing correction and deferred persistence qualification
+
+- Avoid vision for supported small marginal PDF logos; preserve native page order and send only scanned/meaningful-image pages through OCR.
+- Extract supported DOCX logo-bearing text/tables locally. Never send DOCX to the PDF/PIL renderer. Unsupported embedded-image layouts return a clear contained outcome.
+- Require zero OCR calls for supported logo PDFs/DOCX, mixed-page preservation, native patient/service access, and prior-summary retention on failed/empty partial refreshes. Nine new catalog cases implement these checks.
+- Do not change persistence implementation in this routing patch. Verify actual transactions later with synthetic identities in a deployed test instance using qa/ROUTING_AND_PERSISTENCE_REVIEW.md.
+- Direct caregiver/provider grant compatibility remains unresolved and is not covered by passing service-delegation tests. Retain as a release review item.

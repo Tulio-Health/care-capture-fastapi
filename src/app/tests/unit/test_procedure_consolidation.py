@@ -4,10 +4,13 @@ required.
 
 Covers:
   (a) two genuinely-duplicate entries (same date, near-identical type) get merged into one,
-      with unioned performed_by and longest-text-wins fields.
+      with unioned performed_by and a lossless (order-preserving, de-duped) join per free-text
+      field.
   (b) two genuinely-different procedures that the heuristic flags as candidates (same date,
       similar wording) but the LLM confirms are NOT the same event -> no merge.
   (c) a single procedure is a no-op with ZERO LLM calls made.
+  (d) two distinct (unmerged) results sharing (procedure_type, procedure_date) but differing
+      outcome get an outcome-divergence annotation prefix.
 """
 
 from types import SimpleNamespace
@@ -36,6 +39,7 @@ def _summary(**overrides) -> ProcedureSummary:
         outcome="The procedure was successful.",
         follow_up=NOT_DOCUMENTED_FOLLOW_UP,
         follow_up_source_quote=None,
+        event_source_quote="cardiac catheterization performed 2026-06-29",
     )
     defaults.update(overrides)
     return ProcedureSummary(**defaults)
@@ -90,10 +94,11 @@ async def test_duplicate_procedures_are_merged():
         "Dr. Ahmed Ullah, MD",
         "Dr. Jane Smith, MD",
     }
-    # Longest-text-wins per field.
-    assert merged.summary.reason == b.reason
-    assert merged.summary.procedure_details == b.procedure_details
-    assert merged.summary.outcome == b.outcome
+    # Lossless join (order-preserving, de-duped) per field - neither document's text is
+    # discarded.
+    assert merged.summary.reason == a.reason + "\n" + b.reason
+    assert merged.summary.procedure_details == a.procedure_details + "\n" + b.procedure_details
+    assert merged.summary.outcome == a.outcome + "\n" + b.outcome
     # Real follow_up wins over the sentinel, with ITS OWN matching quote.
     assert merged.summary.follow_up == b.follow_up
     assert merged.summary.follow_up_source_quote == b.follow_up_source_quote
@@ -150,3 +155,41 @@ async def test_single_procedure_is_a_noop_with_zero_llm_calls():
     assert len(result) == 1
     assert result[0].document_ids == ["doc-1"]
     assert result[0].summary == extracted[0].summary
+
+
+async def test_outcome_divergence_is_annotated():
+    """Two results that share the same (procedure_type, procedure_date) key but end up with
+    different `outcome` text - here because the LLM correctly declines to merge them - get an
+    outcome-divergence annotation prefix prepended to `outcome`, instead of silently presenting
+    one outcome as if it were the only one documented for that procedure/date."""
+    a = _summary(
+        procedure_type="Cardiac catheterization with coronary angioplasty",
+        procedure_date="2026-06-29",
+        outcome="The procedure was successful with no complications.",
+    )
+    b = _summary(
+        procedure_type="Cardiac catheterization with coronary angioplasty",
+        procedure_date="2026-06-29",
+        outcome="The procedure was aborted due to vascular access failure.",
+    )
+    extracted = [
+        ExtractedProcedure(document_id="doc-1", summary=a),
+        ExtractedProcedure(document_id="doc-2", summary=b),
+    ]
+
+    consolidator = ProcedureConsolidator()
+    consolidator._agent = _mock_agent(
+        [_PairConfirmation(pair_index=0, same_procedure=False)]
+    )
+
+    result = await consolidator.consolidate(extracted)
+
+    assert len(result) == 2
+    prefix = (
+        "Reports with this procedure name and date contain different outcomes and may "
+        "describe separate events. This source states: "
+    )
+    by_doc = {item.document_ids[0]: item for item in result}
+    assert by_doc["doc-1"].summary.outcome == prefix + a.outcome
+    assert by_doc["doc-2"].summary.outcome == prefix + b.outcome
+    consolidator._agent.run.assert_awaited_once()
