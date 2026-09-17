@@ -52,6 +52,19 @@ class DocumentProcessingError(ValueError):
         record(STAGES.get(self.code, ("internal", False))[0], "attempt_failure")
 
 
+# Presentation/plumbing attributes with no clinical signal. Clinical values
+# (displayName, value, unit, code, statusCode, ...) are deliberately NOT here:
+# a CDA can carry the only diagnosis/value/unit in an attribute (see the
+# comment above walk() in _xml_text).
+_XML_NOISE_ATTRS = {"styleCode", "ID", "width", "span", "root", "extension",
+                    "codeSystem", "codeSystemName", "classCode", "moodCode",
+                    "typeCode", "inversionInd", "contextControlCode",
+                    "independentInd", "determinerCode", "negationInd", "type"}
+# Elements that are pure CDA plumbing - never clinical content.
+_XML_NOISE_TAGS = {"templateId", "id", "realmCode", "typeId", "setId",
+                   "versionNumber", "confidentialityCode", "languageCode"}
+
+
 class DocumentTextExtractor:
     MAX_FILE_SIZE = 50 * 1024 * 1024
     MAX_TEXT_CHARS = 1_000_000
@@ -59,7 +72,7 @@ class DocumentTextExtractor:
     MAX_ZIP_ENTRIES = 2000
     MAX_ARCHIVE_EXPANDED_BYTES = 50 * 1024 * 1024
     RTF_MAGIC = b"{\\rtf"
-    VERSION = "strict-3"
+    VERSION = "strict-4"
     MAX_ARCHIVE_DEPTH = 2
 
     def __init__(self, *, disabled_adapters=(), transport_enabled=True, allow_containers=True):
@@ -367,6 +380,42 @@ class DocumentTextExtractor:
         return "\n".join(blocks(root))
 
     @staticmethod
+    def _cda_inline(node):
+        """Concatenate one cell's text preserving original spacing, so
+        <content>124</content>/<content>73</content> renders as '124/73', and
+        <br/> becomes a real line break (CDA narrative uses <br/>, not \\n)."""
+        buffer = [node.text or ""]
+        for child in node:
+            if child.tag.rsplit("}", 1)[-1] == "br":
+                buffer.append("\n")
+            buffer.append(DocumentTextExtractor._cda_inline(child))
+            buffer.append(child.tail or "")
+        return "".join(buffer)
+
+    @staticmethod
+    def _cda_narrative(node):
+        """Render a CDA <text> narrative subtree as readable clinical text.
+        Table ROWS stay on one line so 'Blood Pressure: 124/73' is quotable.
+        <list><item> stays one item per line - it is a block, not a row, and
+        joining it the way <tr> is joined would collapse a whole medication
+        list onto a single unreadable, unquotable line."""
+        tidy = lambda s: "\n".join(" ".join(l.split()) for l in s.splitlines() if l.strip())
+        local = node.tag.rsplit("}", 1)[-1]
+        if local in {"table", "tbody", "thead", "tfoot", "list"}:
+            return "\n".join(s for s in (DocumentTextExtractor._cda_narrative(c) for c in node) if s.strip())
+        if local == "tr":
+            cells = [tidy(DocumentTextExtractor._cda_inline(c)).replace("\n", " ") for c in node]
+            cells = [c for c in cells if c]
+            if not cells:
+                return ""
+            head, rest = cells[0].rstrip(":"), [c for c in cells[1:] if c not in ("-", "")]
+            return f"{head}: " + " | ".join(rest) if rest else head
+        # <item> is a BLOCK, not a row: its <br/>-separated lines must survive.
+        if local == "item" or any(c.tag.rsplit("}", 1)[-1] in {"table", "list", "tbody"} for c in node.iter()):
+            return "\n".join(s for s in (DocumentTextExtractor._cda_narrative(c) for c in node) if s.strip())
+        return tidy(DocumentTextExtractor._cda_inline(node))
+
+    @staticmethod
     def _xml_text(content) -> str:
         if isinstance(content, str):
             raw = content
@@ -384,10 +433,20 @@ class DocumentTextExtractor:
         parts = []
         def walk(node, ancestors=()):
             local = node.tag.rsplit("}", 1)[-1]
+            if local in _XML_NOISE_TAGS:
+                return
+            if local == "text":
+                # CDA narrative block: render with row/item adjacency preserved
+                # instead of one XPath-scaffold line per text node.
+                rendered = DocumentTextExtractor._cda_narrative(node)
+                if rendered.strip():
+                    parts.append(rendered.strip())
+                return
             path = (*ancestors, local)
-            if node.attrib:
-                attributes = "; ".join(f"{key.rsplit('}', 1)[-1]}={value}" for key, value in node.attrib.items())
-                parts.append("/".join(path) + ": " + attributes)
+            attributes = {key.rsplit("}", 1)[-1]: value for key, value in node.attrib.items()
+                          if key.rsplit("}", 1)[-1] not in _XML_NOISE_ATTRS}
+            if attributes:
+                parts.append("/".join(path) + ": " + "; ".join(f"{key}={value}" for key, value in attributes.items()))
             if node.text and node.text.strip():
                 parts.append(node.text.strip())
             for child in node:
