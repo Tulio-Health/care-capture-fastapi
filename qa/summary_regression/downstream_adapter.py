@@ -26,15 +26,26 @@ async def run(case,fixture_dir):
     elif identity.startswith('A12-'):
         from src.app.services.summary_authorization import authorize_summary_scope
         from fastapi import HTTPException
-        patient=uuid4();mapped=uuid4()
+        patient=uuid4();mapped=uuid4();appointment=uuid4()
         trusted=identity=='A12-DELEGATE'
         request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(summary_ready=True)),state=SimpleNamespace(user={'is_authenticated':True,'clerk_id':str(patient) if trusted else 'qa-clerk','is_internal_service':trusted}))
-        session=SimpleNamespace(execute=AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda:mapped)))
-        try:await authorize_summary_scope(request,patient,session);allowed=True
+        # Trusted-service calls skip straight to the 1-query appointment-ownership lookup;
+        # direct-caller calls resolve their own users.id then fail delegation (3 queries) -
+        # a shared return_value would let either path's mock silently answer the other's query.
+        effects=[SimpleNamespace(scalar_one_or_none=lambda:appointment)] if trusted else [SimpleNamespace(scalar_one_or_none=lambda:mapped),SimpleNamespace(scalar_one_or_none=lambda:None),SimpleNamespace(scalar_one_or_none=lambda:None)]
+        session=SimpleNamespace(execute=AsyncMock(side_effect=effects))
+        try:await authorize_summary_scope(request,patient,session,appointment);allowed=True
         except HTTPException:allowed=False
         observed['authorization']={'allowed':allowed,'patient_mapping_correct':allowed and request.state.user['clerk_id']==str(patient)}
         observed['cache']={'clinical_result_exposed':allowed}
         observed['pipeline_output']={'authorized':allowed,'delegation_boundary':'authenticated Node service' if trusted else 'direct caller mapping'}
+        if trusted:
+            # A trusted service naming an appointment that belongs to a different patient must
+            # still be rejected - the binding is unconditional, not internal-service-exempt.
+            mismatched_session=SimpleNamespace(execute=AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda:None)))
+            try:await authorize_summary_scope(request,patient,mismatched_session,appointment);appointment_mismatch_rejected=False
+            except HTTPException:appointment_mismatch_rejected=True
+            observed['authorization']['appointment_mismatch_rejected']=appointment_mismatch_rejected
     elif identity=='A08-ORDER':
         from src.app.services.summarization.transcript_summarization import TranscriptSummarizationService
         from src.app.chains.transcript_summarization.chain import TranscriptSummarizationChain

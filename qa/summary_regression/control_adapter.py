@@ -112,7 +112,7 @@ async def _run(case,fixture_dir):
         from fastapi import HTTPException
         request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(summary_ready=False)),state=SimpleNamespace(user={}))
         try:
-            await authorize_summary_scope(request,uuid4(),None);allowed=True
+            await authorize_summary_scope(request,uuid4(),None,uuid4());allowed=True
         except HTTPException as exc:allowed=exc.status_code!=503
         observed['readiness']={'accepts_clinical_work':allowed}
         observed['boundary']['secret_leaked']='SECRET_QA_TOKEN' in str(observed)

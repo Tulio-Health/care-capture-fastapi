@@ -33,6 +33,19 @@ def _retry_transaction(operation):
     return wrapped
 
 
+async def appointment_belongs_to(session, appointment_id, user_id) -> bool:
+    """Shared appointment-ownership predicate: does `appointment_id` belong to `user_id`?
+    Same cast-to-String comparison as `ConversationSummariesRepository._lock_scope` uses -
+    `appointments.user_id` is a plain String column while callers pass a UUID user id, so the
+    comparison must cast explicitly or it silently no-matches.
+    """
+    from src.app.db.models.appointments import Appointment
+    from sqlalchemy import cast, String
+    result = await session.execute(select(Appointment.id).where(
+        Appointment.id == appointment_id, cast(Appointment.user_id, String) == str(user_id)))
+    return result.scalar_one_or_none() is not None
+
+
 class ConversationSummariesRepository:
     def __init__(self, session: AsyncSession):
         self.session = session

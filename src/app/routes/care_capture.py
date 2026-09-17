@@ -77,7 +77,7 @@ async def transcript_summarize_text(
     Raises:
         HTTPException: If summarization fails
     """
-    await authorize_summary_scope(http_request, request.user_id, db)
+    await authorize_summary_scope(http_request, request.user_id, db, request.appointment_id)
 
     try:
         # Initialize service and delegate business logic
@@ -366,7 +366,7 @@ async def analyze_fhir_resources(
     Raises:
         HTTPException: If appointment not found or analysis fails
     """
-    await authorize_summary_scope(http_request, request.user_id, db)
+    await authorize_summary_scope(http_request, request.user_id, db, request.appointment_id)
 
     try:
         # Initialize service and delegate business logic
@@ -400,7 +400,7 @@ async def attachment_summary(
     request: AttachmentSummarizationRequest,
     db: AsyncSession = Depends(get_db),
 ) -> ConversationSummary:
-    await authorize_summary_scope(http_request, request.user_id, db)
+    await authorize_summary_scope(http_request, request.user_id, db, request.appointment_id)
 
     try:
         service = AttachmentSummarizationService(db)
@@ -445,7 +445,7 @@ async def procedure_summary(
     request: ProcedureSummarizationRequest,
     db: AsyncSession = Depends(get_db),
 ) -> List[ConversationSummary]:
-    await authorize_summary_scope(http_request, request.user_id, db)
+    await authorize_summary_scope(http_request, request.user_id, db, request.appointment_id)
 
     try:
         service = ProcedureSummarizationService(db)
@@ -641,7 +641,7 @@ async def comprehensive_summary(
         f"include_fhir: {request.has_fhir_data_requested()}"
     )
 
-    await authorize_summary_scope(http_request, request.user_id, db)
+    await authorize_summary_scope(http_request, request.user_id, db, request.appointment_id)
 
     try:
         # Initialize service and delegate business logic

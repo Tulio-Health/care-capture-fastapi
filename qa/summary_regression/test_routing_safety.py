@@ -72,19 +72,57 @@ class RoutingSafety(unittest.IsolatedAsyncioTestCase):
 
 
 class AccessCompatibilitySafety(unittest.IsolatedAsyncioTestCase):
-    async def test_existing_trusted_service_delegation_does_not_require_patient_mapping(self):
+    async def test_trusted_service_delegation_requires_no_patient_mapping_but_requires_appointment_ownership(self):
         from src.app.services.summary_authorization import authorize_summary_scope
+        appointment_id = 'appointment-id'
         for scope in ('service', 'patient-id', None):
-            request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(summary_ready=True)), state=SimpleNamespace(user={'is_authenticated': True, 'is_internal_service': True, 'clerk_id': scope}))
-            session = SimpleNamespace(execute=AsyncMock(side_effect=AssertionError('No database lookup allowed')))
-            await authorize_summary_scope(request, 'patient-id', session)
-            session.execute.assert_not_awaited()
+            with self.subTest(scope=scope):
+                request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(summary_ready=True)), state=SimpleNamespace(user={'is_authenticated': True, 'is_internal_service': True, 'clerk_id': scope}))
+                session = SimpleNamespace(execute=AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: appointment_id)))
+                await authorize_summary_scope(request, 'patient-id', session, appointment_id)
+                # No patient-identity mapping lookup is needed for a trusted service - but the
+                # appointment ownership lookup (against appointments, not users) is mandatory.
+                session.execute.assert_awaited_once()
+                executed_sql = str(session.execute.await_args.args[0]).lower()
+                self.assertIn('appointments', executed_sql)
+                self.assertNotIn('users', executed_sql)
+
+        # An appointment that doesn't belong to the claimed patient is rejected even for a
+        # trusted-service call with no patient-scope header.
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(summary_ready=True)), state=SimpleNamespace(user={'is_authenticated': True, 'is_internal_service': True, 'clerk_id': None}))
+        session = SimpleNamespace(execute=AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: None)))
+        with self.assertRaises(HTTPException) as error:
+            await authorize_summary_scope(request, 'patient-id', session, appointment_id)
+        self.assertEqual(error.exception.status_code, 403)
 
     async def test_authenticated_patient_access_and_cross_patient_rejection(self):
         from src.app.services.summary_authorization import authorize_summary_scope
+        appointment_id = 'appointment-id'
         request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(summary_ready=True)), state=SimpleNamespace(user={'is_authenticated': True, 'clerk_id': 'clerk-patient'}))
-        session = SimpleNamespace(execute=AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: 'patient-id')))
-        await authorize_summary_scope(request, 'patient-id', session)
+
+        # Self-access with an appointment that belongs to the patient: allowed.
+        session = SimpleNamespace(execute=AsyncMock(side_effect=[
+            SimpleNamespace(scalar_one_or_none=lambda: 'patient-id'),
+            SimpleNamespace(scalar_one_or_none=lambda: appointment_id),
+        ]))
+        await authorize_summary_scope(request, 'patient-id', session, appointment_id)
+
+        # Cross-patient request: the caller's own identity maps to an unrelated patient, so
+        # delegation checks run and fail before any appointment lookup happens.
+        session = SimpleNamespace(execute=AsyncMock(side_effect=[
+            SimpleNamespace(scalar_one_or_none=lambda: 'patient-id'),
+            SimpleNamespace(scalar_one_or_none=lambda: None),
+            SimpleNamespace(scalar_one_or_none=lambda: None),
+        ]))
         with self.assertRaises(HTTPException) as error:
-            await authorize_summary_scope(request, 'different-patient', session)
+            await authorize_summary_scope(request, 'different-patient', session, appointment_id)
+        self.assertEqual(error.exception.status_code, 403)
+
+        # Self-access, but the named appointment belongs to someone else: rejected.
+        session = SimpleNamespace(execute=AsyncMock(side_effect=[
+            SimpleNamespace(scalar_one_or_none=lambda: 'patient-id'),
+            SimpleNamespace(scalar_one_or_none=lambda: None),
+        ]))
+        with self.assertRaises(HTTPException) as error:
+            await authorize_summary_scope(request, 'patient-id', session, appointment_id)
         self.assertEqual(error.exception.status_code, 403)
