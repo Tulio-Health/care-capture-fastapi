@@ -13,6 +13,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 from src.app.common.logging import get_logger
+from src.app.core.settings import document_allowed_prefixes
 
 logger = get_logger(__name__)
 _DOWNLOAD_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="document-download")
@@ -85,17 +86,22 @@ class S3DocumentClient:
         return bucket, key
 
     def authorize_location(self, file_path):
-        """Read stored document URIs; owner-scoped inventory and IAM authorize production access.
+        """Restrict document downloads to an explicit allowlist of S3 URI prefixes.
 
-        Explicit scopes may be injected by a restricted caller; no global per-user
-        prefix configuration is required. Never accept arbitrary request URLs here.
+        The production instance role is NOT scoped to these prefixes (it has
+        unscoped S3 access), so this allowlist is the only real access
+        control on document downloads today — not defense-in-depth on top
+        of IAM. A restricted caller may inject `allowed_prefixes` explicitly
+        (e.g. tests, internal tooling); otherwise the scope comes from the
+        configured `document_allowed_prefixes()`. Never accept arbitrary
+        request URLs here.
         """
         bucket, key = self.parse_s3_url(file_path)
         if not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", bucket):
             raise DocumentProcessingError("DOCUMENT_ACCESS_DENIED")
         prefixes = self.allowed_prefixes
         if prefixes is None:
-            return bucket, key
+            prefixes = document_allowed_prefixes()
         for prefix in prefixes:
             if not isinstance(prefix, str) or not prefix.startswith("s3://"):
                 continue

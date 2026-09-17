@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     # Playground (dev-only)
     PLAYGROUND_API_KEY: str = ""
 
+    # Document Storage (S3 download scope allowlist)
+    DOCUMENT_S3_BUCKET: str = ""
+    DOCUMENT_S3_KEY_PREFIX: str = "documents/"
+
     ENABLE_DOCUMENT_OCR: bool = True
     DOCUMENT_OCR_MODEL: str = "gpt-4o-mini"
     DOCUMENT_VERIFICATION_MODEL: str = "gpt-4.1-mini"
@@ -163,3 +167,27 @@ def reset_settings() -> None:
     """Call immediately after SSM parameters are injected into os.environ."""
     global _settings
     _settings = None
+
+
+def document_allowed_prefixes() -> list:
+    """
+    Compute the allowed S3 URI prefixes for document downloads.
+
+    This is the only real access control on S3 document downloads today —
+    the production instance role is not scoped to these prefixes — so an
+    unset bucket must never silently resolve to an empty/None allowlist.
+    That exact ambiguity previously turned a deny-all bug into an
+    allow-all one. Fail loud in production instead: raise RuntimeError so
+    misconfiguration is caught at call time, not discovered as an open
+    download endpoint.
+
+    In dev/test, an unset bucket returns [] (deny-all is the safe default
+    when not configured, in non-prod).
+    """
+    settings = get_settings()
+    bucket = settings.DOCUMENT_S3_BUCKET
+    if not bucket:
+        if os.getenv("APP_ENV") == "production":
+            raise RuntimeError("DOCUMENT_S3_BUCKET is required in production")
+        return []
+    return [f"s3://{bucket}/{settings.DOCUMENT_S3_KEY_PREFIX}"]

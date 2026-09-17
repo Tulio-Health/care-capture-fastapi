@@ -27,16 +27,22 @@ class ReleasePolicySafety(unittest.TestCase):
                 DocumentTextExtractor(transport_enabled=True,allow_containers=True).extract_text(content,mime)
             self.assertEqual(failure.exception.code,'UNSUPPORTED_FORMAT')
 
-    def test_stored_s3_paths_do_not_require_per_user_prefix_configuration(self):
+    def test_unconfigured_document_scope_denies_and_injected_scope_allows(self):
         from src.app.utils.s3_client import S3DocumentClient
         client=S3DocumentClient()
         for key in ('users/alice/file.pdf','connections/random/other-user/file.rtf'):
-            self.assertEqual(client.authorize_location('s3://synthetic-bucket/'+key),('synthetic-bucket',key))
+            with self.subTest(key=key), self.assertRaises(DocumentProcessingError) as failure:
+                client.authorize_location('s3://synthetic-bucket/'+key)
+            self.assertEqual(failure.exception.code,'DOCUMENT_ACCESS_DENIED')
         self.assertIsNone(client._s3_client)  # Pure validation; no credentials or AWS calls.
         with self.assertRaises(ValueError):
             client.authorize_location('s3://synthetic-bucket/file.pdf\n')
         with self.assertRaises(DocumentProcessingError):
             S3DocumentClient(allowed_prefixes=['s3://synthetic-bucket/users/alice/']).authorize_location('s3://synthetic-bucket/users/alice-other/file.pdf')
+        self.assertEqual(
+            S3DocumentClient(allowed_prefixes=['s3://synthetic-bucket/users/alice/']).authorize_location('s3://synthetic-bucket/users/alice/file.pdf'),
+            ('synthetic-bucket','users/alice/file.pdf'),
+        )
 
     def test_region_checks_do_not_remove_legitimate_repeated_rows(self):
         from src.app.services.ocr_regions import validate_region_coverage
