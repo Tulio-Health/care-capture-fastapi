@@ -78,9 +78,15 @@ class ReleasePolicySafety(unittest.TestCase):
 
 class LegacyAndFallbackSafety(unittest.IsolatedAsyncioTestCase):
     async def test_real_legacy_word_parser_preserves_order_status(self):
-        text=await DocumentTextExtractor().extract_text_async((DATA/'legacy_word.doc').read_bytes(),'application/msword')
-        self.assertIn('ordered; not performed',text)
-        self.assertNotIn('\\rtf',text)
+        # extract_text_async isolates parsing in a subprocess; only exc.code (the canonical
+        # UNSUPPORTED_FORMAT group) survives that boundary, not the specific reason_code.
+        with self.assertRaises(DocumentProcessingError) as failure:
+            await DocumentTextExtractor().extract_text_async((DATA/'legacy_word.doc').read_bytes(),'application/msword')
+        self.assertEqual(failure.exception.code,'UNSUPPORTED_FORMAT')
+        # Synchronous path (no subprocess boundary) exposes the precise reason.
+        with self.assertRaises(DocumentProcessingError) as sync_failure:
+            DocumentTextExtractor().extract_text((DATA/'legacy_word.doc').read_bytes(),'application/msword')
+        self.assertEqual(sync_failure.exception.reason_code,'UNSUPPORTED_LEGACY_OFFICE')
 
     async def test_fallback_error_preserves_contained_attachment_outcome(self):
         from src.app.services.summarization.comprehensive_summarization import ComprehensiveSummarizationService

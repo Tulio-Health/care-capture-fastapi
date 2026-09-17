@@ -1,10 +1,8 @@
-"""Read-only legacy Word extraction inside the bounded document parser worker."""
+"""Inspection-only legacy Word (.doc) classification: OLE2 structure is validated to
+produce a precise error taxonomy, but no text is ever extracted. Legacy .doc parsing
+fails closed -- see UNSUPPORTED_LEGACY_OFFICE."""
 import io
-import shutil
 import struct
-import subprocess
-import tempfile
-from pathlib import Path
 
 from src.app.services.document_extraction import DocumentProcessingError
 
@@ -32,23 +30,7 @@ def extract_legacy_word(extractor, content):
         raise
     except (OSError, ValueError, struct.error) as exc:
         raise DocumentProcessingError('PARSE_FAILED') from exc
-    executable = shutil.which('antiword')
-    if not executable:
-        raise DocumentProcessingError('PARSER_UNAVAILABLE')
-    with tempfile.TemporaryDirectory(prefix='clinical-doc-', dir=extractor._work_directory) as directory:
-        source = Path(directory) / 'input.doc'
-        source.write_bytes(content)
-        # No shell, macros or office automation. Worker CPU/memory limits are inherited.
-        with tempfile.TemporaryFile() as output:
-            try:
-                result = subprocess.run([executable, '-m', 'UTF-8.txt', '-w', '0', str(source)],
-                                        stdin=subprocess.DEVNULL, stdout=output,
-                                        stderr=subprocess.DEVNULL, timeout=20, check=False)
-            except subprocess.TimeoutExpired as exc:
-                raise DocumentProcessingError('PARSER_TIMEOUT') from exc
-            if result.returncode:
-                raise DocumentProcessingError('PARSE_FAILED')
-            if output.tell() > extractor.MAX_TEXT_CHARS * 4:
-                raise DocumentProcessingError('TEXT_LIMIT_EXCEEDED')
-            output.seek(0)
-            return extractor.validate_text(output.read().decode('utf-8', errors='strict'))
+    # Legacy .doc text extraction is unsupported: no real-world document in the prod
+    # corpus survey (0/663) was application/msword, and antiword required writing PHI
+    # to disk and shelling out to an unsandboxed subprocess. Fail closed instead.
+    raise DocumentProcessingError('UNSUPPORTED_LEGACY_OFFICE')

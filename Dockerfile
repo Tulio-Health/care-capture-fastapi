@@ -17,9 +17,6 @@ ENV BUILD_TIME=${BUILD_TIME}
 ENV GIT_COMMIT=${GIT_COMMIT}
 ENV GIT_BRANCH=${GIT_BRANCH}
 
-# Read-only legacy Word parser; no runtime environment configuration required.
-RUN apt-get update && apt-get install -y --no-install-recommends antiword && rm -rf /var/lib/apt/lists/*
-
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 

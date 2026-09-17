@@ -177,16 +177,18 @@ jsonfile('transcript.json',{'segments':[{'id':'t3','timestamp':30,'text':'Plan: 
 jsonfile('connector_envelopes.json',{'note':'Synthetic normalized examples, not official vendor wire contracts','sources':[{'connector':c,'documents':[{'id':'doc-a','contentType':'text/html; charset="utf-8"','file':'clinical.html','downloadStatus':'success'},{'id':'doc-b','contentType':'application/pdf','file':'scanned.pdf','downloadStatus':'failed'}]} for c in ['cerner','fasten','generic']]},'Connector provenance and acquisition accounting')
 from extended_fixtures import build as build_extended
 build_extended(put, jsonfile, archive, BASE)
-# Retain the valid binary Word fixture across platforms; author it from BASE on macOS if absent.
+# Legacy Word (.doc) now fails closed regardless of content (PR-7), so this fixture is a
+# negative test case only. Author it from BASE on macOS if absent; otherwise skip -- no
+# antiword or other .doc parser is required to build or use this fixture.
 legacy = DATA / 'legacy_word.doc'
 if not legacy.is_file():
     import shutil
     import subprocess
     tool = shutil.which('textutil')
-    if not tool:
-        raise RuntimeError('Restore the checked-in legacy_word.doc fixture or generate it with a Word-compatible authoring tool.')
-    subprocess.run([tool, '-convert', 'doc', '-output', str(legacy), str(DATA/'clinical_utf8.txt')], check=True, timeout=30)
-put('legacy_word.doc', legacy.read_bytes(), 'application/msword', 'Valid synthetic legacy Word document generated from clinical_utf8.txt; retained binary fixture.')
+    if tool:
+        subprocess.run([tool, '-convert', 'doc', '-output', str(legacy), str(DATA/'clinical_utf8.txt')], check=True, timeout=30)
+if legacy.is_file():
+    put('legacy_word.doc', legacy.read_bytes(), 'application/msword', 'Legacy Word fixture; format is unsupported and must fail closed regardless of content.')
 put('chunk_failure.txt', 'SYNTHETIC TEST DOCUMENT\n' + '\n'.join(f'Observation record {i}: no additional findings documented.' for i in range(60)), 'text/plain', 'Bounded multi-chunk input for one failed chunk, independently of whole-job resource ceilings.')
 jsonfile('structured_fhir.json', [{'resourceType':'Condition','codeText':'Synthetic documented condition','clinicalStatus':'active','verificationStatus':'confirmed'}], 'Synthetic structured clinical resource, separate from failed document attachments.')
 from nested_fhir_fixtures import build as build_nested_fhir

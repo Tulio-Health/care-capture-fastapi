@@ -34,11 +34,13 @@ def apply(cases):
             case['title'] = 'HTTP compression decoded once; nested gzip document rejected'
             case['expected'] = [dict(path='transport.http_decode_count',op='eq',value=1),dict(path='transport.file_decode_count',op='eq',value=0),dict(path='error_codes',op='contains',value='UNSUPPORTED_FORMAT'),dict(path='calls.summarization',op='eq',value=0)]
         if identity == 'PARSE-05':
-            case['manual_review'] = []  # Valid legacy Word has a separate positive case.
+            case['manual_review'] = []  # Legacy Word fails closed everywhere (PR-7); no positive case exists.
         if identity == 'FMT-DOC':
             for check in case['expected']:
                 if check['path']=='error_codes':check['value']='PARSE_FAILED'
-    cases.append(dict(id='DOC-LEGACY-VALID', title='Valid legacy Word parsed before clinical AI', plan_refs=['7','PARSE-05'], fixtures=['legacy_word.doc'], config={}, inject={}, expected=[dict(path='extraction.status',op='eq',value='success'),dict(path='extraction.adapter',op='eq',value='doc'),dict(path='boundary.raw_content_forwarded',op='eq',value=False)], manual_review=['Review extracted legacy Word content against the source, including any table associations.'], execution_status='not_run'))
+    # error_codes observes DocumentProcessingError.code (the canonical UNSUPPORTED_FORMAT group);
+    # the specific UNSUPPORTED_LEGACY_OFFICE reason is only exposed via .reason_code, not surfaced here.
+    cases.append(dict(id='DOC-LEGACY-DECLINED', title='Legacy Word fails closed instead of parsing', plan_refs=['7','PARSE-05'], fixtures=['legacy_word.doc'], config={}, inject={}, expected=[dict(path='outcome',op='eq',value='unavailable'),dict(path='error_codes',op='contains',value='UNSUPPORTED_FORMAT'),dict(path='calls.summarization',op='eq',value=0)], manual_review=[], execution_status='not_run'))
 
     for name in ('nested_bundle.json','nested_bundle.xml','nested_report.json','nested_report.xml'):
         cases.append(dict(id='FHIR-NESTED-'+name.replace('.','-').upper(),title='Parse nested FHIR attachment: '+name,plan_refs=['5','8'],fixtures=[name],config={},inject={},expected=[dict(path='extraction.status',op='eq',value='success'),dict(path='extraction.text',op='contains',value='completion not documented'),dict(path='boundary.raw_content_forwarded',op='eq',value=False)],manual_review=[],execution_status='not_run'))
