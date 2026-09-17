@@ -5,7 +5,6 @@ import unittest
 from unittest.mock import AsyncMock, patch
 from src.app.services.document_extraction import DocumentProcessingError
 from src.app.services.document_ocr import OCRVerification, verification_is_consistent, transcribe_verified_image
-from src.app.services.clinical_grounding import validate_high_risk_claims
 from src.app.services.summary_runtime import WorkBudget, _current_budget
 from test_ocr_verification_safety import response
 
@@ -79,7 +78,13 @@ class SynthesisSafety(unittest.IsolatedAsyncioTestCase):
         good=AttachmentSummarizationResponse(clinical_summary='The record contains laboratory results.',documents_analyzed=1)
         run=AsyncMock(side_effect=[NS(output=bad),NS(output=good)])
         chain=AttachmentSummarizationChain();chain._model=object();chain._synthesis_agent=NS(run=run)
-        async def verify(model,source,output):validate_high_risk_claims(source,output)
+        # PR-12b: validate_high_risk_claims (the regex classifier this test used to route
+        # through) is deleted. Simulate the LLM judge itself rejecting the unsupported lab
+        # interpretation on the first candidate and accepting the corrected one, to prove the
+        # retry-and-revalidate wiring is unaffected by that deletion.
+        async def verify(model,source,output):
+            if 'normal' in output.clinical_summary.casefold():
+                raise DocumentProcessingError('GROUNDING_VALIDATION_FAILED')
         with patch('src.app.chains.attachment_summarization.chain.verify_grounding',side_effect=verify):
             result=await chain._synthesize_records({},records,1)
         self.assertEqual(run.await_count,2)

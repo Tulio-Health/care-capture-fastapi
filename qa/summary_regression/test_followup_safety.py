@@ -57,73 +57,7 @@ class FollowupSafety(unittest.IsolatedAsyncioTestCase):
             DocumentTypeInferenceRequest(id='qa',document_body=(DATA/'clinical.rtf').read_text())
 
 
-class OriginalEvidenceSafety(unittest.TestCase):
-    def test_listed_medication_is_not_new_prescription(self):
-        from src.app.services.clinical_grounding import validate_high_risk_claims
-        from src.app.services.document_extraction import DocumentProcessingError
-        source = "Medication: Ferrous sulfate 325 mg orally once daily."
-        with self.assertRaises(DocumentProcessingError):
-            validate_high_risk_claims(source, {"clinical_summary": "You were prescribed ferrous sulfate to help with your condition."})
-        validate_high_risk_claims(source, {"medications": ["Ferrous sulfate 325 mg orally once daily."]})
-
-    def test_unflagged_lab_is_not_interpreted(self):
-        from src.app.services.clinical_grounding import validate_high_risk_claims
-        from src.app.services.document_extraction import DocumentProcessingError
-        source = "Ferritin: 8 ng/mL\nHemoglobin: 10.2 g/dL"
-        with self.assertRaises(DocumentProcessingError):
-            validate_high_risk_claims(source, {"key_insights": ["Your ferritin level was 8 ng/mL, which is low and suggests iron deficiency."]})
-        validate_high_risk_claims(source, {"lab_results": ["Ferritin: 8 ng/mL", "Hemoglobin: 10.2 g/dL"]})
-
-    def test_explicit_high_risk_source_statements_are_allowed(self):
-        from src.app.services.clinical_grounding import validate_high_risk_claims
-        source = "Prescribed ferrous sulfate 325 mg once daily.\nFerritin: 8 ng/mL, low.\nSeen for anemia."
-        validate_high_risk_claims(source, {"clinical_summary": source})
-
-    def test_unrelated_prescription_does_not_authorize_new_medication_claim(self):
-        from src.app.services.clinical_grounding import validate_high_risk_claims
-        from src.app.services.document_extraction import DocumentProcessingError
-        with self.assertRaises(DocumentProcessingError):
-            validate_high_risk_claims("Prescribed aspirin. Medication: ferrous sulfate.", {"clinical_summary": "Prescribed ferrous sulfate."})
-
-    def test_visit_purpose_not_inferred_from_assessment(self):
-        from src.app.services.clinical_grounding import validate_high_risk_claims
-        from src.app.services.document_extraction import DocumentProcessingError
-        with self.assertRaises(DocumentProcessingError):
-            validate_high_risk_claims("Assessment: Iron deficiency anemia.", {"clinical_summary": "You visited for an assessment of your health."})
-
-class ContentIndependentGroundingSafety(unittest.TestCase):
-    """Use unrelated contents to ensure checks do not recognize incident fixtures."""
-
-    def test_prescription_guard_applies_to_arbitrary_medication_names(self):
-        from src.app.services.clinical_grounding import validate_high_risk_claims
-        from src.app.services.document_extraction import DocumentProcessingError
-        for medication in ('Metformin', 'Lisinopril', 'Synthetic agent Ω'):
-            with self.subTest(medication=medication):
-                source = f'Medication: {medication}.'
-                validate_high_risk_claims(source, {'medications': [source]})
-                with self.assertRaises(DocumentProcessingError):
-                    validate_high_risk_claims(source, {'clinical_summary': f'Prescribed {medication}.'})
-                explicit = f'Prescribed {medication}.'
-                validate_high_risk_claims(explicit, {'clinical_summary': explicit})
-
-    def test_numeric_interpretation_guard_does_not_depend_on_test_name(self):
-        from src.app.services.clinical_grounding import validate_high_risk_claims
-        from src.app.services.document_extraction import DocumentProcessingError
-        for name, value, unit in [('Sodium', '141', 'mmol/L'), ('TSH', '2.3', 'mIU/L'), ('Synthetic marker Ω', '17', 'arbitrary-units')]:
-            with self.subTest(name=name):
-                source = f'{name}: {value} {unit}.'
-                validate_high_risk_claims(source, {'lab_results': [source]})
-                interpreted = f'{name}: {value} {unit}, elevated.'
-                with self.assertRaises(DocumentProcessingError):
-                    validate_high_risk_claims(source, {'key_insights': [interpreted]})
-                validate_high_risk_claims(interpreted, {'lab_results': [interpreted]})
-
-    def test_visit_guard_uses_source_evidence_for_unrelated_conditions(self):
-        from src.app.services.clinical_grounding import validate_high_risk_claims
-        from src.app.services.document_extraction import DocumentProcessingError
-        for condition in ('migraine', 'eczema', 'a synthetic condition Ω'):
-            with self.subTest(condition=condition):
-                claim = f'Seen for {condition}.'
-                with self.assertRaises(DocumentProcessingError):
-                    validate_high_risk_claims(f'Assessment: {condition}.', {'clinical_summary': claim})
-                validate_high_risk_claims(claim, {'clinical_summary': claim})
+# PR-12b: OriginalEvidenceSafety and ContentIndependentGroundingSafety (both testing
+# validate_high_risk_claims directly) were removed -- that classifier is deleted entirely (see
+# clinical_grounding.py and test_clinical_grounding.py for its replacement coverage: the LLM
+# judge now runs unconditionally on this content instead).

@@ -24,7 +24,7 @@ from src.app.models.attachment_summarization import (
 
 from src.app.services.document_ingestion import require_parsed, mark_parsed
 from src.app.services.document_extraction import DocumentProcessingError
-from src.app.services.clinical_grounding import GROUNDING_MAX_CHARACTERS, GROUNDING_POLICY, validate_quotes, verify_grounding, validate_high_risk_claims, validate_explicit_facts, validate_single_subject
+from src.app.services.clinical_grounding import GROUNDING_MAX_CHARACTERS, GROUNDING_POLICY, validate_quotes, verify_grounding, validate_single_subject
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +39,6 @@ _deferred_grounding = ContextVar("attachment_deferred_grounding", default=None)
 _GROUNDING_SIZE_MARGIN = 4096
 
 BATCH_CHAR_LIMIT = 30_000  # ~7,500-10,000 tokens of content per batch
-
-# A single document may fill exactly one batch, never more -- and _window_document (below)
-# enforces this by construction, it is not a hope. Named separately from
-# procedure_extraction/chain.py's _MAX_DOC_CHARS (100_000): that chain is per-document (one LLM
-# call per document); this one is batched (several documents can share one
-# BATCH_CHAR_LIMIT-sized prompt), so the two caps differ on purpose.
-_MAX_DOC_CHARS_ATTACHMENT = BATCH_CHAR_LIMIT
 
 # Section headers whose content must survive windowing even when the head+tail slice alone
 # would drop them. Bug 2's root cause: a blind head truncation dropped Assessment/Plan and
@@ -356,8 +349,6 @@ GUARDRAILS - Do:
 # it changes call volume, not coverage. The overlap floor `min(1000, CHUNK_CHAR_LIMIT // 10)`
 # stays a small, sane fraction of the new limit (1000/30000 ~= 3%) rather than growing with it,
 # since it only needs to re-anchor a follow-up/plan sentence that straddled a chunk boundary.
-# BATCH_CHAR_LIMIT is the real ceiling here because _MAX_DOC_CHARS_ATTACHMENT (the per-document
-# cap enforced elsewhere in this file) is itself defined in terms of it, not a separate number.
 CHUNK_CHAR_LIMIT = BATCH_CHAR_LIMIT
 
 def _create_batches(
@@ -381,72 +372,6 @@ def _create_batches(
     return batches
 
 
-def _window_document(text: str, cap: int = _MAX_DOC_CHARS_ATTACHMENT) -> str:
-    """Bound a single document's extracted text to `cap` characters while preserving
-    Assessment/Plan, Follow-up and similar late-document sections that a blind head
-    truncation would drop (Bug 2's root cause).
-
-    No-op below `cap`. Otherwise: head (60% of cap) + tail (10% of cap) + every
-    `_PLAN_SECTION_PATTERN` match expanded to (header - 200, header + 1,500), merged/
-    de-overlapped, kept in document order. While the assembled output still exceeds `cap`,
-    the lowest-priority span -- the one furthest from the tail, since Epic CCDs put
-    Assessment/Plan, Plan of Treatment and Follow-up sections last -- is dropped and the
-    document is re-assembled.
-
-    The final `return out[:cap]` is an UNCONDITIONAL hard clamp: the bound holds no matter
-    what the assembly above computed, even if a marker string above is later reworded or a
-    span's size estimate is off by one. This clamp -- not the assembly logic -- is what makes
-    `len(_window_document(text, cap=cap)) <= cap` true by construction rather than by
-    assumption; see test_followup_windowing.py's explicit proof that removing it breaks the
-    invariant on a fixture with many spans.
-    """
-    if len(text) <= cap:
-        return text
-
-    head_end = int(cap * 0.6)
-    tail_start = len(text) - int(cap * 0.1)
-
-    raw_spans = sorted(
-        (max(0, m.start() - 200), min(len(text), m.start() + 1_500))
-        for m in _PLAN_SECTION_PATTERN.finditer(text)
-    )
-    spans: List[Tuple[int, int]] = []
-    for start, end in raw_spans:
-        if spans and start <= spans[-1][1]:
-            spans[-1] = (spans[-1][0], max(spans[-1][1], end))
-        else:
-            spans.append((start, end))
-
-    def _assemble(spans: List[Tuple[int, int]]) -> str:
-        parts = [text[:head_end]]
-        cursor = head_end
-        for start, end in spans:
-            start, end = max(start, cursor), max(end, cursor)
-            if start >= tail_start:
-                continue
-            end = min(end, tail_start)
-            if end <= start:
-                continue
-            if start > cursor:
-                parts.append(f"\n\n[... omitted {start - cursor} chars ...]\n\n")
-            parts.append(text[start:end])
-            cursor = end
-        if tail_start > cursor:
-            parts.append(f"\n\n[... omitted {tail_start - cursor} chars ...]\n\n")
-        parts.append(text[tail_start:])
-        return "".join(parts)
-
-    # Priority: spans closer to the tail matter more -- drop the span furthest from the tail
-    # (the earliest one, since `spans` is sorted in document order) first.
-    out = _assemble(spans)
-    while len(out) > cap and spans:
-        spans.pop(0)
-        out = _assemble(spans)
-
-    # Unconditional final clamp -- see docstring above.
-    return out[:cap]
-
-
 def _format_batch_prompt(
     batch: List[DocumentAttachment], batch_num: int, total_batches: int
 ) -> str:
@@ -466,8 +391,6 @@ def _format_batch_prompt(
             header += f"Filename: {doc.file_name}\n"
         header += "---\n\n"
 
-        # Already windowed to _MAX_DOC_CHARS_ATTACHMENT by _create_batches -- the window's own
-        # `[... omitted N chars ...]` markers replace the old truncation suffix.
         parts.append(header + doc.extracted_text)
 
     return "\n".join(parts)
@@ -476,6 +399,26 @@ def _format_batch_prompt(
 def _norm(text: str) -> str:
     """Normalize a procedure description for de-dup comparison: collapse whitespace, lowercase."""
     return " ".join(text.split()).lower()
+
+
+def _procedures_correspond(a: str, b: str) -> bool:
+    """True when two procedure descriptions are close enough to be the same real-world event:
+    exact match after normalization, or one is a fuzzy paraphrase-anchor of the other (reusing
+    the shared _quote_supported primitive -- no new threshold)."""
+    if _norm(a) == _norm(b):
+        return True
+    return _quote_supported(a, b) or _quote_supported(b, a)
+
+
+def _fuzzy_set_equal(a: set, b: set) -> bool:
+    """PR-12b item 5: loosened replacement for exact set equality between synthesis's
+    procedures_mentioned and extraction's performed bucket. Exact equality hard-failed on ANY
+    paraphrase (Topic C: "its flaw is over-strictness"). This still fails a genuinely invented
+    item (nothing on one side corresponds to it) or a genuinely omitted one (nothing on the
+    other side corresponds to it) -- only wording differences are tolerated.
+    """
+    return all(any(_procedures_correspond(x, y) for y in b) for x in a) and \
+        all(any(_procedures_correspond(x, y) for y in a) for x in b)
 
 
 def _split_procedures(summaries: List[DocumentSummary]) -> List[dict]:
@@ -495,31 +438,6 @@ def _split_procedures(summaries: List[DocumentSummary]) -> List[dict]:
         data["procedures_not_stated"] = [p["source_quote"] for p in procedures if p["status"] == "not_stated"]
         split.append(data)
     return split
-
-
-def _enforce_performed_cardinality(
-    response: AttachmentSummarizationResponse, split: List[dict]
-) -> None:
-    """Guards against the synthesis agent inventing a `procedures_mentioned` entry with no backing
-    item in any document's `procedures_performed` list. Fires only in the unsafe direction: merging
-    two performed items into one sentence is safe (fewer claims, all true); inventing an extra one
-    is not.
-    """
-    first_appearance: dict[str, str] = {}
-    for doc in split:
-        for p in doc["procedures_performed"]:
-            key = _norm(p)
-            if key not in first_appearance:
-                first_appearance[key] = p
-
-    if len(response.procedures_mentioned) > len(first_appearance):
-        logger.warning(
-            "procedures_mentioned cardinality (%d) exceeds the performed bucket (%d) — truncating "
-            "to the performed items themselves to avoid surfacing an unbacked claim",
-            len(response.procedures_mentioned),
-            len(first_appearance),
-        )
-        response.procedures_mentioned = list(first_appearance.values())
 
 
 def _check_follow_up_grounding(
@@ -665,13 +583,46 @@ class AttachmentSummarizationChain:
         _check_follow_up_grounding([s.model_copy(deep=True) for s in result.output], prompt)
         for summary in result.output:
             source = expected[summary.source_document_id].extracted_text
-            validate_quotes(summary.evidence_quotes, source)
-            normalized_source = " ".join(source.split()).casefold()
+            # PR-12b item 3: evidence_quotes is an internal DocumentSummary field -- it never
+            # reaches AttachmentSummarizationResponse. The extraction agent routinely composes
+            # one evidence quote from several source rows ("Home Medications: <med1>; <med2>;
+            # ..."), which no contiguous-span check can validate at any useful threshold.
+            # Failing the whole batch here discarded every correctly-grounded medication,
+            # diagnosis and lab in the same chunk (PR-12 research topic A: 23 of 26 batches on a
+            # real production C-CDA). Drop the unsupported entries and log instead; only fail
+            # closed when NONE survive (an empty-evidence summary is still a real problem).
+            # Per-claim anchors (procedure/follow_up source_quote below) stay fail-closed --
+            # the LLM judge does not reliably check anchor traceability (PR-12 research topic C
+            # §4.1 case C).
+            kept_evidence, dropped_evidence = [], []
+            for quote in summary.evidence_quotes:
+                if isinstance(quote, str) and quote.strip() and _quote_supported(quote, source):
+                    kept_evidence.append(quote)
+                else:
+                    dropped_evidence.append(quote)
+            if dropped_evidence:
+                content_hash = hashlib.sha256("\x1e".join(str(q) for q in dropped_evidence).encode("utf-8")).hexdigest()[:16]
+                logger.warning(
+                    "dropped_ungrounded_evidence: %d of %d evidence_quotes not found (fuzzy) in "
+                    "source (content_hash=%s)",
+                    len(dropped_evidence), len(summary.evidence_quotes), content_hash,
+                )
+            summary.evidence_quotes = kept_evidence
+            if not summary.evidence_quotes:
+                raise DocumentProcessingError("INVALID_SOURCE_EVIDENCE")
             for diagnosis in summary.diagnoses:
-                if " ".join(diagnosis.official_diagnosis.split()).casefold() not in normalized_source:
+                # PR-12b item 4: fuzzy match (same primitive/threshold as validate_quotes)
+                # instead of a verbatim substring check -- the untested twin of validate_quotes
+                # had the same brittleness (e.g. source "Type 2 diabetes mellitus" followed by
+                # unrelated text vs a candidate that adds a trailing period or drops a comma).
+                if not _quote_supported(diagnosis.official_diagnosis, source):
                     raise DocumentProcessingError("DIAGNOSIS_WORDING_NOT_GROUNDED")
             for procedure in summary.procedures:
                 validate_quotes([procedure.source_quote], source)
+                # PR-12b item 8: DO NOT TOUCH -- empirically tested against the LLM judge alone
+                # (9/9 real detections, PR-12 research topic C §3) and kept deliberately: free,
+                # zero measured false positives, fails early into a cheap repair retry instead
+                # of late into a whole-appointment failure.
                 if procedure.status == "performed":
                     quote = procedure.source_quote.casefold()
                     positive = re.search(r"\b(performed|underwent|administered|received|completed|inserted|excised|injected|resected)\b", quote)
@@ -733,7 +684,10 @@ class AttachmentSummarizationChain:
             result = await model_call(self.synthesis_agent.run, prompt)
             known_performed = {" ".join(value.split()).casefold() for record in records for value in record.get("procedures_performed", record.get("procedures_mentioned", []))}
             returned_performed = {" ".join(value.split()).casefold() for value in result.output.procedures_mentioned}
-            if returned_performed != known_performed:
+            # PR-12b item 5: exact set equality hard-failed on ANY paraphrase (Topic C: "its
+            # flaw is over-strictness"). _fuzzy_set_equal tolerates wording differences while
+            # still failing a procedure invented on one side or omitted from the other.
+            if not _fuzzy_set_equal(returned_performed, known_performed):
                 raise DocumentProcessingError("PROCEDURE_STATUS_NOT_GROUNDED")
             # Retain validated structured facts deterministically; synthesis prose
             # cannot erase a documented order or detach a lab value from its field.
@@ -760,11 +714,56 @@ class AttachmentSummarizationChain:
             # Standalone internal calls retain their existing verification behavior.
             await verify_grounding(self.model, source, candidate)
             return
-        validate_high_risk_claims(source, candidate)
-        validate_explicit_facts(source, candidate)
+        # PR-12b: validate_high_risk_claims/validate_explicit_facts used to run here as a
+        # cheap pre-check. Both were classifier-style regexes on free-form prose, deleted (see
+        # clinical_grounding.py) -- the real judge review of this deferred path's content
+        # happens below in _verify_final, which always runs at least one verify_grounding call
+        # against this same accumulated snapshot set.
         # Keep a snapshot only for oversized requests that need the existing staged
         # audit path. An intermediate candidate is never published from this queue.
         audits.append((stage, source, candidate.model_copy(deep=True)))
+
+    async def _verify_final_with_retry(self, source, candidate):
+        """PR-12b item 6: chain.py's end-of-_analyze call used to be a bare
+        validate_high_risk_claims(accepted_source, response) / validate_explicit_facts(...)
+        pair, with no try/except and no retry (PR-12 research topic B). Both classifiers are
+        deleted. For Regime A (_deferred_grounding is a list), _verify_final below always runs
+        a real verify_grounding call against this exact (source, candidate) pair, so nothing
+        further is needed here -- return immediately. For Regime B (_deferred_grounding is
+        None), _verify_final is a no-op: every extraction batch and the synthesis step already
+        ran verify_grounding, but the synthesis-stage call audits the response against
+        intermediate JSON records, not the real original source text. This is therefore the
+        ONLY place a Regime B final response is checked against real accepted_source; replace
+        the deleted deterministic pre-check with the actual LLM judge, retried once --
+        verify_grounding is temperature=0 with retries=0 and measured non-deterministic on
+        identical input (PR-12 research topic C §3.4), so a single spurious rejection must not
+        kill an otherwise-correct appointment.
+
+        Empirically found running the real Ricardo Febry case (PR-12b real-data
+        re-verification): Regime B means source > 80,000 chars by definition, so
+        `accepted_source` alone -- let alone with the serialized response added -- routinely
+        exceeds verify_grounding's own GROUNDING_MAX_CHARACTERS budget before the judge is ever
+        called. Skip gracefully in that case rather than hard-failing an appointment on a call
+        that was never going to be able to run anyway; Regime B already ran a real judge against
+        real per-chunk source text on every extraction batch, so this stays a bonus check, not a
+        load-bearing one.
+        """
+        if _deferred_grounding.get() is not None:
+            return
+        size = len(source) + len(json.dumps(candidate.model_dump(), ensure_ascii=False, default=str))
+        if size > GROUNDING_MAX_CHARACTERS - _GROUNDING_SIZE_MARGIN:
+            logger.warning(
+                "Skipping the retried final-grounding check: accepted_source + response "
+                "(%d chars) exceed verify_grounding's budget for this large appointment.",
+                size,
+            )
+            return
+        try:
+            await verify_grounding(self.model, source, candidate)
+        except DocumentProcessingError as exc:
+            if exc.code not in {"CLINICAL_EVIDENCE_FAILED", "MODEL_OUTPUT_INVALID"}:
+                raise
+            await verify_grounding(self.model, source, candidate)
 
     async def _verify_final(self, source, candidate, accepted_ids):
         audits = _deferred_grounding.get()
@@ -873,9 +872,7 @@ class AttachmentSummarizationChain:
         # intermediate model output, which cannot establish source truth.
         accepted_ids = {item.source_document_id.rsplit(":chunk:", 1)[0] for item in all_summaries}
         accepted_source = "\n".join(doc.extracted_text for index, doc in enumerate(documents) if not doc.extraction_error and (doc.resource_id or str(index)) in accepted_ids)
-        validate_high_risk_claims(accepted_source, response)
-        if not failures:
-            validate_explicit_facts(accepted_source, response)
+        await self._verify_final_with_retry(accepted_source, response)
         response.documents_analyzed = len({summary.source_document_id.rsplit(":chunk:", 1)[0] for summary in all_summaries})
         response.extraction_errors = failures
         # For partial jobs, audit only successful original source chunks. Failed

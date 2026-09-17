@@ -13,10 +13,7 @@ JSON, never a response field.
 from pathlib import Path
 from typing import List, Literal
 
-from src.app.chains.attachment_summarization.chain import (
-    _enforce_performed_cardinality,
-    _split_procedures,
-)
+from src.app.chains.attachment_summarization.chain import _split_procedures
 from src.app.models.attachment_summarization import (
     AttachmentSummarizationResponse,
     DocumentSummary,
@@ -88,56 +85,6 @@ def test_split_procedures_buckets_performed_by_description_and_ordered_not_state
         "Procedure history is otherwise unremarkable."
     ]
     assert "procedures" not in split[0]
-
-
-def test_cardinality_guard_fires_only_when_response_exceeds_performed_bucket():
-    split = [
-        {
-            "procedures_performed": ["Left shoulder injection"],
-            "procedures_ordered": ["Thyroid ultrasound"],
-        }
-    ]
-
-    # Safe: response matches the performed bucket exactly -> untouched.
-    safe = AttachmentSummarizationResponse(
-        clinical_summary="x",
-        documents_analyzed=1,
-        procedures_mentioned=["Left shoulder injection"],
-    )
-    _enforce_performed_cardinality(safe, split)
-    assert safe.procedures_mentioned == ["Left shoulder injection"]
-
-    # Unsafe: response invented an extra entry beyond the performed bucket -> truncated.
-    unsafe = AttachmentSummarizationResponse(
-        clinical_summary="x",
-        documents_analyzed=1,
-        procedures_mentioned=["Left shoulder injection", "Thyroid ultrasound"],
-    )
-    _enforce_performed_cardinality(unsafe, split)
-    assert unsafe.procedures_mentioned == ["Left shoulder injection"]
-
-
-def test_cardinality_guard_does_not_fire_when_model_merges_performed_items():
-    """Merging two performed items into one sentence is safe (fewer claims, all true)."""
-    split = [
-        {
-            "procedures_performed": ["Shoulder injection", "Knee injection"],
-            "procedures_ordered": [],
-        }
-    ]
-    response = AttachmentSummarizationResponse(
-        clinical_summary="x",
-        documents_analyzed=1,
-        procedures_mentioned=[
-            "You received shoulder and knee injections during this visit"
-        ],
-    )
-
-    _enforce_performed_cardinality(response, split)
-
-    assert response.procedures_mentioned == [
-        "You received shoulder and knee injections during this visit"
-    ]
 
 
 def test_chain_has_section_7_procedures_prompt_with_cda_rule_and_status_guard():

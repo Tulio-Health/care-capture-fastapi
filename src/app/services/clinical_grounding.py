@@ -39,92 +39,6 @@ class GroundingVerdict(BaseModel):
     issues: list[str] = Field(default_factory=list)
 
 
-def _clinical_strings(value):
-    """Inspect assertions, excluding evidence/provenance which may quote rejected claims."""
-    if hasattr(value, "model_dump"):
-        value = value.model_dump()
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, list):
-        for item in value:
-            yield from _clinical_strings(item)
-    elif isinstance(value, dict):
-        for key, item in value.items():
-            if key not in {"evidence_quotes", "source_quote", "source_document_id", "source_document_title", "source_document_type"}:
-                yield from _clinical_strings(item)
-
-
-def validate_high_risk_claims(source, output):
-    """Conservative English claim checks; additional protection, not a truth proof.
-
-    Unsupported initiation, visit framing and numeric lab interpretation fail closed.
-    High-risk wording must be a close match (verbatim or fuzzy paraphrase) of a source
-    clause, rather than merely somewhere in an intermediate model summary. This
-    deliberately favors omission/review over accepting an unsupported claim.
-
-    PR-11: matching against source_clauses uses procedure_extraction.chain._quote_supported
-    (threshold=0.85) instead of a verbatim `in` substring check. The extraction agent is
-    explicitly instructed to paraphrase clinical content into patient-facing prose, so a
-    verbatim check rejected almost every real, correctly-grounded high-risk claim purely for
-    wording -- failing the entire batch closed on real content, not just fabricated content.
-    Reusing the same calibrated threshold already trusted for this class of check (rather than
-    inventing a new one) still fails closed on a candidate with zero support anywhere in source.
-    """
-    # Deferred import: procedure_extraction.chain imports GROUNDING_POLICY/verify_grounding from
-    # this module at module scope, so a top-level import here would be a circular import.
-    from src.app.chains.procedure_extraction.chain import _quote_supported
-    normalize = lambda value: " ".join(value.casefold().split()).strip(" .")
-    try:
-        structured_source = json.loads(source)
-    except (ValueError, TypeError):
-        pass
-    else:
-        def source_strings(item):
-            if isinstance(item, str):
-                yield item
-            elif isinstance(item, dict):
-                for value in item.values():
-                    yield from source_strings(value)
-            elif isinstance(item, list):
-                for value in item:
-                    yield from source_strings(value)
-        source = "\n".join(source_strings(structured_source))
-    source_clauses = [normalize(part) for part in re.split(r"[\n;]|(?<=[.!?])\s+", source) if part.strip()]
-    for value in _clinical_strings(output):
-        for clause in re.split(r"[\n;]|(?<=[.!?])\s+", value):
-            candidate = normalize(clause)
-            if not candidate:
-                continue
-            initiation = re.search(r"\b(?:prescribed|newly started|started taking|initiated)\b", candidate)
-            purpose = re.search(r"\b(?:visited|visit was|came in|seen)\b.{0,60}\b(?:for|because|to assess)\b", candidate)
-            interpretation = re.search(r"\b(?:low|high|normal|abnormal|elevated|reduced|indicat(?:es|ing)|suggest(?:s|ing))\b", candidate) and re.search(r"\d|\b(?:level|levels|result|results|measurement|measurements|lab|laboratory)\b", candidate)
-            if (initiation or purpose or interpretation) and not any(_quote_supported(candidate, evidence) for evidence in source_clauses):
-                failure = DocumentProcessingError("GROUNDING_VALIDATION_FAILED")
-                failure.validation_candidate = output.model_dump() if hasattr(output, "model_dump") else output
-                kind = "prescribing/initiation" if initiation else "visit purpose" if purpose else "lab interpretation"
-                failure.validation_issues = [f"Unsupported {kind} wording: {clause!r}. This wording does not occur in the source. For a medication list, copy the medication line; do not say prescribed, started, or initiated. For visit purpose or lab interpretation, omit the claim or copy an explicit source clause. Do not repeat the rejected wording."]
-                raise failure
-
-
-def validate_explicit_facts(source, output):
-    """Catch omitted explicit diagnosis labels and detached numeric lab results.
-
-    This intentionally recognizes a narrow, unambiguous source grammar. Free-form
-    clinical prose still needs semantic review; unknown grammar is not scored here.
-    """
-    strings = list(_clinical_strings(output))
-    normalized = " ".join(" ".join(strings).casefold().split())
-    for diagnosis in re.findall(r"(?im)^\s*(?:assessment|diagnosis)\s*:\s*([^\n;]+)", source):
-        fact = " ".join(diagnosis.casefold().split()).strip(" .")
-        if fact and fact not in normalized:
-            raise DocumentProcessingError("CLINICAL_EVIDENCE_FAILED")
-    labs = re.findall(r"(?im)^\s*([a-z][a-z ()/-]{1,60}):\s*([0-9]+(?:\.[0-9]+)?)\s*(ng/mL|g/dL|mg/dL|mmol/L|mEq/L|IU/L|U/L)\b", source)
-    for name, value, unit in labs:
-        # Keep association in one emitted field, not scattered across unrelated claims.
-        if not any(all(part.casefold() in text.casefold() for part in (name.strip(), value, unit)) for text in strings):
-            raise DocumentProcessingError("CLINICAL_EVIDENCE_FAILED")
-
-
 def validate_single_subject(source):
     """Reject explicit multi-patient headers before clinical model extraction."""
     labels = re.findall(r"(?im)^\s*patient\s+([^:\n]+):", source)
@@ -134,7 +48,20 @@ def validate_single_subject(source):
 
 
 async def verify_grounding(model, source: str, output, *, scope="clinical_summary"):
-    """Fail closed on validation failure. This reduces risk; it is not a proof of truth."""
+    """Fail closed on validation failure. This reduces risk; it is not a proof of truth.
+
+    PR-12b: validate_high_risk_claims (three regex triggers classifying a claim as
+    prescribing/initiation, visit purpose, or lab interpretation) and validate_explicit_facts
+    (anti-omission Assessment:/lab-value regexes) used to run here, before the LLM judge below.
+    Both were "what kind of claim is this" classifiers on free-form clinical prose -- confirmed
+    unfixable by regex (PR-12 research topic B: the lab-interpretation trigger misclassified a
+    patient's age as a lab value; topic C: the judge, run alone, caught the same failures 9/9
+    including one case the regex missed). They are deleted, not merely disabled: every call
+    site was re-verified to still reach an LLM judge on the same content (either immediately
+    below, unconditionally now, or via the retried check added to
+    AttachmentSummarizationChain._analyze for the one call site that previously had no judge
+    following it in Regime B -- see chain.py).
+    """
     from pydantic_ai import Agent
     from pydantic_ai.settings import ModelSettings
     from src.app.common.llm_factory import get_pydantic_ai_model
@@ -148,10 +75,6 @@ async def verify_grounding(model, source: str, output, *, scope="clinical_summar
         procedures = payload.pop("procedures")
         for status in ("performed", "ordered", "not_stated"):
             payload["procedures_" + status] = [item for item in procedures if item["status"] == status]
-    if scope != "translation":
-        validate_high_risk_claims(source, payload)
-        if scope == "clinical_summary":
-            validate_explicit_facts(source, payload)
     serialized = json.dumps(payload, ensure_ascii=False, default=str)
     if len(source) + len(serialized) > GROUNDING_MAX_CHARACTERS:
         raise DocumentProcessingError("VALIDATION_BUDGET_EXCEEDED")
@@ -204,5 +127,18 @@ Never demand a performed event when none is documented.
 
 
 def validate_quotes(quotes, source):
-    if not quotes or any(not isinstance(q, str) or not q.strip() or q not in source for q in quotes):
+    """Fail closed when an atomic per-claim anchor has no close (fuzzy) match in source.
+
+    PR-12b: uses procedure_extraction.chain._quote_supported (threshold=0.85, the same
+    primitive already trusted for follow_up/high-risk-claim grounding elsewhere in this
+    codebase) instead of a verbatim `in` substring check. Real CDA narrative text cannot be
+    quoted character-for-character after table flattening (PR-12 research topic A: a verbatim
+    check rejected 12 of 15 correctly-grounded quotes on a real production C-CDA). This stays
+    fail-closed -- only `evidence_quotes` (an internal, aggregating field) gets a drop-and-log
+    fallback, applied by the caller in chain.py, not here.
+    """
+    # Deferred import: procedure_extraction.chain imports GROUNDING_POLICY/verify_grounding from
+    # this module at module scope, so a top-level import here would be a circular import.
+    from src.app.chains.procedure_extraction.chain import _quote_supported
+    if not quotes or any(not isinstance(q, str) or not q.strip() or not _quote_supported(q, source) for q in quotes):
         raise DocumentProcessingError("INVALID_SOURCE_EVIDENCE")

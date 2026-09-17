@@ -1,98 +1,105 @@
-"""PR-11 (root cause 1): validate_high_risk_claims must tolerate a genuine paraphrase of
-real source content while still failing closed on a claim with zero source support.
+"""PR-12b: validate_high_risk_claims and validate_explicit_facts were deleted entirely.
 
-Before this fix, `validate_high_risk_claims` matched candidate high-risk wording against
-source clauses with a verbatim `candidate in evidence` substring check. The extraction agent
-is explicitly instructed to paraphrase clinical content into patient-facing prose, so almost
-any real, correctly-grounded claim failed this check purely because the wording did not
-appear character-for-character in the source -- and the entire batch was rejected, not just
-the offending clause. The fix reuses procedure_extraction.chain._quote_supported's existing
-fuzzy-match discipline (threshold=0.85, the same one already trusted for follow_up/quote
-grounding elsewhere in this codebase) instead of inventing a new algorithm or threshold.
+Both were "what kind of claim is this" classifiers on free-form clinical prose (regex
+triggers for initiation/prescribing, visit purpose, and lab interpretation, plus anti-omission
+Assessment:/lab-value regexes). PR-12 research (topics B and C) confirmed a real false positive
+(a patient's age misread as a lab value purely because "normal" co-occurred with a bare digit)
+and confirmed every call site of these functions is followed, unconditionally, by an actual LLM
+judge review of the same content -- either immediately inside verify_grounding, or via the
+retried final-grounding check added to AttachmentSummarizationChain._analyze for the one call
+site that previously had no judge review at all in Regime B (see
+test_pr12b_validation_consolidation.py for that call site's own tests).
+
+These tests prove: (1) the exact reproduced false positive no longer blocks the pipeline and
+the judge is actually invoked on that content, and (2) a genuine fabrication is still caught --
+now solely by the judge. Also covers validate_quotes' switch to fuzzy matching (item 3).
 """
+
+from types import SimpleNamespace as NS
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.app.services.clinical_grounding import validate_high_risk_claims
+from src.app.services.clinical_grounding import GroundingVerdict, validate_quotes, verify_grounding
 from src.app.services.document_extraction import DocumentProcessingError
 
 
-def _normalize(value: str) -> str:
-    """Mirrors validate_high_risk_claims' internal `normalize` lambda, used only to prove
-    the old verbatim check would have rejected test 1's candidate (the before/after proof)."""
-    return " ".join(value.casefold().split()).strip(" .")
+def _mock_judge(supported: bool, issues=None):
+    return AsyncMock(return_value=NS(output=GroundingVerdict(supported=supported, issues=issues or [])))
 
 
-def test_paraphrased_high_risk_claim_now_passes():
-    """A real, correctly-grounded medication claim, paraphrased (not verbatim) from its
-    source clause, must be accepted. This is the actual bug fix.
-
-    Before/after proof: the candidate is deliberately NOT a verbatim substring of the
-    (normalized) source -- it adds a natural trailing word ("today") the source doesn't have
-    at that position -- so the OLD `candidate in evidence` check would have rejected it and
-    failed the whole batch, even though the claim is fully, faithfully grounded.
+@pytest.mark.asyncio
+async def test_age_misread_as_lab_value_no_longer_blocks_and_the_judge_still_runs():
+    """PR-12 research topic B's exact reproduced false positive: 'Patient is a 20-year-old
+    female in normal appearance, not in acute distress.' used to be classified as an
+    unsupported LAB INTERPRETATION purely because 'normal' co-occurred with the patient's age
+    (a bare digit) -- no lab, no value, no unit. validate_high_risk_claims no longer exists, so
+    this must reach (and pass) the real LLM judge instead of being rejected before the judge is
+    ever called.
     """
     source = (
-        "Active Medications: Aspirin 81 mg oral tablet, newly started for cardiovascular "
-        "risk reduction, per today's clinic note."
+        "Lauren M Strimel is a 20 y.o. female presenting today for: Establish Care\n"
+        "GENERAL:\nGeneral: Not in acute distress.\nAppearance: Normal appearance."
     )
     candidate = {
-        "medications_mentioned": [
-            "Aspirin 81 mg oral tablet, newly started for cardiovascular risk reduction today"
+        "clinical_findings": [
+            "Patient is a 20-year-old female in normal appearance, not in acute distress."
         ]
     }
+    run = _mock_judge(supported=True)
+    with patch("src.app.core.settings.get_settings", return_value=NS(DOCUMENT_VERIFICATION_MODEL="mock")), \
+         patch("src.app.common.llm_factory.get_pydantic_ai_model", return_value=object()), \
+         patch("pydantic_ai.Agent", return_value=NS(run=run)):
+        await verify_grounding(None, source, candidate)  # must not raise
+    run.assert_awaited_once()
 
-    # Prove the old verbatim check would have failed this exact case.
-    assert _normalize(candidate["medications_mentioned"][0]) not in _normalize(source)
 
-    # New fuzzy check accepts it -- no exception raised.
-    validate_high_risk_claims(source, candidate)
-
-
-def test_fabricated_high_risk_claim_still_fails_closed():
-    """Load-bearing negative control: a candidate with ZERO support anywhere in the source
-    (a genuine hallucination, phrased however) must still raise GROUNDING_VALIDATION_FAILED
-    (canonicalized to CLINICAL_EVIDENCE_FAILED). This proves the fuzzy-match fix did not
-    turn the check into an unconditional pass -- 0.85 similarity tolerates paraphrase of real
-    content, not fabrication of content that was never there.
-    """
+@pytest.mark.asyncio
+async def test_fabricated_claim_still_caught_solely_by_the_judge():
+    """Negative control: a genuine fabrication (medications never documented in source) must
+    still fail closed. With the classifier deleted, this protection now comes entirely from
+    the LLM judge's verdict."""
     source = "Patient denies any medication use. No active prescriptions on file."
     candidate = {
         "medications_mentioned": [
             "You were newly started on Warfarin 5mg daily for atrial fibrillation"
         ]
     }
-
-    with pytest.raises(DocumentProcessingError) as excinfo:
-        validate_high_risk_claims(source, candidate)
-
+    run = _mock_judge(
+        supported=False,
+        issues=["medications_mentioned lists warfarin which is not documented in the source"],
+    )
+    with patch("src.app.core.settings.get_settings", return_value=NS(DOCUMENT_VERIFICATION_MODEL="mock")), \
+         patch("src.app.common.llm_factory.get_pydantic_ai_model", return_value=object()), \
+         patch("pydantic_ai.Agent", return_value=NS(run=run)):
+        with pytest.raises(DocumentProcessingError) as excinfo:
+            await verify_grounding(None, source, candidate)
+    run.assert_awaited_once()
     assert excinfo.value.code == "CLINICAL_EVIDENCE_FAILED"
     assert excinfo.value.reason_code == "GROUNDING_VALIDATION_FAILED"
 
 
-def test_borderline_similarity_below_threshold_still_fails():
-    """A candidate that shares real wording with the source but drifts too far from it
-    (below the 0.85 longest-contiguous-match ratio) must still fail closed. This shows the
-    threshold is discriminating, not a coincidental pass on every input that shares any words
-    with the source at all.
-    """
-    source = (
-        "Active Medications: Aspirin 81 mg oral tablet, newly started for cardiovascular "
-        "risk reduction, per today's clinic note."
-    )
-    # Same clinical fact, but padded with enough added patient-facing framing that the
-    # longest unbroken match against the source clause drops below 0.85 of the candidate's
-    # length -- this is genuinely too loose a paraphrase for this deliberately conservative
-    # check to accept.
-    candidate = {
-        "medications_mentioned": [
-            "Aspirin 81 mg oral tablet, newly started for cardiovascular risk reduction "
-            "to help protect your heart"
-        ]
-    }
+def test_validate_high_risk_claims_and_validate_explicit_facts_are_removed():
+    """PR-12b: both classifier functions are deleted entirely, not merely disabled."""
+    import src.app.services.clinical_grounding as clinical_grounding
 
+    assert not hasattr(clinical_grounding, "validate_high_risk_claims")
+    assert not hasattr(clinical_grounding, "validate_explicit_facts")
+
+
+def test_validate_quotes_now_tolerates_a_fuzzy_paraphrase():
+    """PR-12b item 3: validate_quotes switched from verbatim `in` to fuzzy _quote_supported
+    matching (same primitive/threshold validate_high_risk_claims used to use, and that
+    _check_follow_up_grounding already uses)."""
+    source = "Blood Pressure: 124/73 mmHg, taken 04/11/2024 10:31 AM CDT."
+    # Not a verbatim substring (extra trailing word), but a close fuzzy match.
+    validate_quotes(["Blood Pressure: 124/73 mmHg, taken 04/11/2024"], source)
+
+
+def test_validate_quotes_still_fails_closed_on_zero_support():
+    """Negative control: fuzzy matching loosens the comparison, not the fail-closed policy."""
+    source = "Blood Pressure: 124/73 mmHg."
     with pytest.raises(DocumentProcessingError) as excinfo:
-        validate_high_risk_claims(source, candidate)
-
+        validate_quotes(["Patient was started on lisinopril 10mg daily"], source)
     assert excinfo.value.code == "CLINICAL_EVIDENCE_FAILED"
-
+    assert excinfo.value.reason_code == "INVALID_SOURCE_EVIDENCE"
