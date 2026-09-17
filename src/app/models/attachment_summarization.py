@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 
 
 class DocumentAttachment(BaseModel):
@@ -386,6 +386,29 @@ class AttachmentSummarizationResponse(BaseModel):
             "Empty when none documented."
         ),
     )
+
+    @field_validator("follow_up", mode="before")
+    @classmethod
+    def _coerce_follow_up_shape(cls, value):
+        """PR-11: the synthesis model occasionally echoes each source document's per-field
+        FollowUpDetail shape (`{"follow_up": "...", "source_quote": "..."}` -- see
+        `FollowUpDetail` above, which is exactly how follow_up looks in the
+        `validated_source_records` this response's own synthesis prompt shows it) instead of
+        the flat string this field declares. Confirmed from real pydantic_ai ValidationErrors:
+        `input_value={'follow_up': '...', 'source_quote': '...'}, input_type=dict`. PR-10
+        legitimately grew synthesis payloads, making this shape confusion more likely to fire.
+        With only 1 output-validation retry, hitting this on both attempts fails the whole
+        appointment. Normalize the one confirmed shape at the boundary rather than loosening
+        the schema to list[Any] or bumping retries -- downstream consumers (rendering,
+        translation) keep a plain str contract, and an unrecognized shape still fails schema
+        validation instead of being silently accepted.
+        """
+        if not isinstance(value, list):
+            return value
+        return [
+            item["follow_up"] if isinstance(item, dict) and isinstance(item.get("follow_up"), str) else item
+            for item in value
+        ]
 
     recommendations: List[str] = Field(
         default_factory=list,

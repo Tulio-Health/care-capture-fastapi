@@ -29,6 +29,16 @@ class DocumentProcessingError(ValueError):
             "EXTRACTION_QUALITY_FAILED": {"INVALID_TEXT", "UNPARSED_CONTENT", "UNVALIDATED_MODEL_INPUT", "NON_CLINICAL_ERROR_DOCUMENT", "OCR_UNREADABLE", "OCR_VERIFICATION_FAILED", "OCR_INVALID_OUTPUT"},
             "RESOURCE_LIMIT_EXCEEDED": {"TEXT_LIMIT_EXCEEDED", "PAGE_LIMIT_EXCEEDED", "ARCHIVE_LIMIT_EXCEEDED", "IMAGE_PIXEL_LIMIT_EXCEEDED", "OCR_PAGE_LIMIT_EXCEEDED", "OCR_RENDER_LIMIT_EXCEEDED", "OCR_VISION_CALL_LIMIT_EXCEEDED", "COMPRESSION_LIMIT_EXCEEDED", "DOCUMENT_LIMIT_EXCEEDED", "CHUNK_LIMIT_EXCEEDED", "SYNTHESIS_BUDGET_EXCEEDED", "SYNTHESIS_RECORD_LIMIT_EXCEEDED", "PROCEDURE_CONTEXT_LIMIT_EXCEEDED", "TRANSCRIPT_CONTEXT_LIMIT_EXCEEDED", "FHIR_CONTEXT_LIMIT_EXCEEDED", "MODEL_CALL_BUDGET_EXCEEDED", "VALIDATION_BUDGET_EXCEEDED", "SUMMARY_BUSY", "DOWNLOAD_BUSY"},
             "MODEL_OUTPUT_INVALID": {"MODEL_SOURCE_RECONCILIATION_FAILED", "OCR_INCOMPLETE_RESPONSE", "CLASSIFICATION_ID_MISMATCH"},
+            # PR-11 (N-6): GROUNDING_VALIDATION_FAILED intentionally canonicalizes to
+            # CLINICAL_EVIDENCE_FAILED here, NOT its own top-level code. chain.py's
+            # _extract_batch/_synthesize_records grant exactly one repair attempt keyed off
+            # `exc.code in {"CLINICAL_EVIDENCE_FAILED", "MODEL_OUTPUT_INVALID"}`; splitting this
+            # code out would silently drop it from that retry set (and from every other
+            # CLINICAL_EVIDENCE_FAILED-keyed check) unless every one of those sites were updated
+            # too -- not worth the risk for a log-triage label. The specific reason is not lost:
+            # it survives on `.reason_code` (see __init__ below), which routes/care_capture.py
+            # already reads independently of `.code` for HTTP status mapping. Log/triage code
+            # that wants the specific code should read `.reason_code`, not `.code`.
             "CLINICAL_EVIDENCE_FAILED": {"GROUNDING_VALIDATION_FAILED", "INVALID_SOURCE_EVIDENCE", "DIAGNOSIS_WORDING_NOT_GROUNDED", "PROCEDURE_STATUS_NOT_GROUNDED"},
             "DOWNLOAD_PENDING": {"DOCUMENT_NOT_READY"},
             "DOWNLOAD_UNAVAILABLE": {"MISSING_DOCUMENT_PATH"},

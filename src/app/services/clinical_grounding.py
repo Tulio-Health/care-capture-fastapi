@@ -58,10 +58,21 @@ def validate_high_risk_claims(source, output):
     """Conservative English claim checks; additional protection, not a truth proof.
 
     Unsupported initiation, visit framing and numeric lab interpretation fail closed.
-    High-risk wording must occur in a source clause, rather than merely somewhere
-    in an intermediate model summary. This deliberately favors omission/review over
-    accepting a novel paraphrase of ambiguous clinical evidence.
+    High-risk wording must be a close match (verbatim or fuzzy paraphrase) of a source
+    clause, rather than merely somewhere in an intermediate model summary. This
+    deliberately favors omission/review over accepting an unsupported claim.
+
+    PR-11: matching against source_clauses uses procedure_extraction.chain._quote_supported
+    (threshold=0.85) instead of a verbatim `in` substring check. The extraction agent is
+    explicitly instructed to paraphrase clinical content into patient-facing prose, so a
+    verbatim check rejected almost every real, correctly-grounded high-risk claim purely for
+    wording -- failing the entire batch closed on real content, not just fabricated content.
+    Reusing the same calibrated threshold already trusted for this class of check (rather than
+    inventing a new one) still fails closed on a candidate with zero support anywhere in source.
     """
+    # Deferred import: procedure_extraction.chain imports GROUNDING_POLICY/verify_grounding from
+    # this module at module scope, so a top-level import here would be a circular import.
+    from src.app.chains.procedure_extraction.chain import _quote_supported
     normalize = lambda value: " ".join(value.casefold().split()).strip(" .")
     try:
         structured_source = json.loads(source)
@@ -87,7 +98,7 @@ def validate_high_risk_claims(source, output):
             initiation = re.search(r"\b(?:prescribed|newly started|started taking|initiated)\b", candidate)
             purpose = re.search(r"\b(?:visited|visit was|came in|seen)\b.{0,60}\b(?:for|because|to assess)\b", candidate)
             interpretation = re.search(r"\b(?:low|high|normal|abnormal|elevated|reduced|indicat(?:es|ing)|suggest(?:s|ing))\b", candidate) and re.search(r"\d|\b(?:level|levels|result|results|measurement|measurements|lab|laboratory)\b", candidate)
-            if (initiation or purpose or interpretation) and not any(candidate in evidence for evidence in source_clauses):
+            if (initiation or purpose or interpretation) and not any(_quote_supported(candidate, evidence) for evidence in source_clauses):
                 failure = DocumentProcessingError("GROUNDING_VALIDATION_FAILED")
                 failure.validation_candidate = output.model_dump() if hasattr(output, "model_dump") else output
                 kind = "prescribing/initiation" if initiation else "visit purpose" if purpose else "lab interpretation"
