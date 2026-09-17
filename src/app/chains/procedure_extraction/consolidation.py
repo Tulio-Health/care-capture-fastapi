@@ -17,6 +17,12 @@ Pipeline (see `ProcedureConsolidator.consolidate`):
    this adds no new fabrication surface on top of extraction itself.
 4. Deterministic merge of LLM-confirmed groups (see `_merge_group`) — again, no further LLM
    generation.
+5. Outcome-divergence annotation: after merging, any results that share the same normalized
+   (procedure_type, procedure_date) key but ended up with different `outcome` text get a prefix
+   prepended to `outcome` flagging the divergence to the reader — a defensive signal for the
+   case where the heuristic/LLM pairing left same-day, same-type events unmerged (or a merge
+   still left mismatched outcomes), rather than silently presenting one outcome as if it were
+   the only one documented.
 """
 
 from src.app.services.summary_runtime import model_call
@@ -139,17 +145,26 @@ class ProcedureConsolidator:
     ) -> List[ConsolidatedProcedure]:
         """Consolidate a list of per-document procedure extractions into one entry per
         real-world procedure event. Zero LLM calls when there's nothing to consolidate
-        (<=1 procedure, or the heuristic flags no candidate pairs at all)."""
-        # Only merge identical clinical events. Similar wording is not sufficient evidence
-        # that two procedures (particularly different dates/sites) are the same event.
-        import json
-        groups = {}
-        for item in extracted:
-            clinical = item.summary.model_dump(exclude={"source_document_title"})
-            key = json.dumps(clinical, sort_keys=True, ensure_ascii=False)
-            groups.setdefault(key, []).append(item)
-        result = [self._merge_group(group) if len(group) > 1 else self._singleton(group[0])
-                  for group in groups.values()]
+        (<=1 procedure, or the heuristic flags no candidate pairs at all). See the module
+        docstring for the full pipeline, including the outcome-divergence annotation applied
+        below."""
+        if len(extracted) <= 1:
+            result = [self._singleton(e) for e in extracted]
+        else:
+            candidate_pairs = self._find_candidate_pairs(extracted)
+            if not candidate_pairs:
+                result = [self._singleton(e) for e in extracted]
+            else:
+                confirmed_pairs = await self._confirm_pairs(extracted, candidate_pairs)
+                groups = self._build_groups(len(extracted), confirmed_pairs)
+
+                result = []
+                for group in groups:
+                    if len(group) == 1:
+                        result.append(self._singleton(extracted[group[0]]))
+                    else:
+                        result.append(self._merge_group([extracted[i] for i in group]))
+
         outcomes = {}
         for item in result:
             key = (_normalize(item.summary.procedure_type), item.summary.procedure_date)
