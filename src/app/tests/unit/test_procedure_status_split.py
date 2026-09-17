@@ -36,22 +36,57 @@ def test_document_summary_procedures_use_procedure_mention():
     )
 
 
-def test_split_procedures_buckets_performed_separately_and_groups_not_stated_with_ordered():
+def test_procedure_mention_source_quote_is_a_required_field():
+    """Guard: `source_quote` grounds a ProcedureMention's identity AND status - if this ever
+    silently becomes optional again, every procedure claim in the split (performed/ordered/
+    not_stated) loses its quote-grounding without any test noticing."""
+    fields = ProcedureMention.model_fields
+    assert fields["source_quote"].is_required()
+
+
+def test_split_procedures_buckets_performed_by_description_and_ordered_not_stated_by_quote():
+    """`_split_procedures` (chain.py:472-478) reports `procedures_performed` by plain-language
+    `description`, but `procedures_ordered`/`procedures_not_stated` by verbatim `source_quote` -
+    ordered/not-stated items are never surfaced to the synthesis prompt as a bare claim string,
+    only as their exact grounding text. The two are also kept in separate keys, not merged
+    (chain.py:466: "Unknown status remains distinct from an order")."""
     summary = DocumentSummary(
+        source_document_id="doc-referral-1",
+        evidence_quotes=[
+            "A shoulder injection was administered in clinic today.",
+            "Thyroid ultrasound was ordered for further evaluation.",
+        ],
         source_document_title="Referral Note",
         source_document_type="Consultation Note",
         narrative_summary="x",
         procedures=[
-            ProcedureMention(description="Shoulder injection", status="performed"),
-            ProcedureMention(description="Thyroid ultrasound", status="ordered"),
-            ProcedureMention(description="Unclear procedure", status="not_stated"),
+            ProcedureMention(
+                description="Shoulder injection",
+                status="performed",
+                source_quote="A shoulder injection was administered in clinic today.",
+            ),
+            ProcedureMention(
+                description="Thyroid ultrasound",
+                status="ordered",
+                source_quote="Thyroid ultrasound was ordered for further evaluation.",
+            ),
+            ProcedureMention(
+                description="Unclear procedure",
+                status="not_stated",
+                source_quote="Procedure history is otherwise unremarkable.",
+            ),
         ],
     )
 
     split = _split_procedures([summary])
 
     assert split[0]["procedures_performed"] == ["Shoulder injection"]
-    assert split[0]["procedures_ordered"] == ["Thyroid ultrasound", "Unclear procedure"]
+    assert split[0]["procedures_ordered"] == [
+        "Thyroid ultrasound was ordered for further evaluation."
+    ]
+    assert split[0]["procedures_not_stated"] == [
+        "Procedure history is otherwise unremarkable."
+    ]
     assert "procedures" not in split[0]
 
 

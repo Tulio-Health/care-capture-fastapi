@@ -13,6 +13,7 @@ from src.app.services.summarization.procedure_summarization import _build_summar
 def _summary(**overrides) -> ProcedureSummary:
     defaults = dict(
         source_document_title="Procedure Note",
+        event_source_quote="Cardiac catheterization with coronary angioplasty performed 2026-06-29",
         procedure_type="Cardiac catheterization with coronary angioplasty",
         procedure_date="2026-06-29",
         performed_by=["Dr. A"],
@@ -59,3 +60,13 @@ def test_empty_procedure_details_passes_through_as_is():
     text = _build_summary_text(_summary(procedure_details=""))
 
     assert text == ""
+
+
+def test_event_source_quote_never_leaks_into_patient_facing_text():
+    """`event_source_quote` is the raw clinical grounding passage (verbatim source text used
+    to identify this event) - it must never appear in the patient-facing summary_text, since
+    that's built from procedure_details alone (see _build_summary_text's docstring)."""
+    distinctive_quote = "Pt s/p LHC w/ 90% LAD stenosis identified, DES x1 deployed 06/29/2026."
+    text = _build_summary_text(_summary(event_source_quote=distinctive_quote))
+
+    assert distinctive_quote not in text
