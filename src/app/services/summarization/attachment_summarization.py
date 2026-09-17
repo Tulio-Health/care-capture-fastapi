@@ -319,6 +319,21 @@ class AttachmentSummarizationService:
             encounter_id=appointment.ehr_entity_id,
         )
 
+        # Soft preference (not a hard filter): prefer documents the AI type-inference
+        # classifier flagged `includeForSummary=True` (clinically substantive — visit/
+        # progress/consult/discharge notes, lab/imaging/pathology/operative reports)
+        # when at least one exists for this encounter. Fall back to the full unfiltered
+        # set when none are flagged true (field absent/null/false for every doc) — ~15%
+        # of visits (telephone/imaging-only encounters) have no flagged document at all,
+        # so a hard restrict would leave them with nothing. See care-capture-nodeapi's
+        # 2026-09-17 document-scope-question research report, recommendation #2.
+        flagged = [
+            doc for doc in doc_references
+            if isinstance(doc.data, dict) and doc.data.get("includeForSummary") is True
+        ]
+        if flagged:
+            doc_references = flagged
+
         self.logger.debug(
             f"Fetched {len(doc_references)} DocumentReferences with attachments - "
             f"appointment_id: {request.appointment_id}"
