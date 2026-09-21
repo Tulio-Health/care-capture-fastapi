@@ -3,7 +3,7 @@ import logging
 from redis import Redis
 from typing import Optional, List
 
-from src.app.core import get_settings
+from src.app.core.settings import get_settings, resolve_redis_password
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class RedisClient:
         if self._client is None:
             settings = get_settings()
             self._client = Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT,
-                password=settings.REDIS_PASSWORD or None, db=0, decode_responses=True,
+                password=resolve_redis_password(settings.REDIS_PASSWORD), db=0, decode_responses=True,
                 socket_connect_timeout=5, socket_timeout=5)
         return self._client
 
