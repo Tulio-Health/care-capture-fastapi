@@ -40,7 +40,6 @@ class Settings(BaseSettings):
 
     # Document Storage (S3 download scope allowlist)
     DOCUMENT_S3_BUCKET: str = ""
-    DOCUMENT_S3_KEY_PREFIX: str = "documents/"
 
     ENABLE_DOCUMENT_OCR: bool = True
     DOCUMENT_OCR_MODEL: str = "gpt-4o-mini"
@@ -179,10 +178,13 @@ def reset_settings() -> None:
 
 def document_allowed_prefixes() -> list:
     """
-    Compute the allowed S3 URI prefixes for document downloads.
+    Compute the allowed S3 scope for document downloads: bucket-only (no key
+    prefix restriction). A prior key-prefix check was removed because dev's
+    real EHR-sync key layout doesn't match a single hardcoded/per-environment
+    prefix; the bucket is the only scope now.
 
     This is the only real access control on S3 document downloads today —
-    the production instance role is not scoped to these prefixes — so an
+    the production instance role is not scoped to this bucket — so an
     unset bucket must never silently resolve to an empty/None allowlist.
     That exact ambiguity previously turned a deny-all bug into an
     allow-all one. Fail loud in production instead: raise RuntimeError so
@@ -198,4 +200,21 @@ def document_allowed_prefixes() -> list:
         if os.getenv("APP_ENV") == "production":
             raise RuntimeError("DOCUMENT_S3_BUCKET is required in production")
         return []
-    return [f"s3://{bucket}/{settings.DOCUMENT_S3_KEY_PREFIX}"]
+    return [f"s3://{bucket}"]
+
+
+def resolve_redis_password(raw: Optional[str]) -> Optional[str]:
+    """
+    Normalize a raw Redis password value into what should actually be passed
+    to the Redis client.
+
+    AWS SSM stores the unset-password parameter as the literal string
+    "NONE" (case-insensitive) rather than an empty value -- almost certainly
+    meant as a placeholder for "no password configured", but Python only
+    treats an empty string as falsy, so a naive `value or None` check passes
+    the literal string "NONE" through as a real password. Treat "NONE"
+    (any case) the same as an empty/missing value.
+    """
+    if not raw or raw.strip().upper() == "NONE":
+        return None
+    return raw

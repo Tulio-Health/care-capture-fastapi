@@ -86,27 +86,31 @@ class S3DocumentClient:
         return bucket, key
 
     def authorize_location(self, file_path):
-        """Restrict document downloads to an explicit allowlist of S3 URI prefixes.
+        """Restrict document downloads to an explicit allowlist of S3 buckets.
 
-        The production instance role is NOT scoped to these prefixes (it has
+        The production instance role is NOT scoped to these buckets (it has
         unscoped S3 access), so this allowlist is the only real access
         control on document downloads today — not defense-in-depth on top
         of IAM. A restricted caller may inject `allowed_prefixes` explicitly
-        (e.g. tests, internal tooling); otherwise the scope comes from the
-        configured `document_allowed_prefixes()`. Never accept arbitrary
-        request URLs here.
+        (e.g. tests, internal tooling) to further scope by key prefix within
+        a bucket; otherwise the scope comes from the configured
+        `document_allowed_prefixes()`, which is bucket-only — any key within
+        the configured bucket is allowed. Never accept arbitrary request
+        URLs here.
         """
         bucket, key = self.parse_s3_url(file_path)
         if not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", bucket):
             raise DocumentProcessingError("DOCUMENT_ACCESS_DENIED")
-        prefixes = self.allowed_prefixes
-        if prefixes is None:
-            prefixes = document_allowed_prefixes()
-        for prefix in prefixes:
-            if not isinstance(prefix, str) or not prefix.startswith("s3://"):
+        entries = self.allowed_prefixes
+        if entries is None:
+            entries = document_allowed_prefixes()
+        for entry in entries:
+            if not isinstance(entry, str) or not entry.startswith("s3://"):
                 continue
-            allowed_bucket, separator, allowed_key = prefix[5:].partition("/")
-            if separator and bucket == allowed_bucket and (key == allowed_key or prefix.endswith("/") and key.startswith(allowed_key)):
+            allowed_bucket, _, allowed_key = entry[5:].partition("/")
+            if bucket != allowed_bucket:
+                continue
+            if not allowed_key or key == allowed_key or (entry.endswith("/") and key.startswith(allowed_key)):
                 return bucket, key
         raise DocumentProcessingError("DOCUMENT_ACCESS_DENIED")
 
