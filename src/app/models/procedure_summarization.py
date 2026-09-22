@@ -110,3 +110,9 @@ class ProcedureSummarizationRequest(BaseModel):
     encounter_id: Optional[str] = Field(
         None, description="Optional encounter ID to filter DocumentReferences"
     )
+    timeout_seconds: Optional[int] = Field(
+        default=120,
+        description="Maximum execution time in seconds. Default: 120 seconds.",
+        ge=10,
+        le=300,
+    )
