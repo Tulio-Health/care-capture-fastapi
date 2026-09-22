@@ -187,7 +187,16 @@ class AttachmentSummarizationService:
         extracted_documents = await self._process_attachments(doc_references)
 
         if not extracted_documents:
-            raise ValueError(f"Failed to extract text from any attachments for appointment {request.appointment_id}")
+            self.logger.warning(
+                f"Failed to extract text from any attachments for appointment {request.appointment_id} - recording unavailable summary"
+            )
+            payload = _static_fallback_summary_data(request, appointment, provider_name)
+            payload["summary_text"] = MESSAGES["unavailable"]
+            payload["summary_metadata"].update(outcome_metadata("unavailable", [{"error": "TEXT_EXTRACTION_FAILED"}]))
+            payload["summary_metadata"].update(total_documents=len(doc_references), successful_documents=0, failed_documents=len(doc_references))
+            payload["summary_metadata"].update(eligibility_snapshot)
+            saved = await self.summaries_repo.upsert(request.appointment_id, payload)
+            return ConversationSummary.model_validate(saved)
 
         # Build appointment context
         appointment_context = self._build_appointment_context(appointment, provider_name)
