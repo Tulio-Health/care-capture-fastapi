@@ -1,4 +1,5 @@
 """Shared ingestion for attachment and procedure summaries; every input has an outcome."""
+import asyncio
 import base64
 import binascii
 from datetime import datetime
@@ -76,10 +77,34 @@ def require_parsed(document: DocumentAttachment):
 
 
 async def process_attachments(references, storage, extractor):
+    """Pass A (sequential): walk every reference/attachment making all dedup, limit, and
+    metadata decisions in order, so which duplicate is kept and where MAX_DOCUMENTS trips stays
+    deterministic. S3-backed attachments are appended to `result` as validated placeholders and
+    recorded in `pending`; inline attachments are fully resolved here since their dedup key is a
+    post-download content hash and is order-dependent.
+    Pass B (concurrent): download + extract every pending S3-backed attachment via
+    `asyncio.gather`, bounded by the existing `_DOWNLOAD_POOL` (4) / `_PARSER_SLOTS` (2) -- no
+    new semaphore. `_load` mutates each `document` already sitting in `result` in place, so
+    `result`'s order never depends on which download finishes first.
+    """
     result = []
     # checksum/content_sha256 (both SHA-256 hex of the exact stored bytes) -> ehr_resource_id kept.
     # Scoped to this call, i.e. per-appointment, since callers invoke this once per appointment.
     seen: dict[str, str] = {}
+    pending: list[tuple[DocumentAttachment, str]] = []
+
+    async def _load(document: DocumentAttachment, path: str) -> None:
+        try:
+            content = await storage.download_document(path)
+            document.size = len(content)
+            document.content_sha256 = sha256(content).hexdigest()
+            document.extracted_text = await extractor.extract_text_async(content, document.content_type, document.file_name or path)
+            mark_parsed(document)
+        except DocumentProcessingError as exc:
+            document.extraction_error = exc.code
+        except Exception:
+            document.extraction_error = "INTERNAL_PROCESSING_ERROR"
+
     for reference in references:
         data = reference.data if isinstance(reference.data, dict) else {}
         attachments = data.get("attachments")
@@ -101,6 +126,11 @@ async def process_attachments(references, storage, extractor):
                 continue
             if len(result) >= MAX_DOCUMENTS:
                 result.append(DocumentAttachment(file_path="unprocessed", content_type="application/octet-stream", extracted_text="", extraction_error="DOCUMENT_LIMIT_EXCEEDED"))
+                # Every already-appended document up to the cap may still have a deferred
+                # S3 load pending (Pass B runs at the very end) -- flush it before returning so
+                # the cap's own guarantee (everything returned is fully resolved) still holds.
+                if pending:
+                    await asyncio.gather(*(_load(document, path) for document, path in pending))
                 return result
             item = attachment if isinstance(attachment, dict) else {}
             path = safe_string(item.get("filePath"), "")
@@ -139,29 +169,34 @@ async def process_attachments(references, storage, extractor):
                     except (ValueError, TypeError, AttributeError):
                         pass
                 if path:
-                    content = await storage.download_document(path)
-                else:
-                    if not isinstance(inline, str) or len(inline) > ((extractor.MAX_FILE_SIZE + 2) // 3) * 4:
-                        raise DocumentProcessingError("INVALID_INLINE_CONTENT")
-                    try:
-                        content = base64.b64decode(inline, validate=True)
-                    except (ValueError, binascii.Error) as exc:
-                        raise DocumentProcessingError("INVALID_BASE64") from exc
-                    document.file_path = f"inline://{identity}"
+                    # S3-backed: defer the actual download + extraction to Pass B below, which
+                    # runs every pending attachment concurrently. `document` is already fully
+                    # validated and in its final `result` position; `_load` fills it in place.
+                    result.append(document)
+                    pending.append((document, path))
+                    continue
+                if not isinstance(inline, str) or len(inline) > ((extractor.MAX_FILE_SIZE + 2) // 3) * 4:
+                    raise DocumentProcessingError("INVALID_INLINE_CONTENT")
+                try:
+                    content = base64.b64decode(inline, validate=True)
+                except (ValueError, binascii.Error) as exc:
+                    raise DocumentProcessingError("INVALID_BASE64") from exc
+                document.file_path = f"inline://{identity}"
                 document.size = len(content)
                 document.content_sha256 = sha256(content).hexdigest()
-                if not path:
-                    # Inline base64 attachments carry no vendor checksum field, so fall back to
-                    # the content hash we just computed ourselves as the dedup key.
-                    kept_resource_id = seen.get(document.content_sha256)
-                    if kept_resource_id is not None:
-                        logger.info(
-                            "document_ingestion: skipping duplicate inline attachment (content hash match) "
-                            "kept_resource_id=%s dropped_resource_id=%s checksum=%s",
-                            kept_resource_id, reference.ehr_resource_id, document.content_sha256,
-                        )
-                        continue
-                    seen[document.content_sha256] = reference.ehr_resource_id
+                # Inline base64 attachments carry no vendor checksum field, so fall back to the
+                # content hash we just computed ourselves as the dedup key. This stays on the
+                # sequential path (unlike S3-backed attachments above) because it hashes bytes
+                # after "download" and is order-dependent against the shared `seen` dict.
+                kept_resource_id = seen.get(document.content_sha256)
+                if kept_resource_id is not None:
+                    logger.info(
+                        "document_ingestion: skipping duplicate inline attachment (content hash match) "
+                        "kept_resource_id=%s dropped_resource_id=%s checksum=%s",
+                        kept_resource_id, reference.ehr_resource_id, document.content_sha256,
+                    )
+                    continue
+                seen[document.content_sha256] = reference.ehr_resource_id
                 document.extracted_text = await extractor.extract_text_async(content, document.content_type, document.file_name or path)
                 mark_parsed(document)
             except DocumentProcessingError as exc:
@@ -169,4 +204,6 @@ async def process_attachments(references, storage, extractor):
             except Exception:
                 document.extraction_error = "INTERNAL_PROCESSING_ERROR"
             result.append(document)
+    if pending:
+        await asyncio.gather(*(_load(document, path) for document, path in pending))
     return result
