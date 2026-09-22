@@ -174,9 +174,9 @@ class S3DocumentClient:
                 return content
             finally:
                 body.close()
-        if not _DOWNLOAD_CAPACITY.acquire(blocking=False):
-            raise DocumentProcessingError("DOWNLOAD_BUSY")
         def bounded_download():
+            if not _DOWNLOAD_CAPACITY.acquire(timeout=30):
+                raise DocumentProcessingError("DOWNLOAD_BUSY")
             try:
                 return download()
             finally:
@@ -186,9 +186,9 @@ class S3DocumentClient:
     async def validate_download_versions(self):
         for path, version in self.download_versions.items():
             bucket, key = self.authorize_location(path)
-            if not _DOWNLOAD_CAPACITY.acquire(blocking=False):
-                raise DocumentProcessingError("DOWNLOAD_BUSY")
             def bounded_head(bucket=bucket, key=key):
+                if not _DOWNLOAD_CAPACITY.acquire(timeout=30):
+                    raise DocumentProcessingError("DOWNLOAD_BUSY")
                 try:
                     return self.s3_client.head_object(Bucket=bucket, Key=key)
                 finally:
