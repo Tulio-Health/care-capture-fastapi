@@ -56,10 +56,31 @@ class DocumentProcessingError(ValueError):
 # (displayName, value, unit, code, statusCode, ...) are deliberately NOT here:
 # a CDA can carry the only diagnosis/value/unit in an attribute (see the
 # comment above walk() in _xml_text).
+#
+# moodCode/negationInd/typeCode/inversionInd are deliberately NOT here either
+# (fixed 2026-09-22, see .claude/debug-reports/2026-09-22-async-summarization-fix/
+# xml-compression-information-loss-audit.md §9.1 in care-capture-nodeapi): they
+# were previously dropped as "plumbing", but moodCode distinguishes an EVN
+# (actually happened) entry from INT/RQO/PRP/ARQ (ordered/planned, NOT done) -
+# the CDA-native form of this codebase's "ordered vs performed" bug - and
+# negationInd="true" means the finding did NOT occur. They never appear as raw
+# key=value noise (see _XML_SEMANTIC_ATTRS below); walk() renders them as an
+# explicit prefix on the entry's line only when they carry real signal.
 _XML_NOISE_ATTRS = {"styleCode", "ID", "width", "span", "root", "extension",
-                    "codeSystem", "codeSystemName", "classCode", "moodCode",
-                    "typeCode", "inversionInd", "contextControlCode",
-                    "independentInd", "determinerCode", "negationInd", "type"}
+                    "codeSystem", "codeSystemName", "classCode",
+                    "contextControlCode",
+                    "independentInd", "determinerCode", "type"}
+# Attributes suppressed from the raw key=value dump like _XML_NOISE_ATTRS, but
+# with a semantic prefix rendered on the entry's line when they carry signal -
+# see walk() in _xml_text.
+_XML_SEMANTIC_ATTRS = {"moodCode", "negationInd", "typeCode", "inversionInd"}
+_XML_MOOD_PREFIXES = {"INT": "[ORDERED/PLANNED]", "RQO": "[ORDERED/PLANNED]",
+                      "PRP": "[ORDERED/PLANNED]", "ARQ": "[ORDERED/PLANNED]",
+                      "APT": "[APPOINTMENT]", "GOL": "[GOAL]"}
+# Only meaningful on <entryRelationship> - e.g. the link from an allergy to its
+# reaction (MFST) or from a finding to its cause (CAUS)/reason (RSON). Other
+# typeCode values (COMP, REFR, SUBJ, ...) and inversionInd stay suppressed.
+_XML_ENTRY_RELATIONSHIP_TYPE_PREFIXES = {"MFST": "MANIFESTATION:", "RSON": "REASON:", "CAUS": "CAUSE:"}
 # Elements that are pure CDA plumbing - never clinical content.
 _XML_NOISE_TAGS = {"templateId", "id", "realmCode", "typeId", "setId",
                    "versionNumber", "confidentialityCode", "languageCode"}
@@ -443,10 +464,30 @@ class DocumentTextExtractor:
                     parts.append(rendered.strip())
                 return
             path = (*ancestors, local)
-            attributes = {key.rsplit("}", 1)[-1]: value for key, value in node.attrib.items()
-                          if key.rsplit("}", 1)[-1] not in _XML_NOISE_ATTRS}
+            raw_attrs = {key.rsplit("}", 1)[-1]: value for key, value in node.attrib.items()}
+            attributes = {key: value for key, value in raw_attrs.items()
+                          if key not in _XML_NOISE_ATTRS and key not in _XML_SEMANTIC_ATTRS}
+            # moodCode/negationInd/entryRelationship-typeCode: explicit semantic
+            # prefix instead of either a raw dump or silent suppression - see
+            # _XML_SEMANTIC_ATTRS above. EVN (or absent) and negationInd="false"
+            # (or absent) stay no-cost: nothing is emitted for the common case.
+            markers = []
+            mood = raw_attrs.get("moodCode")
+            if mood in _XML_MOOD_PREFIXES:
+                markers.append(_XML_MOOD_PREFIXES[mood])
+            if raw_attrs.get("negationInd") == "true":
+                markers.append("NEGATED:")
+            if local == "entryRelationship":
+                rel_type = raw_attrs.get("typeCode")
+                if rel_type in _XML_ENTRY_RELATIONSHIP_TYPE_PREFIXES:
+                    markers.append(_XML_ENTRY_RELATIONSHIP_TYPE_PREFIXES[rel_type])
+            prefix = (" ".join(markers) + " ") if markers else ""
             if attributes:
-                parts.append("/".join(path) + ": " + "; ".join(f"{key}={value}" for key, value in attributes.items()))
+                parts.append(prefix + "/".join(path) + ": " + "; ".join(f"{key}={value}" for key, value in attributes.items()))
+            elif prefix:
+                # No other attribute survives noise-filtering, but the semantic
+                # marker itself must not be silently dropped.
+                parts.append(prefix + "/".join(path))
             if node.text and node.text.strip():
                 parts.append(node.text.strip())
             for child in node:
