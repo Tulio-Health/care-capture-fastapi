@@ -26,6 +26,4 @@ jobs:
 
       - name: QA summary regression safety guards
         run: |
-          uv run pytest qa/summary_regression/test_completion_safety.py qa/summary_regression/test_routing_safety.py qa/summary_regression/test_embedded_image_extraction_safety.py \
-            -q --no-cov
-            # PR-10 added test_embedded_image_extraction_safety.py -- keep this list in sync when a PR adds a new qa/summary_regression/ safety-guard file, since pytest.ini's testpaths excludes qa/ and this workflow only runs files listed here explicitly.
+          uv run pytest qa/summary_regression/ -q --no-cov
