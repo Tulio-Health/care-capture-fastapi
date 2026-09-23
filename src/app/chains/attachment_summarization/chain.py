@@ -7,7 +7,7 @@ import hashlib
 import json
 import logging
 import re
-from typing import List, Tuple
+from typing import List
 
 from langsmith import traceable
 from pydantic_ai import Agent
@@ -19,7 +19,6 @@ from src.app.models.attachment_summarization import (
     AttachmentSummarizationResponse,
     DocumentAttachment,
     DocumentSummary,
-    FollowUpDetail,
 )
 
 from src.app.services.document_ingestion import require_parsed, mark_parsed
@@ -39,15 +38,6 @@ _deferred_grounding = ContextVar("attachment_deferred_grounding", default=None)
 _GROUNDING_SIZE_MARGIN = 4096
 
 BATCH_CHAR_LIMIT = 30_000  # ~7,500-10,000 tokens of content per batch
-
-# Section headers whose content must survive windowing even when the head+tail slice alone
-# would drop them. Bug 2's root cause: a blind head truncation dropped Assessment/Plan and
-# Follow-up content that appears late in long CDA documents.
-_PLAN_SECTION_PATTERN = re.compile(
-    r"\b(assessment\s*(?:and|/)\s*plan|plan of treatment|scheduled orders|follow[\s-]?up|"
-    r"return in|disposition|discharge instructions?|patient instructions?|recommendation)\b",
-    re.IGNORECASE,
-)
 
 # Retries are the LIVE values already in effect through pydantic_ai.Agent's own
 # `retries: int = 1` default -- made visible as named constants, not a new choice. Naming them
@@ -439,64 +429,6 @@ def _split_procedures(summaries: List[DocumentSummary]) -> List[dict]:
     return split
 
 
-def _check_follow_up_grounding(
-    summaries: List[DocumentSummary], source: str
-) -> Tuple[List[DocumentSummary], List[str]]:
-    """Anti-hallucination + anti-omission check for follow_up, run AFTER the extraction call
-    returns -- NO ModelRetry, NO extra model request. A pattern this broad, applied to a
-    multi-document batch, would make a retrying validator fire on nearly every long batch (the
-    same reasoning procedure_extraction/chain.py:38-45 documents for its narrower, per-document
-    case); this is a non-retrying pass by design, deferred to PR-3b pending real measurements.
-
-    Anti-hallucination (acted on): drops any FollowUpDetail whose source_quote is not grounded
-    in `source` (reusing procedure_extraction.chain._quote_supported). `source` is the exact
-    batch prompt string the model was shown, so the quote is checked against exactly what it saw.
-
-    Anti-omission (logged only, NOT acted on): counts, but does not act on, a batch where
-    `source` matches `_PLAN_SECTION_PATTERN` but no summary in the batch ended up with any
-    follow_up content -- the signal Phase 1b uses to decide whether PR-3b promotes this to a
-    retrying validator.
-
-    Returns (summaries, dropped_quotes): `summaries` with ungrounded follow_up entries removed;
-    `dropped_quotes` is the raw source_quote text of every dropped entry.
-    """
-    dropped_quotes: List[str] = []
-    for summary in summaries:
-        kept: List[FollowUpDetail] = []
-        for detail in summary.follow_up:
-            if _quote_supported(detail.source_quote, source):
-                kept.append(detail)
-            else:
-                dropped_quotes.append(detail.source_quote)
-        summary.follow_up = kept
-
-    dropped_ungrounded = len(dropped_quotes)
-    if dropped_ungrounded:
-        # PR-9: this pass was previously unreachable (zero callers); now that
-        # _extract_batch_attempt wires it in, this log line is live in production. Log a
-        # count + content hash, never the raw source_quote text -- that text is PHI copied
-        # verbatim from a clinical document.
-        content_hash = hashlib.sha256("\x1e".join(dropped_quotes).encode("utf-8")).hexdigest()[:16]
-        logger.warning(
-            "dropped_ungrounded: %d follow_up entries not found (verbatim/fuzzy) in the "
-            "source batch (content_hash=%s)",
-            dropped_ungrounded,
-            content_hash,
-        )
-
-    suspected_omission = bool(_PLAN_SECTION_PATTERN.search(source)) and not any(
-        summary.follow_up for summary in summaries
-    )
-    if suspected_omission:
-        logger.warning(
-            "suspected_omission: batch source matches a plan/follow-up section pattern but no "
-            "follow_up was extracted from any document in this batch -- not retried (non-"
-            "retrying pass, PR-3a scope)."
-        )
-
-    return summaries, dropped_quotes
-
-
 class AttachmentSummarizationChain:
     """Map-reduce chain for analyzing medical document attachments using PydanticAI."""
 
@@ -571,14 +503,6 @@ class AttachmentSummarizationChain:
         ids = [summary.source_document_id for summary in result.output]
         if len(ids) != len(set(ids)) or set(ids) != set(expected):
             raise DocumentProcessingError("MODEL_SOURCE_RECONCILIATION_FAILED")
-        # PR-9: deep-copy every element before this call. _check_follow_up_grounding mutates
-        # its input's follow_up lists in place -- if it ran on result.output directly, or even
-        # on a shallow `list(result.output)` copy (which still shares the same inner
-        # DocumentSummary objects), a hallucinated follow_up quote would be silently dropped
-        # here BEFORE the validate_quotes loop below ever inspects it, turning a fail-closed
-        # rejection into a silent success. The return value is discarded on purpose and
-        # result.output is never reassigned -- only the deep copies are touched.
-        _check_follow_up_grounding([s.model_copy(deep=True) for s in result.output], prompt)
         for summary in result.output:
             source = expected[summary.source_document_id].extracted_text
             # PR-12b item 3: evidence_quotes is an internal DocumentSummary field -- it never
