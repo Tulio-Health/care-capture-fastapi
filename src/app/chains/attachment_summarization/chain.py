@@ -1,6 +1,6 @@
 """PydanticAI map-reduce chain for analyzing medical document attachments."""
 
-from src.app.services.summary_runtime import MODEL_CALL_TIMEOUT_S, model_call
+from src.app.services.summary_runtime import MODEL_CALL_TIMEOUT_S, model_call, model_call_headroom
 import asyncio
 from contextvars import ContextVar
 import hashlib
@@ -695,10 +695,26 @@ class AttachmentSummarizationChain:
                 raise
             await verify_grounding(self.model, source, candidate)
 
+    async def _audit_once_retried(self, evidence, output):
+        """Revised R8: retry a spuriously rejected replay audit exactly once (the judge is
+        temperature=0 yet measured non-deterministic), but only while at least one model call
+        of headroom remains -- budget pressure degrades retries first, then recovery, and the
+        path always terminates in the honest judge verdict, never a mid-flight budget error."""
+        try:
+            await verify_grounding(self.model, evidence, output)
+        except DocumentProcessingError as exc:
+            if exc.code not in {"CLINICAL_EVIDENCE_FAILED", "MODEL_OUTPUT_INVALID"}:
+                raise
+            headroom = model_call_headroom()
+            if headroom is not None and headroom < 1:
+                raise
+            await verify_grounding(self.model, evidence, output)
+
     async def _verify_final(self, source, candidate, accepted_ids):
         audits = _deferred_grounding.get()
         if audits is None:
             return  # Large requests already used the unchanged staged audit path.
+        rejection = None  # the single audit's verdict; stays None on the oversized entrance
         size = len(source) + len(json.dumps(candidate.model_dump(), ensure_ascii=False, default=str))
         # Fix D: compare against a margin below GROUNDING_MAX_CHARACTERS, not the raw constant.
         # verify_grounding splits `procedures` into up to three procedures_<status> keys before
@@ -713,7 +729,15 @@ class AttachmentSummarizationChain:
             try:
                 await verify_grounding(self.model, source, candidate)
                 return
-            except DocumentProcessingError:
+            except DocumentProcessingError as exc:
+                # R13 (C-3): if the single audit itself died of budget exhaustion, replaying
+                # N+1 further audits is guaranteed futile -- re-raise immediately instead of
+                # burning the remaining budget behind a misleading fallback log. Any other
+                # failure class (a real rejection, timeouts, rate limits, ...) keeps today's
+                # working fallback recovery.
+                if exc.reason_code == "MODEL_CALL_BUDGET_EXCEEDED":
+                    raise
+                rejection = exc
                 logger.warning(
                     "Deferred single-audit failed; falling back to the staged per-chunk audits "
                     "instead of failing the whole appointment."
@@ -731,8 +755,21 @@ class AttachmentSummarizationChain:
             (evidence, output) for stage, evidence, output in audits
             if not (stage == "extraction" and output.source_document_id not in accepted_ids)
         ]
+        # R13 (C-3) pre-flight headroom guard: never start a replay that cannot finish
+        # under the remaining budget. Fail closed on the rejection already in hand -- the
+        # judge's actual verdict, cheap and honest -- instead of a mid-replay
+        # RESOURCE_LIMIT_EXCEEDED after burning to the budget wall. This skips the SPEND,
+        # never the VERDICT: the candidate stays rejected and unpublished.
+        headroom = model_call_headroom()
+        if headroom is not None and len(surviving_audits) > headroom:
+            logger.warning(
+                "Skipping the staged replay: %d audits exceed the %d remaining model calls; "
+                "failing closed without burning the rest of the budget.",
+                len(surviving_audits), headroom,
+            )
+            raise rejection if rejection is not None else DocumentProcessingError("MODEL_CALL_BUDGET_EXCEEDED")
         await asyncio.gather(*(
-            verify_grounding(self.model, evidence, output) for evidence, output in surviving_audits
+            self._audit_once_retried(evidence, output) for evidence, output in surviving_audits
         ))
 
     @traceable(name="analyze_attachments")

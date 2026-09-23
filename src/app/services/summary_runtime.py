@@ -182,6 +182,14 @@ async def reserve_provider_request(request):
         budget.provider_requests += 1
 
 
+def model_call_headroom():
+    """Remaining model calls under the current budget, or None outside a bounded job."""
+    budget = _current_budget.get()
+    if budget is None:
+        return None
+    return budget.max_model_calls - budget.provider_requests
+
+
 def register_client(client):
     budget = _current_budget.get()
     if budget is not None:

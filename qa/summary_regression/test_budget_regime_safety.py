@@ -130,6 +130,19 @@ class BudgetRegimeSafety(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(judge.calls, 32)  # rejected single audit + N+1 passing replays
         self.assertEqual(budget.provider_requests, 63)  # 2N + 3, the true recovery ceiling
 
+    async def test_beyond_crossover_fails_closed_on_the_judge_verdict(self):
+        budget = self.budget()
+        judge = _JudgeStub(lambda index: DocumentProcessingError("GROUNDING_VALIDATION_FAILED") if index == 0 else None)
+        with patch("src.app.chains.attachment_summarization.chain.verify_grounding", new=judge):
+            with self.assertRaises(DocumentProcessingError) as caught:
+                await chain_under_test().analyze({}, documents(40))
+        # The honest verdict at N+2 calls with the replay skipped -- not a mid-replay
+        # RESOURCE_LIMIT_EXCEEDED after burning the budget to the 64-call wall.
+        self.assertEqual(caught.exception.code, "CLINICAL_EVIDENCE_FAILED")
+        self.assertEqual(caught.exception.reason_code, "GROUNDING_VALIDATION_FAILED")
+        self.assertEqual(judge.calls, 1)
+        self.assertEqual(budget.provider_requests, 42)  # N + 2
+
 
 if __name__ == "__main__":
     unittest.main()
