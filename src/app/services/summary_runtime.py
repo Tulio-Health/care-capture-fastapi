@@ -11,11 +11,15 @@ from src.app.services.document_extraction import DocumentProcessingError
 @dataclass
 class WorkBudget:
     max_model_calls: int = 64
-    # The one model-call counter, owned by the per-HTTP-request hook
-    # (reserve_provider_request). Within a bounded job every model call routes through a
-    # hooked client, so this is strictly the stronger boundary (it also sees SDK-internal
-    # retries); the former twin `model_calls` check-then-increment in model_call was the
-    # weaker duplicate and was merged onto this counter (audit R5).
+    # Two counters, one ceiling (max_model_calls). `model_calls` is the authoritative
+    # per-call counter, incremented by model_call itself; it is the ONLY enforcement for
+    # clients that install no httpx hook (the LangChain paths: the fhir_analysis and
+    # transcript_summarization chains). `provider_requests` is owned by the per-HTTP-request
+    # hook (reserve_provider_request) and additionally sees SDK-internal retries on hooked
+    # clients. Audit R5 originally merged both onto the hook counter; round-2 red-team
+    # (MAJOR-1) measured that merge silently uncapping every unhooked call (200 completed
+    # where develop refused at #65) -- do not re-merge unless every client is hooked.
+    model_calls: int = 0
     provider_requests: int = 0
     # Byte-measured bounds (UTF-8 byte length is a conservative bound for text BPE tokens).
     input_upper_bound_bytes: int = 0
@@ -53,10 +57,14 @@ MODEL_CALL_TIMEOUT_S = 45
 async def model_call(operation, *args, **kwargs):
     budget = _current_budget.get()
     for attempt in range(MAX_TRANSIENT_RETRIES + 1):
-        if budget is not None and budget.provider_requests >= budget.max_model_calls:
-            # Cheap fast-fail on the shared counter; the authoritative increment lives in
-            # reserve_provider_request (the httpx request hook).
-            raise DocumentProcessingError("MODEL_CALL_BUDGET_EXCEEDED")
+        if budget is not None:
+            # Authoritative per-call check-then-increment (restored, round-2 MAJOR-1): the
+            # only ceiling on unhooked clients. The provider_requests read is a cheap
+            # fast-fail for hooked clients whose transport counter is already exhausted.
+            if (budget.model_calls >= budget.max_model_calls
+                    or budget.provider_requests >= budget.max_model_calls):
+                raise DocumentProcessingError("MODEL_CALL_BUDGET_EXCEEDED")
+            budget.model_calls += 1
         try:
             # Acquire the shared concurrency gate FIRST; the timer bounds only the call itself.
             async with _model_slots:
@@ -190,7 +198,10 @@ def model_call_headroom():
     budget = _current_budget.get()
     if budget is None:
         return None
-    return budget.max_model_calls - budget.provider_requests
+    # Count whichever counter is further along: provider_requests can exceed model_calls
+    # (SDK-internal retries on hooked clients); model_calls covers unhooked-client spend
+    # the hook never sees (round-2 MINOR-4).
+    return budget.max_model_calls - max(budget.model_calls, budget.provider_requests)
 
 
 def register_client(client):

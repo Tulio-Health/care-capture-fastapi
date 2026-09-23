@@ -143,6 +143,25 @@ class BudgetRegimeSafety(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(judge.calls, 1)
         self.assertEqual(budget.provider_requests, 42)  # N + 2
 
+    async def test_unhooked_client_calls_hit_the_same_ceiling(self):
+        # Round-2 MAJOR-1: fhir_analysis and transcript_summarization call model_call with a
+        # plain LangChain client that installs no httpx hook. The authoritative per-call
+        # counter must refuse call #65 exactly as origin/develop did; red-team measured 200
+        # uncapped calls after the R5 counter merge.
+        budget = self.budget()
+
+        async def unhooked_call():
+            return "ok"
+
+        completed = 0
+        with self.assertRaises(DocumentProcessingError) as caught:
+            for _ in range(200):
+                await model_call(unhooked_call)
+                completed += 1
+        self.assertEqual(completed, 64)
+        self.assertEqual(caught.exception.reason_code, "MODEL_CALL_BUDGET_EXCEEDED")
+        self.assertEqual(budget.model_calls, 64)
+        self.assertEqual(budget.provider_requests, 0)  # the hook never ran on this path
 
 if __name__ == "__main__":
     unittest.main()
