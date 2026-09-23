@@ -31,7 +31,7 @@ def outcome_metadata(state, errors=()):
     budget = _current_budget.get()
     from src.app.services.processing_errors import describe_error
     error_items = [item for item in errors if isinstance(item, dict)]
-    normalized_errors = [describe_error(item.get("error"), item.get("source_id")) for item in error_items[:20]]
+    normalized_errors = [describe_error(item.get("error"), item.get("source_id"), item.get("reason")) for item in error_items[:20]]
     started_at = budget.started_at if budget else datetime.now(timezone.utc).isoformat()
     return {"attempt_started_at": started_at, "processing_outcome": state, "pipeline_version": PIPELINE_VERSION,
             "processing_errors": normalized_errors, "processing_error_count": len(error_items), "processing_errors_omitted": max(0, len(error_items) - len(normalized_errors)), "validation_status": "passed" if state in {"complete", "partial"} else "not_applicable", "is_clinical_summary": state in {"complete", "partial"}}

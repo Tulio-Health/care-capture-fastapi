@@ -824,7 +824,10 @@ class AttachmentSummarizationChain:
                     for doc in documents if doc.extraction_error]
         for i, result in enumerate(batch_results):
             if isinstance(result, Exception):
-                failures.extend({"source_id": document.resource_id, "error": getattr(result, "code", "MODEL_UNAVAILABLE")} for document in batches[i])
+                failure = {"error": getattr(result, "code", "MODEL_UNAVAILABLE")}
+                if isinstance(getattr(result, "reason_code", None), str):
+                    failure["reason"] = result.reason_code  # additive; `error` stays canonical
+                failures.extend({"source_id": document.resource_id, **failure} for document in batches[i])
                 logger.error(
                     "Batch %s extraction failed; error_type=%s", i + 1, type(result).__name__
                 )

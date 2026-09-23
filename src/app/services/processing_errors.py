@@ -34,10 +34,17 @@ STAGES = {
 }
 
 
-def describe_error(code, source_id=None):
+def describe_error(code, source_id=None, reason=None):
     code = code if code in STAGES else 'INTERNAL_PROCESSING_ERROR'
     stage, retryable = STAGES[code]
     result = {'error': code, 'stage': stage, 'transient_retryable': retryable}
+    # `reason` is a strictly additive sibling key: `error` stays canonical forever at every
+    # producer and consumer (unavailable_message -- including the qa application_adapter's
+    # second call shape that feeds it these normalized rows -- SERVICE_UNAVAILABLE_CODES,
+    # the dedup key, and the QA contracts all keep reading `error`). A distinct reason_code
+    # (e.g. GROUNDING_VALIDATION_FAILED under CLINICAL_EVIDENCE_FAILED) is for triage only.
+    if isinstance(reason, str) and reason != code:
+        result['reason'] = reason[:64]
     if isinstance(source_id, str):
         result['source_id'] = source_id[:256]
     return result

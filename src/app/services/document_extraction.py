@@ -15,37 +15,42 @@ from html.parser import HTMLParser
 from typing import Optional
 
 
+# Canonical public code <- specific internal reason codes. Hoisted to module level (audit
+# R7): raises are control flow here, and the constructor previously rebuilt this
+# 14-entry dict-of-sets on every raise.
+_ERROR_CODE_GROUPS = {
+    "ENCODING_UNRESOLVED": {"UNSUPPORTED_ENCODING", "INVALID_ENCODING", "CONFLICTING_ENCODING"},
+    "FORMAT_CONFLICT": {"INVALID_MIME", "MIME_MISMATCH"},
+    "NO_READABLE_TEXT": {"EMPTY_TEXT"},
+    "PASSWORD_PROTECTED": {"ENCRYPTED_DOCUMENT"},
+    "UNSUPPORTED_FORMAT": {"UNSUPPORTED_LEGACY_OFFICE", "UNSUPPORTED_ARCHIVE", "UNSUPPORTED_EMBEDDED_CONTENT", "UNSUPPORTED_IMAGE", "PARSER_UNAVAILABLE", "UNSUPPORTED_TRACKED_CHANGES", "ENCODED_DOCUMENT_REQUIRES_TRANSPORT_DECODING"},
+    "OCR_REQUIRED": {"OCR_DISABLED"},
+    "PARSE_FAILED": {"MALFORMED_RTF", "UNSAFE_XML", "UNSAFE_ARCHIVE", "INVALID_COMPRESSION", "PARSER_PROCESS_FAILED", "PARSER_TIMEOUT", "RENDER_FAILED"},
+    "EXTRACTION_QUALITY_FAILED": {"INVALID_TEXT", "UNPARSED_CONTENT", "UNVALIDATED_MODEL_INPUT", "NON_CLINICAL_ERROR_DOCUMENT", "OCR_UNREADABLE", "OCR_VERIFICATION_FAILED", "OCR_INVALID_OUTPUT"},
+    "RESOURCE_LIMIT_EXCEEDED": {"TEXT_LIMIT_EXCEEDED", "PAGE_LIMIT_EXCEEDED", "ARCHIVE_LIMIT_EXCEEDED", "IMAGE_PIXEL_LIMIT_EXCEEDED", "OCR_PAGE_LIMIT_EXCEEDED", "OCR_RENDER_LIMIT_EXCEEDED", "OCR_VISION_CALL_LIMIT_EXCEEDED", "COMPRESSION_LIMIT_EXCEEDED", "DOCUMENT_LIMIT_EXCEEDED", "CHUNK_LIMIT_EXCEEDED", "SYNTHESIS_BUDGET_EXCEEDED", "SYNTHESIS_RECORD_LIMIT_EXCEEDED", "PROCEDURE_CONTEXT_LIMIT_EXCEEDED", "TRANSCRIPT_CONTEXT_LIMIT_EXCEEDED", "FHIR_CONTEXT_LIMIT_EXCEEDED", "MODEL_CALL_BUDGET_EXCEEDED", "VALIDATION_BUDGET_EXCEEDED", "SUMMARY_BUSY"},
+    "MODEL_OUTPUT_INVALID": {"MODEL_SOURCE_RECONCILIATION_FAILED", "OCR_INCOMPLETE_RESPONSE", "CLASSIFICATION_ID_MISMATCH"},
+    # PR-11 (N-6): GROUNDING_VALIDATION_FAILED intentionally canonicalizes to
+    # CLINICAL_EVIDENCE_FAILED here, NOT its own top-level code. chain.py's
+    # _extract_batch/_synthesize_records grant exactly one repair attempt keyed off
+    # `exc.code in {"CLINICAL_EVIDENCE_FAILED", "MODEL_OUTPUT_INVALID"}`; splitting this
+    # code out would silently drop it from that retry set (and from every other
+    # CLINICAL_EVIDENCE_FAILED-keyed check) unless every one of those sites were updated
+    # too -- not worth the risk for a log-triage label. The specific reason is not lost:
+    # it survives on `.reason_code` (see __init__ below), which routes/care_capture.py
+    # already reads independently of `.code` for HTTP status mapping. Log/triage code
+    # that wants the specific code should read `.reason_code`, not `.code`.
+    "CLINICAL_EVIDENCE_FAILED": {"GROUNDING_VALIDATION_FAILED", "INVALID_SOURCE_EVIDENCE", "DIAGNOSIS_WORDING_NOT_GROUNDED", "PROCEDURE_STATUS_NOT_GROUNDED"},
+    "DOWNLOAD_PENDING": {"DOCUMENT_NOT_READY"},
+    "DOWNLOAD_UNAVAILABLE": {"MISSING_DOCUMENT_PATH"},
+    "INTERNAL_PROCESSING_ERROR": {"INVALID_METADATA", "INVALID_CONTENT", "INVALID_INLINE_CONTENT", "INVALID_BASE64", "DOCUMENT_PROCESSING_FAILED"},
+}
+
+
 class DocumentProcessingError(ValueError):
     """Stable, non-PHI error code suitable for persisted processing metadata."""
     def __init__(self, code: str):
-        groups = {
-            "ENCODING_UNRESOLVED": {"UNSUPPORTED_ENCODING", "INVALID_ENCODING", "CONFLICTING_ENCODING"},
-            "FORMAT_CONFLICT": {"INVALID_MIME", "MIME_MISMATCH"},
-            "NO_READABLE_TEXT": {"EMPTY_TEXT"},
-            "PASSWORD_PROTECTED": {"ENCRYPTED_DOCUMENT"},
-            "UNSUPPORTED_FORMAT": {"UNSUPPORTED_LEGACY_OFFICE", "UNSUPPORTED_ARCHIVE", "UNSUPPORTED_EMBEDDED_CONTENT", "UNSUPPORTED_IMAGE", "PARSER_UNAVAILABLE", "UNSUPPORTED_TRACKED_CHANGES", "ENCODED_DOCUMENT_REQUIRES_TRANSPORT_DECODING"},
-            "OCR_REQUIRED": {"OCR_DISABLED"},
-            "PARSE_FAILED": {"MALFORMED_RTF", "UNSAFE_XML", "UNSAFE_ARCHIVE", "INVALID_COMPRESSION", "PARSER_PROCESS_FAILED", "PARSER_TIMEOUT", "RENDER_FAILED"},
-            "EXTRACTION_QUALITY_FAILED": {"INVALID_TEXT", "UNPARSED_CONTENT", "UNVALIDATED_MODEL_INPUT", "NON_CLINICAL_ERROR_DOCUMENT", "OCR_UNREADABLE", "OCR_VERIFICATION_FAILED", "OCR_INVALID_OUTPUT"},
-            "RESOURCE_LIMIT_EXCEEDED": {"TEXT_LIMIT_EXCEEDED", "PAGE_LIMIT_EXCEEDED", "ARCHIVE_LIMIT_EXCEEDED", "IMAGE_PIXEL_LIMIT_EXCEEDED", "OCR_PAGE_LIMIT_EXCEEDED", "OCR_RENDER_LIMIT_EXCEEDED", "OCR_VISION_CALL_LIMIT_EXCEEDED", "COMPRESSION_LIMIT_EXCEEDED", "DOCUMENT_LIMIT_EXCEEDED", "CHUNK_LIMIT_EXCEEDED", "SYNTHESIS_BUDGET_EXCEEDED", "SYNTHESIS_RECORD_LIMIT_EXCEEDED", "PROCEDURE_CONTEXT_LIMIT_EXCEEDED", "TRANSCRIPT_CONTEXT_LIMIT_EXCEEDED", "FHIR_CONTEXT_LIMIT_EXCEEDED", "MODEL_CALL_BUDGET_EXCEEDED", "VALIDATION_BUDGET_EXCEEDED", "SUMMARY_BUSY"},
-            "MODEL_OUTPUT_INVALID": {"MODEL_SOURCE_RECONCILIATION_FAILED", "OCR_INCOMPLETE_RESPONSE", "CLASSIFICATION_ID_MISMATCH"},
-            # PR-11 (N-6): GROUNDING_VALIDATION_FAILED intentionally canonicalizes to
-            # CLINICAL_EVIDENCE_FAILED here, NOT its own top-level code. chain.py's
-            # _extract_batch/_synthesize_records grant exactly one repair attempt keyed off
-            # `exc.code in {"CLINICAL_EVIDENCE_FAILED", "MODEL_OUTPUT_INVALID"}`; splitting this
-            # code out would silently drop it from that retry set (and from every other
-            # CLINICAL_EVIDENCE_FAILED-keyed check) unless every one of those sites were updated
-            # too -- not worth the risk for a log-triage label. The specific reason is not lost:
-            # it survives on `.reason_code` (see __init__ below), which routes/care_capture.py
-            # already reads independently of `.code` for HTTP status mapping. Log/triage code
-            # that wants the specific code should read `.reason_code`, not `.code`.
-            "CLINICAL_EVIDENCE_FAILED": {"GROUNDING_VALIDATION_FAILED", "INVALID_SOURCE_EVIDENCE", "DIAGNOSIS_WORDING_NOT_GROUNDED", "PROCEDURE_STATUS_NOT_GROUNDED"},
-            "DOWNLOAD_PENDING": {"DOCUMENT_NOT_READY"},
-            "DOWNLOAD_UNAVAILABLE": {"MISSING_DOCUMENT_PATH"},
-            "INTERNAL_PROCESSING_ERROR": {"INVALID_METADATA", "INVALID_CONTENT", "INVALID_INLINE_CONTENT", "INVALID_BASE64", "DOCUMENT_PROCESSING_FAILED"},
-        }
         self.reason_code = code
-        self.code = next((canonical for canonical, members in groups.items() if code in members), code)
+        self.code = next((canonical for canonical, members in _ERROR_CODE_GROUPS.items() if code in members), code)
         super().__init__(self.code)
         from src.app.services.processing_errors import STAGES
         from src.app.services.processing_metrics import record

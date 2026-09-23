@@ -203,9 +203,12 @@ class AttachmentSummarizationService:
                 raise DocumentProcessingError("SOURCE_MANIFEST_CHANGED")
             await self.s3_client.validate_download_versions()
         except Exception as exc:
+            failure = {"error": getattr(exc, "code", "SUMMARY_GENERATION_FAILED")}
+            if isinstance(getattr(exc, "reason_code", None), str):
+                failure["reason"] = exc.reason_code  # additive; `error` stays canonical
             analysis_result = AttachmentSummarizationResponse(
                 clinical_summary=MESSAGES["unavailable"], documents_analyzed=0,
-                extraction_errors=[{"error": getattr(exc, "code", "SUMMARY_GENERATION_FAILED")}],
+                extraction_errors=[failure],
             )
 
         # Store analysis in database
@@ -428,9 +431,12 @@ class AttachmentSummarizationService:
                 extraction_errors.append({"source_id": doc.resource_id or "unknown", "error": doc.extraction_error})
 
         extraction_errors.extend(analysis_result.extraction_errors)
-        # A failed source can be reported by both ingestion and the chain. Keep
-        # one record per source/code and count documents, not error events.
-        extraction_errors = list({(error.get("source_id", ""), error.get("error", "INTERNAL_PROCESSING_ERROR")): error for error in extraction_errors}.values())
+        # A failed source can be reported by both ingestion and the chain. Keep one record
+        # per source/code/reason and count documents, not error events. `reason` is part of
+        # the key (audit R7/B-6): two same-document failures canonicalizing to the same
+        # `error` but carrying different reasons must both survive into triage metadata
+        # instead of last-wins collapsing.
+        extraction_errors = list({(error.get("source_id", ""), error.get("error", "INTERNAL_PROCESSING_ERROR"), error.get("reason")): error for error in extraction_errors}.values())
         failed_ids = {error.get("source_id", "").rsplit(":chunk:", 1)[0] for error in extraction_errors if error.get("source_id")}
         successful_docs = analysis_result.documents_analyzed
         state = "unavailable" if not successful_docs else "partial" if extraction_errors else "complete"
