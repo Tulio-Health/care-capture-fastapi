@@ -695,19 +695,26 @@ class AttachmentSummarizationChain:
                 raise
             await verify_grounding(self.model, source, candidate)
 
-    async def _audit_once_retried(self, evidence, output):
-        """Revised R8: retry a spuriously rejected replay audit exactly once (the judge is
-        temperature=0 yet measured non-deterministic), but only while at least one model call
-        of headroom remains -- budget pressure degrades retries first, then recovery, and the
-        path always terminates in the honest judge verdict, never a mid-flight budget error."""
+    async def _audit_once_retried(self, evidence, output, retry_slots=None):
+        """Revised R8 (round-3): retry a spuriously rejected replay audit exactly once (the
+        judge is temperature=0 yet measured non-deterministic), funded from `retry_slots` --
+        the batch-level reservation _verify_final computes BEFORE launching the concurrent
+        replays (headroom minus the whole first pass). The slot is taken synchronously (no
+        await between check and decrement), so concurrent replay coroutines cannot
+        over-commit the remaining budget: round-2 red-team (MAJOR-2) measured the previous
+        per-coroutine live headroom read racing -- at N=30 all 15 rejected coroutines saw
+        headroom >= 1 and collectively burned to the 64-call wall mid-flight. Budget
+        pressure degrades retries first, then recovery, and the path terminates in the
+        honest judge verdict."""
         try:
             await verify_grounding(self.model, evidence, output)
         except DocumentProcessingError as exc:
             if exc.code not in {"CLINICAL_EVIDENCE_FAILED", "MODEL_OUTPUT_INVALID"}:
                 raise
-            headroom = model_call_headroom()
-            if headroom is not None and headroom < 1:
-                raise
+            if retry_slots is not None:
+                if retry_slots[0] < 1:
+                    raise
+                retry_slots[0] -= 1  # synchronous take; safe under asyncio's single thread
             await verify_grounding(self.model, evidence, output)
 
     async def _verify_final(self, source, candidate, accepted_ids):
@@ -738,10 +745,6 @@ class AttachmentSummarizationChain:
                 if exc.reason_code == "MODEL_CALL_BUDGET_EXCEEDED":
                     raise
                 rejection = exc
-                logger.warning(
-                    "Deferred single-audit failed; falling back to the staged per-chunk audits "
-                    "instead of failing the whole appointment."
-                )
         # Preserve large-document support without truncating evidence or raising the
         # existing per-audit budget. Reuse the former staged validation graph.
         if not audits:
@@ -768,8 +771,23 @@ class AttachmentSummarizationChain:
                 len(surviving_audits), headroom,
             )
             raise rejection if rejection is not None else DocumentProcessingError("MODEL_CALL_BUDGET_EXCEEDED")
+        if rejection is not None:
+            # Fires only when the replay actually launches (round-2 MINOR-3: this warning
+            # used to fire inside the except block above, before the guard, promising a
+            # fallback the guard could then skip).
+            logger.warning(
+                "Deferred single-audit failed; falling back to the staged per-chunk audits "
+                "instead of failing the whole appointment."
+            )
+        # Revised R8 (round-3, MAJOR-2 fix): reserve retry funding for the WHOLE batch up
+        # front. The first pass will spend len(surviving_audits) of the headroom; only the
+        # remainder may fund retries, taken synchronously per coroutine from this shared
+        # pool inside _audit_once_retried. Total replay spend is therefore <= headroom by
+        # construction (the budget wall stays the backstop for transient-retry spend only).
+        retry_slots = None if headroom is None else [headroom - len(surviving_audits)]
         await asyncio.gather(*(
-            self._audit_once_retried(evidence, output) for evidence, output in surviving_audits
+            self._audit_once_retried(evidence, output, retry_slots)
+            for evidence, output in surviving_audits
         ))
 
     @traceable(name="analyze_attachments")

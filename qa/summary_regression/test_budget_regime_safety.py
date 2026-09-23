@@ -13,6 +13,7 @@ Case 3 (audit round5 SS4 case 3, lands with the R13 fix): beyond the crossover a
 final-audit rejection fails closed on the judge's own verdict at N+2 calls, with the
 replay skipped instead of burning to the 64-call budget wall.
 """
+import asyncio
 import json
 import time
 from types import SimpleNamespace as NS
@@ -162,6 +163,46 @@ class BudgetRegimeSafety(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(caught.exception.reason_code, "MODEL_CALL_BUDGET_EXCEEDED")
         self.assertEqual(budget.model_calls, 64)
         self.assertEqual(budget.provider_requests, 0)  # the hook never ran on this path
+
+    async def _all_reject_run(self, n):
+        budget = self.budget()
+        judge = _JudgeStub(lambda index: DocumentProcessingError("GROUNDING_VALIDATION_FAILED"))
+        chain = chain_under_test()
+        budget_errors = []
+        original = chain._audit_once_retried
+
+        async def counting(*args, **kwargs):
+            try:
+                return await original(*args, **kwargs)
+            except DocumentProcessingError as exc:
+                if exc.reason_code == "MODEL_CALL_BUDGET_EXCEEDED":
+                    budget_errors.append(exc)
+                raise
+
+        chain._audit_once_retried = counting
+        with patch("src.app.chains.attachment_summarization.chain.verify_grounding", new=judge):
+            with self.assertRaises(DocumentProcessingError) as caught:
+                await chain.analyze({}, documents(n))
+            for _ in range(2000):  # drain sibling replay coroutines still in flight
+                await asyncio.sleep(0)
+        return budget, caught.exception, budget_errors
+
+    async def test_all_reject_regime_never_exhausts_midflight(self):
+        # Round-2 MAJOR-2: with every replay rejected too, the racy per-coroutine headroom
+        # read burned the whole 64-call budget mid-flight (at N=30, 15 coroutines died of
+        # MODEL_CALL_BUDGET_EXCEEDED). The batch-level retry reservation must keep total
+        # spend AT the wall but never past it, with zero budget-exhausted coroutines, and
+        # the propagated failure stays the judge's honest verdict. Spend accounting:
+        # (N+2) pre-replay + (N+1) first pass + (61-2N) funded retries = 64 exactly.
+        for n in (21, 30):
+            with self.subTest(n=n):
+                budget, exc, budget_errors = await self._all_reject_run(n)
+                self.assertEqual(exc.code, "CLINICAL_EVIDENCE_FAILED")
+                self.assertEqual(exc.reason_code, "GROUNDING_VALIDATION_FAILED")
+                self.assertEqual(budget_errors, [])
+                self.assertEqual(budget.provider_requests, 64)
+                self.assertLessEqual(budget.model_calls, budget.max_model_calls)
+
 
 if __name__ == "__main__":
     unittest.main()
