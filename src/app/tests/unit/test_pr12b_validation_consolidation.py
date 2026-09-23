@@ -71,22 +71,17 @@ class _StubAgent:
 @pytest.mark.asyncio
 async def test_multi_clause_paraphrased_evidence_quote_survives_via_drop_and_log(monkeypatch):
     """PR-12 research topic A: a single evidence_quote that rolls up several source rows
-    used to fail the WHOLE batch closed via a verbatim `q not in source` check. It must now
-    be dropped and logged, while the summary's OTHER, well-supported evidence survives --
-    the batch is no longer destroyed.
-
-    Audit R9 note: the original aggregating example differed from the source by ONE
-    character (a ';' for a newline), which the fixed windowed true-similarity metric
-    correctly accepts as near-verbatim. The rolled-up quote below is genuinely paraphrased
-    and reordered, so it stays unsupported under both the old and the fixed metric."""
+    ("Home Medications: <med1>; <med2>...") used to fail the WHOLE batch closed via a verbatim
+    `q not in source` check. It must now be dropped and logged, while the summary's OTHER,
+    well-supported evidence survives -- the batch is no longer destroyed."""
     source = (
         "Home Medications:\n"
         "aspirin 81 mg Cap 81 each, Oral, Daily\n"
         "atorvastatin (LIPITOR) 20 mg, Oral, Daily\n"
     )
     aggregating_quote = (
-        "Current home medication list includes atorvastatin twenty milligrams by mouth "
-        "each day as well as daily oral low-dose aspirin 81"
+        "Home Medications: aspirin 81 mg Cap 81 each, Oral, Daily; "
+        "atorvastatin (LIPITOR) 20 mg, Oral, Daily"
     )
     supported_quote = "aspirin 81 mg Cap 81 each, Oral, Daily"
     doc = _doc(source, resource_id="doc-evq")

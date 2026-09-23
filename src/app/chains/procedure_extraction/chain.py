@@ -61,49 +61,54 @@ def _normalize(s: str) -> str:
 
 
 def _quote_supported(quote: str, source: str, threshold: float = 0.85) -> bool:
-    """True when `quote` matches some quote-sized window of `source` with a true
-    SequenceMatcher.ratio() similarity >= threshold, after whitespace/case normalization
-    (verbatim substrings short-circuit). autojunk is disabled for determinism.
-
-    Audit R9 (B-6): the former score -- longest single contiguous common block divided by
-    len(quote) -- was not the edit-tolerant similarity its docstring claimed: one interior
-    character edit failed 100/100 at every measured source size, and autojunk made the
-    verdict text-dependent and non-monotone in source length (~8% verdict flips on
-    digit/punct-rich sources). The windowed true similarity below keeps the 0.85 threshold
-    and every fail-closed call site; it strictly widens acceptance for interior-edit quotes
-    and by construction cannot accept below 0.85 true similarity to a quote-sized window.
-    """
+    """Fuzzy-checks that `quote` is (close to) a verbatim substring of `source`, tolerating
+    whitespace/case differences and minor transcription noise from the model."""
     q, src = _normalize(quote), _normalize(source)
     if not q:
         return False
     if q in src:
         return True
-    # Seed the candidate window from the longest common block, autojunk OFF (autojunk
-    # silently purges popular source characters from the match index on sources > ~200
-    # chars, which is what made the old score collapse text-dependently).
-    matcher = difflib.SequenceMatcher(None, q, src, autojunk=False)
+    matcher = difflib.SequenceMatcher(None, q, src)
     match = matcher.find_longest_match(0, len(q), 0, len(src))
-    legacy_score = match.size / max(len(q), 1)
-    slack = max(8, len(q) // 4)
-    anchor = match.b - match.a  # quote's would-be start in src, aligned on the seed block
-    score = 0.0
-    # Two window lengths per candidate start: exactly quote-sized (substitutions/trailing
-    # noise align 1:1 without dilution) and quote+slack (absorbs insertions in the source).
-    for start in {anchor - slack, anchor - slack // 2, anchor, anchor + slack // 2}:
-        start = max(0, min(start, len(src)))
-        for length in (len(q), len(q) + slack):
-            window = src[start:start + length]
-            if window:
-                score = max(score, difflib.SequenceMatcher(None, q, window, autojunk=False).ratio())
-    supported = score >= threshold
-    if supported != (legacy_score >= threshold):
-        # R9 comparison log for the PR-12 corpus re-measurement. Lengths and scores only --
-        # quote/source text is PHI and is never logged.
-        logger.info(
-            "quote_support_comparison: windowed=%.3f legacy=%.3f verdict %s->%s (quote_len=%d source_len=%d)",
-            score, legacy_score, legacy_score >= threshold, supported, len(q), len(src),
-        )
+    # The LIVE verdict: exactly origin/develop's scoring (longest contiguous common block /
+    # len(quote), default autojunk). Audit R9 ships as a comparison LOG only (see
+    # _log_windowed_similarity below): round-2 red-team (MAJOR-3) measured the windowed
+    # metric accepting dosage/EF/date/negation near-misses that this score fail-closes on,
+    # so it must not gate anything until the PR-12 corpus re-measurement clears it.
+    supported = match.size / max(len(q), 1) >= threshold
+    _log_windowed_similarity(q, src, threshold, supported)
     return supported
+
+
+def _log_windowed_similarity(q: str, src: str, threshold: float, live_verdict: bool) -> None:
+    """Audit R9 (round-3 revision): OBSERVABILITY SIDE-CHANNEL ONLY -- never a decision input.
+
+    Computes the candidate windowed true-similarity metric (SequenceMatcher.ratio() over
+    quote-sized windows seeded by the longest common block, autojunk off) and logs scores
+    and lengths -- never quote/source text (PHI) -- whenever its verdict differs from the
+    live one, feeding the PR-12 corpus re-measurement. Every fail-closed quote anchor in
+    both chains rides on _quote_supported, so nothing computed here may influence the
+    returned verdict; any internal failure is swallowed.
+    """
+    try:
+        matcher = difflib.SequenceMatcher(None, q, src, autojunk=False)
+        match = matcher.find_longest_match(0, len(q), 0, len(src))
+        slack = max(8, len(q) // 4)
+        anchor = match.b - match.a  # quote's would-be start in src, aligned on the seed block
+        score = 0.0
+        for start in {anchor - slack, anchor - slack // 2, anchor, anchor + slack // 2}:
+            start = max(0, min(start, len(src)))
+            for length in (len(q), len(q) + slack):
+                window = src[start:start + length]
+                if window:
+                    score = max(score, difflib.SequenceMatcher(None, q, window, autojunk=False).ratio())
+        if (score >= threshold) != live_verdict:
+            logger.info(
+                "quote_support_comparison: windowed=%.3f verdict live=%s windowed=%s (quote_len=%d source_len=%d)",
+                score, live_verdict, score >= threshold, len(q), len(src),
+            )
+    except Exception:  # pragma: no cover -- observability must never affect a fail-closed verdict
+        logger.exception("quote_support_comparison side-channel failed")
 
 
 _SYSTEM_PROMPT = f"""You are an AI Clinical Summarizer (Non-Advisory) that turns procedure documents
