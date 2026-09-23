@@ -6,8 +6,8 @@ from threading import Lock
 _counts = Counter()
 _lock = Lock()
 _logger = logging.getLogger(__name__)
-_STAGES = {'inventory', 'download', 'parsing', 'ocr', 'extraction', 'validation', 'admission', 'orchestration', 'publication', 'persistence', 'internal', 'coverage'}
-_OUTCOMES = {'attempt_failure', 'complete', 'partial', 'unavailable', 'no_documents'}
+_STAGES = {'inventory', 'download', 'parsing', 'ocr', 'extraction', 'validation', 'admission', 'orchestration', 'publication', 'persistence', 'internal', 'coverage', 'attachment_cache'}
+_OUTCOMES = {'attempt_failure', 'complete', 'partial', 'unavailable', 'no_documents', 'hit', 'miss'}
 
 
 def record(stage, outcome):

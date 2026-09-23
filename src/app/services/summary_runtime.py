@@ -10,12 +10,17 @@ from src.app.services.document_extraction import DocumentProcessingError
 
 @dataclass
 class WorkBudget:
-    model_calls: int = 0
     max_model_calls: int = 64
+    # The one model-call counter, owned by the per-HTTP-request hook
+    # (reserve_provider_request). Within a bounded job every model call routes through a
+    # hooked client, so this is strictly the stronger boundary (it also sees SDK-internal
+    # retries); the former twin `model_calls` check-then-increment in model_call was the
+    # weaker duplicate and was merged onto this counter (audit R5).
     provider_requests: int = 0
-    input_upper_bound: int = 0
-    max_call_input_tokens: int = 160_000
-    max_input_tokens_per_job: int = 4_000_000
+    # Byte-measured bounds (UTF-8 byte length is a conservative bound for text BPE tokens).
+    input_upper_bound_bytes: int = 0
+    max_call_input_bytes: int = 160_000
+    max_input_bytes_per_job: int = 4_000_000
     max_output_tokens: int = 4096
     max_images_per_call: int = 1
     clients: list = field(default_factory=list)
@@ -45,10 +50,10 @@ MODEL_CALL_TIMEOUT_S = 45
 async def model_call(operation, *args, **kwargs):
     budget = _current_budget.get()
     for attempt in range(MAX_TRANSIENT_RETRIES + 1):
-        if budget is not None:
-            if budget.model_calls >= budget.max_model_calls:
-                raise DocumentProcessingError("MODEL_CALL_BUDGET_EXCEEDED")
-            budget.model_calls += 1
+        if budget is not None and budget.provider_requests >= budget.max_model_calls:
+            # Cheap fast-fail on the shared counter; the authoritative increment lives in
+            # reserve_provider_request (the httpx request hook).
+            raise DocumentProcessingError("MODEL_CALL_BUDGET_EXCEEDED")
         try:
             # Acquire the shared concurrency gate FIRST; the timer bounds only the call itself.
             async with _model_slots:
@@ -169,11 +174,11 @@ async def reserve_provider_request(request):
         # requests have a separate count/pixel budget; do not count base64 as text.
         text_bound = len(json.dumps(text_only(body), ensure_ascii=False).encode())
         output_limit = body.get("max_completion_tokens", body.get("max_tokens"))
-        if (images > budget.max_images_per_call or text_bound > budget.max_call_input_tokens
-                or budget.input_upper_bound + text_bound > budget.max_input_tokens_per_job
+        if (images > budget.max_images_per_call or text_bound > budget.max_call_input_bytes
+                or budget.input_upper_bound_bytes + text_bound > budget.max_input_bytes_per_job
                 or not isinstance(output_limit, int) or output_limit > budget.max_output_tokens):
             raise DocumentProcessingError("MODEL_CALL_BUDGET_EXCEEDED")
-        budget.input_upper_bound += text_bound
+        budget.input_upper_bound_bytes += text_bound
         budget.provider_requests += 1
 
 

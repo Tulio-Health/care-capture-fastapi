@@ -1,6 +1,5 @@
 """Attachment Summarization Service - Handles document attachment analysis and clinical insights."""
 
-from datetime import datetime
 from typing import Any, Dict, List
 
 from sqlalchemy import select, cast, String
@@ -39,29 +38,6 @@ def _static_fallback_summary_data(
 
     Pure function — no I/O — so it is directly testable without DB/network mocking.
     """
-    appt_date = (
-        appointment.appointment_date.strftime("%B %d, %Y")
-        if appointment.appointment_date
-        else None
-    )
-    purpose = appointment.purpose
-    if provider_name and provider_name != "N/A":
-        if appt_date:
-            base = f"Your appointment with {provider_name} on {appt_date}"
-        else:
-            base = f"Your appointment with {provider_name}"
-    else:
-        if appt_date:
-            base = f"Your appointment on {appt_date}"
-        else:
-            base = "Your appointment"
-    if purpose:
-        base += f" was for {purpose}."
-    else:
-        base += "."
-    fallback_summary_text = (
-        f"{base} No clinical documents were available for this encounter."
-    )
     return {
         "summary_text": MESSAGES["no_documents"],
         "user_id": request.user_id,
@@ -121,8 +97,6 @@ class AttachmentSummarizationService:
         self.fhir_repo = FhirResourcesRepository(db)
         self.summaries_repo = ConversationSummariesRepository(db)
         self.s3_client = S3DocumentClient()
-        from src.app.core.settings import get_settings
-        settings = get_settings()
         self.text_extractor = DocumentTextExtractor()
         self.logger = logger
 
@@ -206,10 +180,10 @@ class AttachmentSummarizationService:
         # Reuse only after downloading/parsing current bytes and checking ownership,
         # complete validation, source membership, prompts and processing versions.
         from src.app.services.summary_cache import attachment_fingerprint, verified_attachment_cache
-        fingerprint = None
-        if all(d.content_sha256 and not d.extraction_error for d in extracted_documents):
-            from src.app.core.settings import get_settings
-            fingerprint = attachment_fingerprint(extracted_documents, initial_manifest, appointment_context, get_settings())
+        from src.app.core.settings import get_settings
+        # attachment_fingerprint itself returns None for any unhashed/failed document
+        # (summary_cache.py's own guard); the former duplicate pre-check here was deleted (R6).
+        fingerprint = attachment_fingerprint(extracted_documents, initial_manifest, appointment_context, get_settings())
         cached = await verified_attachment_cache(self.summaries_repo, request, fingerprint)
         if cached is not None:
             current_references = await self._fetch_document_references(request, appointment)

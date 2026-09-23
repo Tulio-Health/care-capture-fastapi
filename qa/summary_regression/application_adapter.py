@@ -217,7 +217,10 @@ async def _run(case, fixture_dir, context):
         return OpenAIChatModel(name, provider=OpenAIProvider(openai_client=client))
     settings = SimpleNamespace(ENABLE_DOCUMENT_OCR=config.get("vision_enabled", True), DOCUMENT_OCR_MODEL=context.ai.config.vision_model if context.uses_live_ai else "gpt-4o-mini", OPENAI_API_KEY="", LANGSMITH_TRACING="false", DOCUMENT_VERIFICATION_MODEL=context.ai.config.vision_model if context.uses_live_ai else "gpt-4.1-mini")
     initial_calls = context.ai.calls if context.uses_live_ai else 0
-    token = _current_budget.set(WorkBudget(**{key:config[key] for key in ("max_call_input_tokens", "max_input_tokens_per_job", "max_output_tokens", "max_images_per_call") if key in config}))
+    # Case-config keys are a stable external contract; translate the byte-measured ones
+    # onto WorkBudget's renamed *_bytes fields (audit R5).
+    budget_fields = {"max_call_input_tokens": "max_call_input_bytes", "max_input_tokens_per_job": "max_input_bytes_per_job", "max_output_tokens": "max_output_tokens", "max_images_per_call": "max_images_per_call"}
+    token = _current_budget.set(WorkBudget(**{budget_fields[key]:config[key] for key in budget_fields if key in config}))
     try:
         with ExitStack() as stack:
             stack.enter_context(patch.object(settings_module, "get_settings", return_value=settings))

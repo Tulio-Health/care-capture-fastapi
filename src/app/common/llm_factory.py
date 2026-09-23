@@ -51,11 +51,6 @@ def get_default_chat_model():
     return get_chat_model(LLM_MODEL.GPT_4O_MINI, 0.2)
 
 
-def get_creative_chat_model():
-    """Get a chat model with higher temperature for creative tasks"""
-    return get_chat_model(LLM_MODEL.GPT_4O_MINI, 0.7)
-
-
 def get_pydantic_ai_model(model_name: str = LLM_MODEL.GPT_4O_MINI):
     """
     Create a PydanticAI OpenAI model with SSM-loaded API key.

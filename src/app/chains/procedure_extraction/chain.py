@@ -36,11 +36,6 @@ from src.app.services.clinical_grounding import GROUNDING_POLICY, verify_groundi
 
 logger = logging.getLogger(__name__)
 
-_FOLLOWUP_SECTION_PATTERN = re.compile(
-    r"\b(recommendation|follow[\s-]?up|disposition|discharge instruction|plan)\b",
-    re.IGNORECASE,
-)
-
 # Bound each model input; larger parsed documents are fully covered by overlapping
 # chunks. A failed chunk fails the document and cannot authorize deletion.
 _MAX_DOC_CHARS = 48_000

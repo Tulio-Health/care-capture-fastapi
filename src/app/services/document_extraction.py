@@ -27,7 +27,7 @@ class DocumentProcessingError(ValueError):
             "OCR_REQUIRED": {"OCR_DISABLED"},
             "PARSE_FAILED": {"MALFORMED_RTF", "UNSAFE_XML", "UNSAFE_ARCHIVE", "INVALID_COMPRESSION", "PARSER_PROCESS_FAILED", "PARSER_TIMEOUT", "RENDER_FAILED"},
             "EXTRACTION_QUALITY_FAILED": {"INVALID_TEXT", "UNPARSED_CONTENT", "UNVALIDATED_MODEL_INPUT", "NON_CLINICAL_ERROR_DOCUMENT", "OCR_UNREADABLE", "OCR_VERIFICATION_FAILED", "OCR_INVALID_OUTPUT"},
-            "RESOURCE_LIMIT_EXCEEDED": {"TEXT_LIMIT_EXCEEDED", "PAGE_LIMIT_EXCEEDED", "ARCHIVE_LIMIT_EXCEEDED", "IMAGE_PIXEL_LIMIT_EXCEEDED", "OCR_PAGE_LIMIT_EXCEEDED", "OCR_RENDER_LIMIT_EXCEEDED", "OCR_VISION_CALL_LIMIT_EXCEEDED", "COMPRESSION_LIMIT_EXCEEDED", "DOCUMENT_LIMIT_EXCEEDED", "CHUNK_LIMIT_EXCEEDED", "SYNTHESIS_BUDGET_EXCEEDED", "SYNTHESIS_RECORD_LIMIT_EXCEEDED", "PROCEDURE_CONTEXT_LIMIT_EXCEEDED", "TRANSCRIPT_CONTEXT_LIMIT_EXCEEDED", "FHIR_CONTEXT_LIMIT_EXCEEDED", "MODEL_CALL_BUDGET_EXCEEDED", "VALIDATION_BUDGET_EXCEEDED", "SUMMARY_BUSY", "DOWNLOAD_BUSY"},
+            "RESOURCE_LIMIT_EXCEEDED": {"TEXT_LIMIT_EXCEEDED", "PAGE_LIMIT_EXCEEDED", "ARCHIVE_LIMIT_EXCEEDED", "IMAGE_PIXEL_LIMIT_EXCEEDED", "OCR_PAGE_LIMIT_EXCEEDED", "OCR_RENDER_LIMIT_EXCEEDED", "OCR_VISION_CALL_LIMIT_EXCEEDED", "COMPRESSION_LIMIT_EXCEEDED", "DOCUMENT_LIMIT_EXCEEDED", "CHUNK_LIMIT_EXCEEDED", "SYNTHESIS_BUDGET_EXCEEDED", "SYNTHESIS_RECORD_LIMIT_EXCEEDED", "PROCEDURE_CONTEXT_LIMIT_EXCEEDED", "TRANSCRIPT_CONTEXT_LIMIT_EXCEEDED", "FHIR_CONTEXT_LIMIT_EXCEEDED", "MODEL_CALL_BUDGET_EXCEEDED", "VALIDATION_BUDGET_EXCEEDED", "SUMMARY_BUSY"},
             "MODEL_OUTPUT_INVALID": {"MODEL_SOURCE_RECONCILIATION_FAILED", "OCR_INCOMPLETE_RESPONSE", "CLASSIFICATION_ID_MISMATCH"},
             # PR-11 (N-6): GROUNDING_VALIDATION_FAILED intentionally canonicalizes to
             # CLINICAL_EVIDENCE_FAILED here, NOT its own top-level code. chain.py's
@@ -728,15 +728,6 @@ class DocumentTextExtractor:
             raise DocumentProcessingError("UNSUPPORTED_EMBEDDED_CONTENT" if not depth else "MALFORMED_RTF")
         text = rtf_to_text(raw, encoding=encoding, errors="strict")
         return text + "\n[Embedded image not transcribed]" if re.search(r"\\pict\b", raw) else text
-
-    def _extract_from_txt(self, content: bytes, file_name=None) -> str:
-        return self.validate_text(self._decode(content))
-
-    def _extract_from_xml(self, content: bytes, file_name=None) -> str:
-        return self.validate_text(self._xml_text(content))
-
-    def _extract_from_html(self, content: bytes, file_name=None) -> str:
-        return self.validate_text(self._html_text(self._decode(content)))
 
     def _infer_type_from_filename(self, file_name: str) -> str:
         mime = mimetypes.guess_type(file_name)[0] or "application/octet-stream"

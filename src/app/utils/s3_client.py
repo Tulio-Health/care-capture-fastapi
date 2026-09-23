@@ -2,7 +2,6 @@
 
 import asyncio
 import time
-import threading
 from concurrent.futures import ThreadPoolExecutor
 from botocore.config import Config
 from src.app.services.document_extraction import DocumentTextExtractor, DocumentProcessingError
@@ -16,8 +15,10 @@ from src.app.common.logging import get_logger
 from src.app.core.settings import document_allowed_prefixes
 
 logger = get_logger(__name__)
+# The pool's own 4 worker threads ARE the download concurrency limit; a former companion
+# semaphore with the same 4 permits could never block (only pool threads acquired it) and
+# was removed (audit R2).
 _DOWNLOAD_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="document-download")
-_DOWNLOAD_CAPACITY = threading.BoundedSemaphore(4)
 
 
 class S3DocumentClient:
@@ -174,26 +175,14 @@ class S3DocumentClient:
                 return content
             finally:
                 body.close()
-        def bounded_download():
-            if not _DOWNLOAD_CAPACITY.acquire(timeout=30):
-                raise DocumentProcessingError("DOWNLOAD_BUSY")
-            try:
-                return download()
-            finally:
-                _DOWNLOAD_CAPACITY.release()
-        return await asyncio.get_running_loop().run_in_executor(_DOWNLOAD_POOL, bounded_download)
+        return await asyncio.get_running_loop().run_in_executor(_DOWNLOAD_POOL, download)
 
     async def validate_download_versions(self):
         for path, version in self.download_versions.items():
             bucket, key = self.authorize_location(path)
-            def bounded_head(bucket=bucket, key=key):
-                if not _DOWNLOAD_CAPACITY.acquire(timeout=30):
-                    raise DocumentProcessingError("DOWNLOAD_BUSY")
-                try:
-                    return self.s3_client.head_object(Bucket=bucket, Key=key)
-                finally:
-                    _DOWNLOAD_CAPACITY.release()
-            current = await asyncio.get_running_loop().run_in_executor(_DOWNLOAD_POOL, bounded_head)
+            def head(bucket=bucket, key=key):
+                return self.s3_client.head_object(Bucket=bucket, Key=key)
+            current = await asyncio.get_running_loop().run_in_executor(_DOWNLOAD_POOL, head)
             if not version or (current.get("VersionId") or current.get("ETag")) != version:
                 raise DocumentProcessingError("SOURCE_VERSION_CHANGED")
 

@@ -79,8 +79,6 @@ class ProcedureSummarizationService:
         self.fhir_repo = FhirResourcesRepository(db)
         self.summaries_repo = ConversationSummariesRepository(db)
         self.s3_client = S3DocumentClient()
-        from src.app.core.settings import get_settings
-        settings = get_settings()
         self.text_extractor = DocumentTextExtractor()
         self.logger = logger
 

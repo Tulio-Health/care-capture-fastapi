@@ -27,18 +27,23 @@ def attachment_fingerprint(documents, manifest, context, settings):
 
 
 async def verified_attachment_cache(repository, request, fingerprint):
+    from src.app.services.processing_metrics import record
     if not fingerprint or getattr(request, 'force_regenerate', False):
+        record('attachment_cache', 'miss')
         return None
     from src.app.models.conversation_summaries import ConversationSummary
     try:
         row = await repository.get_by_appointment_id_and_source(request.appointment_id, 'attachment_summary')
         if row is None or str(row.user_id) != str(request.user_id):
+            record('attachment_cache', 'miss')
             return None
         metadata = row.summary_metadata or {}
         if (metadata.get('source') != 'attachment_summary' or metadata.get('source_fingerprint') != fingerprint
                 or metadata.get('processing_outcome') != 'complete' or metadata.get('validation_status') != 'passed'
                 or metadata.get('is_clinical_summary') is not True or metadata.get('last_refresh_outcome')):
+            record('attachment_cache', 'miss')
             return None
+        record('attachment_cache', 'hit')
         return ConversationSummary.model_validate(row)
     except Exception as exc:
         raise DocumentProcessingError('PERSISTENCE_FAILED') from exc
