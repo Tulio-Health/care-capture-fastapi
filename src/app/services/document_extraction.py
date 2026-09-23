@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import codecs
 import csv
+import hashlib
 import io
 import json
 import mimetypes
@@ -84,6 +85,12 @@ _XML_ENTRY_RELATIONSHIP_TYPE_PREFIXES = {"MFST": "MANIFESTATION:", "RSON": "REAS
 # Elements that are pure CDA plumbing - never clinical content.
 _XML_NOISE_TAGS = {"templateId", "id", "realmCode", "typeId", "setId",
                    "versionNumber", "confidentialityCode", "languageCode"}
+# Redundancy-only compression of the non-narrative _xml_text walk (design:
+# care-capture-nodeapi .claude/debug-reports/2026-09-22-async-summarization-fix/
+# cda-redundancy-compression-design.md). Both are layout/verbosity knobs only;
+# correctness (Invariant R) does not depend on either value.
+_XML_GROUP_MAX_PARTS = 40  # highest node emitting <= this many parts becomes one "@" group
+_XML_BLOCK_MIN_PARTS = 6   # byte-identical subtrees emitting >= this many parts back-reference
 
 
 class DocumentTextExtractor:
@@ -93,7 +100,7 @@ class DocumentTextExtractor:
     MAX_ZIP_ENTRIES = 2000
     MAX_ARCHIVE_EXPANDED_BYTES = 50 * 1024 * 1024
     RTF_MAGIC = b"{\\rtf"
-    VERSION = "strict-4"
+    VERSION = "strict-5"
     MAX_ARCHIVE_DEPTH = 2
 
     def __init__(self, *, disabled_adapters=(), transport_enabled=True, allow_containers=True):
@@ -451,50 +458,264 @@ class DocumentTextExtractor:
             raise DocumentProcessingError("ENCODED_DOCUMENT_REQUIRES_TRANSPORT_DECODING")
         # Clinical XML can carry the only diagnosis, value/unit or status in
         # attributes. Keep those values with structural context, not just itertext.
+        #
+        # Redundancy-only compression of the non-narrative walk (design doc:
+        # care-capture-nodeapi .claude/debug-reports/2026-09-22-async-summarization-fix/
+        # cda-redundancy-compression-design.md). Invariant R: tag/attribute NAMES
+        # may influence layout (where a line lands, how long its path prefix is)
+        # but never retention -- only mechanical redundancy is removed, so an
+        # unknown schema degrades to more verbose output, never lossier output.
+        # Three name-free rules:
+        #   1. the highest node whose subtree emits <= _XML_GROUP_MAX_PARTS parts
+        #      becomes a group, announced once by an "@ <full path>" header;
+        #   2. body lines under a header carry the complete ancestor chain from
+        #      the group root down (a full tail path -- never delta/indent-encoded,
+        #      because _create_batches slices this text into stateless 30k-char
+        #      chunks and every line must stay self-describing when its header
+        #      lands in the previous chunk);
+        #   3. the second and later occurrences of a byte-identical subtree
+        #      emitting >= _XML_BLOCK_MIN_PARTS parts collapse to one
+        #      "-> IDENTICAL TO #n" pointer at their own path; the first
+        #      occurrence always renders in full, in place, anchored "{#n}"
+        #      (multiplicity stays explicit: n occurrences = 1 full block +
+        #      n-1 pointers).
+        # Element text and _cda_narrative blocks are emitted byte-identically to
+        # the ungrouped walk, at column 0, in document order -- the content
+        # channel that verify_grounding quotes from is untouched.
         parts = []
-        def walk(node, ancestors=()):
-            local = node.tag.rsplit("}", 1)[-1]
-            if local in _XML_NOISE_TAGS:
-                return
-            if local == "text":
-                # CDA narrative block: render with row/item adjacency preserved
-                # instead of one XPath-scaffold line per text node.
-                rendered = DocumentTextExtractor._cda_narrative(node)
-                if rendered.strip():
-                    parts.append(rendered.strip())
-                return
-            path = (*ancestors, local)
+        narrative_cache = {}
+
+        def narrative(node):
+            got = narrative_cache.get(id(node))
+            if got is None:
+                got = DocumentTextExtractor._cda_narrative(node).strip()
+                narrative_cache[id(node)] = got
+            return got
+
+        def payload(node):
+            """Marker prefix + surviving-attribute text for one node -- exactly
+            the filtering the ungrouped walk applied.
+
+            moodCode/negationInd/entryRelationship-typeCode: explicit semantic
+            prefix instead of either a raw dump or silent suppression - see
+            _XML_SEMANTIC_ATTRS above. EVN (or absent) and negationInd="false"
+            (or absent) stay no-cost: nothing is emitted for the common case."""
             raw_attrs = {key.rsplit("}", 1)[-1]: value for key, value in node.attrib.items()}
             attributes = {key: value for key, value in raw_attrs.items()
                           if key not in _XML_NOISE_ATTRS and key not in _XML_SEMANTIC_ATTRS}
-            # moodCode/negationInd/entryRelationship-typeCode: explicit semantic
-            # prefix instead of either a raw dump or silent suppression - see
-            # _XML_SEMANTIC_ATTRS above. EVN (or absent) and negationInd="false"
-            # (or absent) stay no-cost: nothing is emitted for the common case.
             markers = []
             mood = raw_attrs.get("moodCode")
             if mood in _XML_MOOD_PREFIXES:
                 markers.append(_XML_MOOD_PREFIXES[mood])
             if raw_attrs.get("negationInd") == "true":
                 markers.append("NEGATED:")
-            if local == "entryRelationship":
+            if node.tag.rsplit("}", 1)[-1] == "entryRelationship":
                 rel_type = raw_attrs.get("typeCode")
                 if rel_type in _XML_ENTRY_RELATIONSHIP_TYPE_PREFIXES:
                     markers.append(_XML_ENTRY_RELATIONSHIP_TYPE_PREFIXES[rel_type])
             prefix = (" ".join(markers) + " ") if markers else ""
-            if attributes:
-                parts.append(prefix + "/".join(path) + ": " + "; ".join(f"{key}={value}" for key, value in attributes.items()))
+            attr_text = "; ".join(f"{key}={value}" for key, value in attributes.items())
+            return prefix, attr_text
+
+        emitted_cache = {}
+
+        def emitted(node):
+            """How many parts the ungrouped walk would emit for this subtree
+            (the node's tail belongs to its parent, not to this count)."""
+            got = emitted_cache.get(id(node))
+            if got is not None:
+                return got
+            local = node.tag.rsplit("}", 1)[-1]
+            if local in _XML_NOISE_TAGS:
+                count = 0
+            elif local == "text":
+                count = 1 if narrative(node) else 0
+            else:
+                prefix, attr_text = payload(node)
+                count = 1 if (attr_text or prefix) else 0
+                if node.text and node.text.strip():
+                    count += 1
+                for child in node:
+                    count += emitted(child)
+                    if child.tail and child.tail.strip():
+                        count += 1
+            emitted_cache[id(node)] = count
+            return count
+
+        signature_cache = {}
+
+        def signature(node):
+            """Merkle sha256 over exactly what the subtree emits, relative to its
+            own root: local tags (they appear in descendants' tail paths), marker
+            prefixes, surviving-attribute text, element text, tails and rendered
+            narrative. Computed from emitted content, never from a name-keyed
+            decision: two subtrees share a signature only when they would render
+            identically, byte for byte. Filtered noise contributes nothing, so
+            subtrees differing only in noise still collapse; any structural
+            difference at all keeps them apart (over-strict is the safe side)."""
+            got = signature_cache.get(id(node))
+            if got is not None:
+                return got
+            local = node.tag.rsplit("}", 1)[-1]
+            hasher = hashlib.sha256()
+
+            def feed(kind, value):
+                data = value.encode("utf-8", "surrogatepass")
+                hasher.update(f"{kind}{len(data)}:".encode())
+                hasher.update(data)
+
+            if local == "text":
+                feed("n", narrative(node))
+            elif local not in _XML_NOISE_TAGS:
+                prefix, attr_text = payload(node)
+                feed("g", local)
+                feed("m", prefix)
+                feed("a", attr_text)
+                if node.text and node.text.strip():
+                    feed("t", node.text.strip())
+                for child in node:
+                    if child.tag.rsplit("}", 1)[-1] not in _XML_NOISE_TAGS:
+                        feed("c", signature(child))
+                    if child.tail and child.tail.strip():
+                        feed("l", child.tail.strip())
+            digest = hasher.hexdigest()
+            signature_cache[id(node)] = digest
+            return digest
+
+        block_counts = {}
+
+        def census(node):
+            local = node.tag.rsplit("}", 1)[-1]
+            if local in _XML_NOISE_TAGS or local == "text":
+                return
+            if emitted(node) >= _XML_BLOCK_MIN_PARTS:
+                sig = signature(node)
+                block_counts[sig] = block_counts.get(sig, 0) + 1
+            for child in node:
+                census(child)
+
+        census(root)
+        block_ids = {}
+
+        def block_ref(node):
+            """None, or ("first", n): render in full anchored {#n}, or
+            ("again", n): collapse to a pointer. _XML_BLOCK_MIN_PARTS keeps small
+            clinical blocks (a 2-line criticality observation, a dose/route pair)
+            out of the mechanism entirely, so exact-duplicate small facts always
+            print in full at every occurrence."""
+            if emitted(node) < _XML_BLOCK_MIN_PARTS:
+                return None
+            sig = signature(node)
+            if block_counts.get(sig, 0) < 2:
+                return None
+            if sig in block_ids:
+                return ("again", block_ids[sig])
+            block_ids[sig] = len(block_ids) + 1
+            return ("first", block_ids[sig])
+
+        def labelled_children(node):
+            """label(child) = tag, or tag[i] (1-based document position) when the
+            parent has >= 2 children with that same tag. Labels land in group
+            headers and spine paths only -- body tail paths stay exactly as
+            ambiguous/unambiguous as the ungrouped walk's paths were."""
+            names = [child.tag.rsplit("}", 1)[-1] for child in node]
+            totals = {}
+            for name in names:
+                totals[name] = totals.get(name, 0) + 1
+            seen = {}
+            out = []
+            for child, name in zip(node, names):
+                seen[name] = seen.get(name, 0) + 1
+                out.append((child, f"{name}[{seen[name]}]" if totals[name] > 1 else name))
+            return out
+
+        def render_body(node, tail):
+            """One line per node inside a group: today's line with the group
+            root's path prefix removed -- the complete remaining ancestor chain,
+            nothing else omitted."""
+            local = node.tag.rsplit("}", 1)[-1]
+            if local in _XML_NOISE_TAGS:
+                return
+            if local == "text":
+                # CDA narrative block: render with row/item adjacency preserved
+                # instead of one XPath-scaffold line per text node.
+                rendered = narrative(node)
+                if rendered:
+                    parts.append(rendered)
+                return
+            tail_path = "/".join(tail)
+            ref = block_ref(node)
+            if ref and ref[0] == "again":
+                parts.append(f"{tail_path} -> IDENTICAL TO #{ref[1]}")
+                return
+            suffix = f" {{#{ref[1]}}}" if ref else ""
+            prefix, attr_text = payload(node)
+            if attr_text:
+                parts.append(prefix + tail_path + ": " + attr_text + suffix)
             elif prefix:
                 # No other attribute survives noise-filtering, but the semantic
                 # marker itself must not be silently dropped.
-                parts.append(prefix + "/".join(path))
+                parts.append(prefix + tail_path + suffix)
+            elif suffix:
+                # A duplicated block whose root emits no line of its own still
+                # needs its "{#n}" anchor so later pointers resolve.
+                parts.append(tail_path + suffix)
             if node.text and node.text.strip():
                 parts.append(node.text.strip())
             for child in node:
-                walk(child, path)
+                render_body(child, (*tail, child.tag.rsplit("}", 1)[-1]))
                 if child.tail and child.tail.strip():
                     parts.append(child.tail.strip())
-        walk(root)
+
+        def segment(node, chain, label):
+            local = node.tag.rsplit("}", 1)[-1]
+            if local in _XML_NOISE_TAGS:
+                return
+            if local == "text":
+                rendered = narrative(node)
+                if rendered:
+                    parts.append(rendered)
+                return
+            if not emitted(node):
+                return  # emits nothing in the ungrouped walk -> emits nothing now
+            full_path = "/".join((*chain, label))
+            ref = block_ref(node)
+            if ref and ref[0] == "again":
+                parts.append(f"@ {full_path} -> IDENTICAL TO #{ref[1]}")
+                return
+            suffix = f" {{#{ref[1]}}}" if ref else ""
+            prefix, attr_text = payload(node)
+            if emitted(node) <= _XML_GROUP_MAX_PARTS:
+                # Group root: one "@" header carrying the full path plus the
+                # root's own markers/attributes (a group root must not lose its
+                # payload to the header); body lines carry tail paths only.
+                header = "@ " + prefix + full_path
+                if attr_text:
+                    header += ": " + attr_text
+                parts.append(header + suffix)
+                if node.text and node.text.strip():
+                    parts.append(node.text.strip())
+                for child in node:
+                    render_body(child, (child.tag.rsplit("}", 1)[-1],))
+                    if child.tail and child.tail.strip():
+                        parts.append(child.tail.strip())
+                return
+            # Spine node (subtree too large for one group, rare): its own line
+            # keeps the full path; recurse to find group roots below.
+            if attr_text:
+                parts.append(prefix + full_path + ": " + attr_text + suffix)
+            elif prefix:
+                parts.append(prefix + full_path + suffix)
+            elif suffix:
+                parts.append(full_path + suffix)
+            if node.text and node.text.strip():
+                parts.append(node.text.strip())
+            for child, child_label in labelled_children(node):
+                segment(child, (*chain, label), child_label)
+                if child.tail and child.tail.strip():
+                    parts.append(child.tail.strip())
+
+        segment(root, (), root.tag.rsplit("}", 1)[-1])
         return "\n".join(parts)
 
     @staticmethod
