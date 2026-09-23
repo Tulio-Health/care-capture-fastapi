@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import codecs
 import csv
-import hashlib
 import io
 import json
 import mimetypes
@@ -87,10 +86,14 @@ _XML_NOISE_TAGS = {"templateId", "id", "realmCode", "typeId", "setId",
                    "versionNumber", "confidentialityCode", "languageCode"}
 # Redundancy-only compression of the non-narrative _xml_text walk (design:
 # care-capture-nodeapi .claude/debug-reports/2026-09-22-async-summarization-fix/
-# cda-redundancy-compression-design.md). Both are layout/verbosity knobs only;
-# correctness (Invariant R) does not depend on either value.
+# cda-redundancy-compression-design.md). A layout/verbosity knob only;
+# correctness (Invariant R) does not depend on its value. The design's Rule 3
+# (identical-subtree back-referencing) was measured and dropped in round 3:
+# corpus-wide it bought ~5% chars and one chunk, while any variant that
+# guarantees a pointer's anchor lands in the same 30k extraction chunk is
+# measurably WORSE than not back-referencing at all -- and unguarded it hid
+# real clinical identifiers from 25 of 338 pointers' chunks.
 _XML_GROUP_MAX_PARTS = 40  # highest node emitting <= this many parts becomes one "@" group
-_XML_BLOCK_MIN_PARTS = 6   # byte-identical subtrees emitting >= this many parts back-reference
 
 
 class DocumentTextExtractor:
@@ -465,24 +468,29 @@ class DocumentTextExtractor:
         # may influence layout (where a line lands, how long its path prefix is)
         # but never retention -- only mechanical redundancy is removed, so an
         # unknown schema degrades to more verbose output, never lossier output.
-        # Three name-free rules:
-        #   1. the highest node whose subtree emits <= _XML_GROUP_MAX_PARTS parts
-        #      becomes a group, announced once by an "@ <full path>" header;
+        # Two name-free rules:
+        #   1. the highest node whose subtree emits 2..=_XML_GROUP_MAX_PARTS
+        #      parts AND contains at least one descendant path line becomes a
+        #      group, announced once by an "@ <full path>" header (a subtree
+        #      with no descendant path line -- flat/foreign XML leaves,
+        #      text-only nodes -- gains nothing from a header and renders
+        #      exactly as the ungrouped walk did, so an unknown schema is
+        #      never rendered bigger than today);
         #   2. body lines under a header carry the complete ancestor chain from
         #      the group root down (a full tail path -- never delta/indent-encoded,
         #      because _create_batches slices this text into stateless 30k-char
         #      chunks and every line must stay self-describing when its header
-        #      lands in the previous chunk);
-        #   3. the second and later occurrences of a byte-identical subtree
-        #      emitting >= _XML_BLOCK_MIN_PARTS parts collapse to one
-        #      "-> IDENTICAL TO #n" pointer at their own path; the first
-        #      occurrence always renders in full, in place, anchored "{#n}"
-        #      (multiplicity stays explicit: n occurrences = 1 full block +
-        #      n-1 pointers).
+        #      lands in the previous chunk).
+        # There is no cross-referencing of repeated subtrees: every occurrence
+        # of every subtree renders in full, so the output is multiset-identical
+        # to the ungrouped walk -- zero occurrence-level removal of any kind.
         # Element text and _cda_narrative blocks are emitted byte-identically to
         # the ungrouped walk, at column 0, in document order -- the content
         # channel that verify_grounding quotes from is untouched.
         parts = []
+        # All memo caches below key on id(node). Safe only because stdlib
+        # ElementTree's `root` keeps every descendant alive for the duration of
+        # this call; an lxml port (transient element proxies) would break it.
         narrative_cache = {}
 
         def narrative(node):
@@ -542,76 +550,28 @@ class DocumentTextExtractor:
             emitted_cache[id(node)] = count
             return count
 
-        signature_cache = {}
+        path_parts_cache = {}
 
-        def signature(node):
-            """Merkle sha256 over exactly what the subtree emits, relative to its
-            own root: local tags (they appear in descendants' tail paths), marker
-            prefixes, surviving-attribute text, element text, tails and rendered
-            narrative. Computed from emitted content, never from a name-keyed
-            decision: two subtrees share a signature only when they would render
-            identically, byte for byte. Filtered noise contributes nothing, so
-            subtrees differing only in noise still collapse; any structural
-            difference at all keeps them apart (over-strict is the safe side)."""
-            got = signature_cache.get(id(node))
+        def path_parts(node):
+            """How many of a subtree's emitted parts are path-carrying lines
+            (marker/attribute lines). Text, tails and narrative land at column 0
+            regardless of grouping, so only path lines gain from a shared "@"
+            prefix -- a group must contain at least one below its root to earn
+            a header (round-2 M3: a header on a subtree with none can only add
+            bytes, which made flat/foreign XML bigger than today)."""
+            got = path_parts_cache.get(id(node))
             if got is not None:
                 return got
             local = node.tag.rsplit("}", 1)[-1]
-            hasher = hashlib.sha256()
-
-            def feed(kind, value):
-                data = value.encode("utf-8", "surrogatepass")
-                hasher.update(f"{kind}{len(data)}:".encode())
-                hasher.update(data)
-
-            if local == "text":
-                feed("n", narrative(node))
-            elif local not in _XML_NOISE_TAGS:
-                prefix, attr_text = payload(node)
-                feed("g", local)
-                feed("m", prefix)
-                feed("a", attr_text)
-                if node.text and node.text.strip():
-                    feed("t", node.text.strip())
-                for child in node:
-                    if child.tag.rsplit("}", 1)[-1] not in _XML_NOISE_TAGS:
-                        feed("c", signature(child))
-                    if child.tail and child.tail.strip():
-                        feed("l", child.tail.strip())
-            digest = hasher.hexdigest()
-            signature_cache[id(node)] = digest
-            return digest
-
-        block_counts = {}
-
-        def census(node):
-            local = node.tag.rsplit("}", 1)[-1]
             if local in _XML_NOISE_TAGS or local == "text":
-                return
-            if emitted(node) >= _XML_BLOCK_MIN_PARTS:
-                sig = signature(node)
-                block_counts[sig] = block_counts.get(sig, 0) + 1
-            for child in node:
-                census(child)
-
-        census(root)
-        block_ids = {}
-
-        def block_ref(node):
-            """None, or ("first", n): render in full anchored {#n}, or
-            ("again", n): collapse to a pointer. _XML_BLOCK_MIN_PARTS keeps small
-            clinical blocks (a 2-line criticality observation, a dose/route pair)
-            out of the mechanism entirely, so exact-duplicate small facts always
-            print in full at every occurrence."""
-            if emitted(node) < _XML_BLOCK_MIN_PARTS:
-                return None
-            sig = signature(node)
-            if block_counts.get(sig, 0) < 2:
-                return None
-            if sig in block_ids:
-                return ("again", block_ids[sig])
-            block_ids[sig] = len(block_ids) + 1
-            return ("first", block_ids[sig])
+                count = 0
+            else:
+                prefix, attr_text = payload(node)
+                count = 1 if (attr_text or prefix) else 0
+                for child in node:
+                    count += path_parts(child)
+            path_parts_cache[id(node)] = count
+            return count
 
         def labelled_children(node):
             """label(child) = tag, or tag[i] (1-based document position) when the
@@ -644,22 +604,13 @@ class DocumentTextExtractor:
                     parts.append(rendered)
                 return
             tail_path = "/".join(tail)
-            ref = block_ref(node)
-            if ref and ref[0] == "again":
-                parts.append(f"{tail_path} -> IDENTICAL TO #{ref[1]}")
-                return
-            suffix = f" {{#{ref[1]}}}" if ref else ""
             prefix, attr_text = payload(node)
             if attr_text:
-                parts.append(prefix + tail_path + ": " + attr_text + suffix)
+                parts.append(prefix + tail_path + ": " + attr_text)
             elif prefix:
                 # No other attribute survives noise-filtering, but the semantic
                 # marker itself must not be silently dropped.
-                parts.append(prefix + tail_path + suffix)
-            elif suffix:
-                # A duplicated block whose root emits no line of its own still
-                # needs its "{#n}" anchor so later pointers resolve.
-                parts.append(tail_path + suffix)
+                parts.append(prefix + tail_path)
             if node.text and node.text.strip():
                 parts.append(node.text.strip())
             for child in node:
@@ -667,7 +618,7 @@ class DocumentTextExtractor:
                 if child.tail and child.tail.strip():
                     parts.append(child.tail.strip())
 
-        def segment(node, chain, label):
+        def segment(node, chain, label, raw):
             local = node.tag.rsplit("}", 1)[-1]
             if local in _XML_NOISE_TAGS:
                 return
@@ -679,20 +630,26 @@ class DocumentTextExtractor:
             if not emitted(node):
                 return  # emits nothing in the ungrouped walk -> emits nothing now
             full_path = "/".join((*chain, label))
-            ref = block_ref(node)
-            if ref and ref[0] == "again":
-                parts.append(f"@ {full_path} -> IDENTICAL TO #{ref[1]}")
-                return
-            suffix = f" {{#{ref[1]}}}" if ref else ""
             prefix, attr_text = payload(node)
             if emitted(node) <= _XML_GROUP_MAX_PARTS:
+                own_line = 1 if (attr_text or prefix) else 0
+                if emitted(node) < 2 or path_parts(node) - own_line < 1:
+                    # No descendant path line would share the header's prefix,
+                    # so a header cannot pay for itself -- it can only add
+                    # bytes (the round-2 M3 flat/foreign-XML regression).
+                    # Render this subtree exactly as the ungrouped walk did:
+                    # full paths from the document root built from the RAW tag
+                    # chain (no "@" scaffolding, no sibling indices) -- byte
+                    # parity with the ungrouped walk on flat/foreign shapes.
+                    render_body(node, (*raw, local))
+                    return
                 # Group root: one "@" header carrying the full path plus the
                 # root's own markers/attributes (a group root must not lose its
                 # payload to the header); body lines carry tail paths only.
                 header = "@ " + prefix + full_path
                 if attr_text:
                     header += ": " + attr_text
-                parts.append(header + suffix)
+                parts.append(header)
                 if node.text and node.text.strip():
                     parts.append(node.text.strip())
                 for child in node:
@@ -703,19 +660,17 @@ class DocumentTextExtractor:
             # Spine node (subtree too large for one group, rare): its own line
             # keeps the full path; recurse to find group roots below.
             if attr_text:
-                parts.append(prefix + full_path + ": " + attr_text + suffix)
+                parts.append(prefix + full_path + ": " + attr_text)
             elif prefix:
-                parts.append(prefix + full_path + suffix)
-            elif suffix:
-                parts.append(full_path + suffix)
+                parts.append(prefix + full_path)
             if node.text and node.text.strip():
                 parts.append(node.text.strip())
             for child, child_label in labelled_children(node):
-                segment(child, (*chain, label), child_label)
+                segment(child, (*chain, label), child_label, (*raw, local))
                 if child.tail and child.tail.strip():
                     parts.append(child.tail.strip())
 
-        segment(root, (), root.tag.rsplit("}", 1)[-1])
+        segment(root, (), root.tag.rsplit("}", 1)[-1], ())
         return "\n".join(parts)
 
     @staticmethod

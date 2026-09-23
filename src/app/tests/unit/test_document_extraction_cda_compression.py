@@ -2,15 +2,18 @@
 
 Executable form of the design doc's Invariant R (care-capture-nodeapi
 .claude/debug-reports/2026-09-22-async-summarization-fix/
-cda-redundancy-compression-design.md §8): grouping, tail paths and
-identical-subtree back-references may only remove mechanical redundancy --
-the de-duplicated set of (attribute, value) pairs, the set of text lines and
-the raw semantic-marker counts must be identical to the ungrouped strict-4
-walk's, for any input. Names may influence layout, never retention.
+cda-redundancy-compression-design.md §8), strengthened in round 3: grouping
+and tail paths may only remove mechanical path redundancy -- the MULTISET
+(not just set) of (attribute, value) pair occurrences, the multiset of text
+lines and the raw semantic-marker counts must be identical to the ungrouped
+strict-4 walk's, for any input. There is no identical-subtree back-referencing
+(the design's Rule 3 was measured and dropped in round 3): every occurrence of
+every subtree renders in full. Names may influence layout, never retention.
 """
 
 import re
 import xml.etree.ElementTree as ET
+from collections import Counter
 
 from src.app.services.document_extraction import (
     DocumentTextExtractor,
@@ -27,9 +30,8 @@ _MARKERS = ("[ORDERED/PLANNED]", "[APPOINTMENT]", "[GOAL]",
 
 def _strict4_render(content: bytes) -> str:
     """Byte-for-byte replica of the pre-compression (strict-4) _xml_text walk:
-    one full-XPath line per attributed/marked element, no grouping, no
-    back-references. Kept as the reference the compressed output is proven
-    set-equal against."""
+    one full-XPath line per attributed/marked element, no grouping. Kept as the
+    reference the compressed output is proven multiset-equal against."""
     root = ET.fromstring(content)
     parts = []
 
@@ -77,10 +79,10 @@ _PATH_SHAPE = re.compile(r"^[A-Za-z_][\w\[\]]*(?:/[A-Za-z_][\w\[\]]*)*$")
 
 
 def _channels(text: str):
-    """Split an extraction into the three Invariant R channels: the set of
-    (attribute, value) pairs, the set of non-path text lines, and raw
-    semantic-marker counts. Applied identically to old and new output."""
-    pairs, text_lines = set(), set()
+    """Split an extraction into the three Invariant R channels: the MULTISET of
+    (attribute, value) pair occurrences, the multiset of non-path text lines,
+    and raw semantic-marker counts. Applied identically to old and new output."""
+    pairs, text_lines = Counter(), Counter()
     for line in text.splitlines():
         if not line.strip():
             continue
@@ -93,22 +95,24 @@ def _channels(text: str):
             for marker in _MARKERS:
                 if work.startswith(marker + " "):
                     work, stripped_marker, structural = work[len(marker) + 1:], True, True
-        if re.search(r" -> IDENTICAL TO #\d+$", work):
-            continue
-        if re.search(r" \{#\d+\}$", work):
-            work, structural = re.sub(r" \{#\d+\}$", "", work), True
         head, sep, rest = work.partition(": ")
         if sep and _PATH_SHAPE.match(head):
             for token in re.split(r"; (?=[A-Za-z_][\w.:-]*=)", rest):
                 eq = token.find("=")
                 if eq > 0:
-                    pairs.add((token[:eq], token[eq + 1:]))
+                    pairs[(token[:eq], token[eq + 1:])] += 1
             continue
         if _PATH_SHAPE.match(work) and ("/" in work or structural):
-            continue  # bare path line (marker-only, spine, or {#n} anchor)
-        text_lines.add(work if not structural else line)
+            continue  # bare path line (marker-only or spine)
+        text_lines[work if not structural else line] += 1
     counts = {marker: text.count(marker) for marker in _MARKERS}
     return pairs, text_lines, counts
+
+
+def _nchunks(text: str) -> int:
+    # The real _create_batches arithmetic: CHUNK_CHAR_LIMIT=30_000, stride
+    # 30_000 - min(1000, 30_000 // 10) = 29_000 (attachment_summarization/chain.py).
+    return len(range(0, len(text), 29_000)) if text else 0
 
 
 def _document(*sections: str) -> bytes:
@@ -131,19 +135,30 @@ _AUTHOR_BLOCK = (
     "</assignedAuthor></author>"
 )
 
-_ALLERGY = (
-    '<entry><act classCode="ACT" moodCode="EVN"><code code="CONC"/>'
-    '<entryRelationship typeCode="SUBJ"><observation classCode="OBS" moodCode="EVN">'
-    "<participant><participantRole><playingEntity><name>{name}</name></playingEntity></participantRole></participant>"
-    '<entryRelationship typeCode="MFST"><observation classCode="OBS" moodCode="EVN">'
-    '<value code="{reaction_code}" displayName="{reaction}"/>'
-    "</observation></entryRelationship>"
-    '<entryRelationship typeCode="SUBJ"><observation classCode="OBS" moodCode="EVN">'
-    '<code code="82606-5" displayName="Criticality"/>'
-    '<value code="{crit_code}" displayName="{crit}"/>'
-    "</observation></entryRelationship>"
-    "</observation></entryRelationship></act></entry>"
-)
+# fat=True pads the criticality observation past any small-block threshold with
+# ordinary CDA elements (statusCode/effectiveTime/interpretationCode/methodCode,
+# all present in the real corpus) -- the round-2 M4 case where the old Rule 3
+# collapsed a legitimately-repeated criticality assessment into a pointer.
+_CRIT_EXTRA = ('<statusCode code="completed"/><effectiveTime value="20240101"/>'
+               '<interpretationCode code="ABN" displayName="Abnormal"/>'
+               '<methodCode code="M1" displayName="Assessment"/>')
+
+def _allergy(name, reaction, reaction_code, crit, crit_code, fat=False):
+    return (
+        '<entry><act classCode="ACT" moodCode="EVN"><code code="CONC"/>'
+        '<entryRelationship typeCode="SUBJ"><observation classCode="OBS" moodCode="EVN">'
+        f"<participant><participantRole><playingEntity><name>{name}</name></playingEntity></participantRole></participant>"
+        '<entryRelationship typeCode="MFST"><observation classCode="OBS" moodCode="EVN">'
+        f'<value code="{reaction_code}" displayName="{reaction}"/>'
+        "</observation></entryRelationship>"
+        '<entryRelationship typeCode="SUBJ"><observation classCode="OBS" moodCode="EVN">'
+        '<code code="82606-5" displayName="Criticality"/>'
+        + (_CRIT_EXTRA if fat else "")
+        + f'<value code="{crit_code}" displayName="{crit}"/>'
+        "</observation></entryRelationship>"
+        "</observation></entryRelationship></act></entry>"
+    )
+
 
 _MEDICATION = (
     '<entry><substanceAdministration classCode="SBADM" moodCode="{mood}">'
@@ -191,76 +206,85 @@ def _rich_document() -> bytes:
         for i in range(6)
     )
     allergies = (
-        _ALLERGY.format(name="PENICILLIN G", reaction="Hives", reaction_code="126485001",
-                        crit="low criticality", crit_code="CRITL")
-        + _ALLERGY.format(name="SHELLFISH-DERIVED PRODUCTS", reaction="Itching", reaction_code="418290006",
-                          crit="high criticality", crit_code="CRITH")
-        + _ALLERGY.format(name="STRAWBERRY EXTRACT", reaction="Anaphylaxis", reaction_code="39579001",
-                          crit="high criticality", crit_code="CRITH")
+        _allergy("PENICILLIN G", "Hives", "126485001", "low criticality", "CRITL")
+        + _allergy("SHELLFISH-DERIVED PRODUCTS", "Itching", "418290006", "high criticality", "CRITH")
+        + _allergy("STRAWBERRY EXTRACT", "Anaphylaxis", "39579001", "high criticality", "CRITH")
     )
     return _document(narrative, "<title>Medications</title>" + meds,
                      "<title>Allergies</title>" + allergies, labs + negated)
 
 
-# --- Invariant R property tests (design doc §8, tests 1-2) ------------------
+# --- Invariant R property tests, multiset-strength (design §8, tests 1-2) ----
 
-def test_attribute_pair_set_equal_to_ungrouped_walk():
+def test_attribute_pair_multiset_equal_to_ungrouped_walk():
     doc = _rich_document()
     old_pairs, _, _ = _channels(_strict4_render(doc))
     new_pairs, _, _ = _channels(DocumentTextExtractor._xml_text(doc))
     assert old_pairs, "fixture must exercise the attribute channel"
-    assert old_pairs - new_pairs == set()   # nothing lost
-    assert new_pairs - old_pairs == set()   # nothing invented
+    assert new_pairs == old_pairs  # every occurrence kept, nothing invented
 
 
-def test_text_line_set_and_marker_counts_equal_to_ungrouped_walk():
+def test_text_line_multiset_and_marker_counts_equal_to_ungrouped_walk():
     doc = _rich_document()
     _, old_text, old_counts = _channels(_strict4_render(doc))
     _, new_text, new_counts = _channels(DocumentTextExtractor._xml_text(doc))
     assert old_text, "fixture must exercise the text channel"
-    assert old_text - new_text == set()
-    assert "NOT DETECTED" in old_text and "NOT DETECTED" in new_text
+    assert new_text == old_text
+    assert old_text["NOT DETECTED"] == 1 and new_text["NOT DETECTED"] == 1
     assert sum(old_counts.values()) > 0, "fixture must exercise semantic markers"
     assert new_counts == old_counts
 
 
-# --- multiplicity of identical small clinical facts (test 3) -----------------
+# --- multiplicity of identical clinical facts, thin AND fat (round-2 M4) -----
 
 def test_repeated_high_criticality_renders_twice_not_once():
-    """Two different allergies sharing the byte-identical value 'high
-    criticality' must both print it: the criticality observation is far below
-    _XML_BLOCK_MIN_PARTS, so back-referencing never touches it, and line-level
-    dedup does not exist in this design."""
+    """Two different allergies sharing a byte-identical criticality observation
+    must both print it -- at ANY block size. The fat variant (7 emitted parts)
+    is the exact round-2 repro where the since-removed back-reference mechanism
+    collapsed the second occurrence into a pointer."""
+    for fat in (False, True):
+        doc = _document(
+            "<title>Allergies</title>"
+            + _allergy("SHELLFISH", "Itching", "418290006", "high criticality", "CRITH", fat)
+            + _allergy("STRAWBERRY", "Anaphylaxis", "39579001", "high criticality", "CRITH", fat)
+        )
+        out = DocumentTextExtractor._xml_text(doc)
+        assert out.count("displayName=high criticality") == 2, f"fat={fat}"
+        assert "IDENTICAL TO" not in out
+
+
+# --- repeated subtrees always render in full (replaces the Rule 3 tests) -----
+
+def test_identical_blocks_render_in_full_at_every_occurrence():
+    """Six byte-identical author blocks: every occurrence renders completely --
+    no back-references, no anchors, no cross-line dependencies of any kind
+    (every extraction chunk is self-contained by construction)."""
     out = DocumentTextExtractor._xml_text(_rich_document())
-    assert out.count("displayName=high criticality") == 2
-    assert out.count("displayName=low criticality") == 1
-
-
-# --- identical-subtree back-reference (test 4) -------------------------------
-
-def test_identical_blocks_render_once_plus_pointers():
-    """Byte-identical >=_XML_BLOCK_MIN_PARTS-part author blocks: the first
-    occurrence renders in full (anchored {#n}); every later occurrence is one
-    explicit pointer line, so multiplicity stays visible."""
-    out = DocumentTextExtractor._xml_text(_rich_document())
-    assert out.count("123 Main St") == 1          # block content rendered once
-    assert out.count("tel:+1-555-0100") == 1
-    pointers = [l for l in out.splitlines() if re.search(r"-> IDENTICAL TO #\d+$", l)]
-    assert len(pointers) == 5                     # 6 identical author blocks -> 1 full + 5 pointers
-    assert len({l.split("#")[-1] for l in pointers}) == 1  # all point at the same block
-    anchor_id = pointers[0].split("#")[-1]
-    assert re.search(r"author \{#" + anchor_id + r"\}$", out, re.M)  # anchor line exists
-    # Every pointer still carries its own full tail path back to its entry.
-    assert all(l.split(" -> ")[0].strip().endswith("author") for l in pointers)
-
-
-def test_two_distinct_blocks_never_collapse():
-    """Blocks that differ in a single byte must both render in full."""
-    variant = _AUTHOR_BLOCK.replace("Sara", "Mara")
-    doc = _document("<entry>" + _AUTHOR_BLOCK + "</entry><entry>" + variant + "</entry>")
-    out = DocumentTextExtractor._xml_text(doc)
+    assert out.count("123 Main St") == 6
+    assert out.count("tel:+1-555-0100") == 6
     assert "IDENTICAL TO" not in out
-    assert "Sara" in out and "Mara" in out
+    assert not re.search(r"\{#\d+\}", out)
+
+
+# --- narrative is never swallowed by layout (round-2 M2) ---------------------
+
+def test_narrative_repeats_verbatim_in_duplicated_sections():
+    """Two byte-identical narrative-bearing sections: the quotable prose must
+    appear at BOTH locations, byte-identically (load-bearing for
+    verify_grounding's quote matching)."""
+    section = (
+        "<title>Allergies</title><text><table><tbody>"
+        "<tr><td>No known allergies documented for this patient</td>"
+        "<td>Reviewed 2024-01-01</td></tr>"
+        "</tbody></table></text>"
+        + _allergy("SHELLFISH", "Itching", "418290006", "high criticality", "CRITH", fat=True)
+    )
+    doc = _document(section, section)
+    old = _strict4_render(doc)
+    new = DocumentTextExtractor._xml_text(doc)
+    for prose in ("No known allergies documented for this patient", "Reviewed 2024-01-01"):
+        assert old.count(prose) == 2, "fixture must duplicate the narrative"
+        assert new.count(prose) == 2
 
 
 # --- node with attributes AND attribute-bearing children (test 5) ------------
@@ -289,3 +313,56 @@ def test_body_lines_carry_complete_tail_paths_not_deltas():
     assert crit_lines and all(
         "observation/value: " in l and l.split(": ")[0].count("/") >= 2 for l in crit_lines
     )
+
+
+# --- foreign/non-CDA XML must never get bigger than today (round-2 M3) -------
+
+def test_flat_foreign_xml_renders_byte_identical_to_ungrouped_walk():
+    """Flat XML (attributed leaves under one root) gains nothing from grouping:
+    a leaf earns no '@' header (no descendant path line would share it), so the
+    output is byte-identical to today's renderer -- same size, same chunks.
+    Round 2 measured +32.8% chars and one EXTRA chunk on this shape before the
+    header-earning guard existed."""
+    doc = (b'<?xml version="1.0"?><Records>'
+           + b"".join(f'<Record id2="{i}" code="C{i}" value="{i * 1.5}" unit="mg"/>'.encode()
+                      for i in range(300))
+           + b"</Records>")
+    old = _strict4_render(doc)
+    new = DocumentTextExtractor._xml_text(doc)
+    assert new == old
+    assert _nchunks(new) == _nchunks(old)
+
+
+def test_foreign_xml_never_bigger_than_ungrouped_walk():
+    """Nested-but-unknown schemas may group (smaller) but must never exceed
+    today's size -- the design's §7.4 'worst case approaches today's verbosity'
+    claim, now enforced."""
+    lab = (b'<?xml version="1.0"?><LabReport xmlns="urn:acme:lab">'
+           b'<Header><Lab name="Acme" clia="99D1234567"/></Header>'
+           b'<Specimen sid="S1" type="serum"><CollectedAt when="2024-03-01T08:00:00Z"/></Specimen>'
+           b"<Analytes>"
+           + b"".join(f'<Analyte loinc="{2000 + i}" name="Analyte{i}" value="{i * 1.5}" unit="mg/dL">'
+                      f"<Comment>Result note {i}</Comment></Analyte>".encode()
+                      for i in range(40))
+           + b"</Analytes></LabReport>")
+    over_group_limit = ("<section>"
+                        + "".join(f'<obs code="C{i}" displayName="D{i}"/>' for i in range(41))
+                        + "</section>").encode()
+    for doc in (lab, b'<?xml version="1.0"?><doc>' + over_group_limit + b"</doc>"):
+        old = _strict4_render(doc)
+        new = DocumentTextExtractor._xml_text(doc)
+        assert len(new) <= len(old)
+    # Many DISTINCT spine sections just over the group limit: their own spine
+    # lines carry sibling indices (a deliberate disambiguation feature), so the
+    # bound is "approaches today's verbosity", not byte-parity -- but the +8.5%
+    # regression round 3 found (indexed ancestors leaking into inline body
+    # lines) must never come back.
+    many = (b'<?xml version="1.0"?><doc>'
+            + b"".join((f'<section sid="{s}">'
+                        + "".join(f'<obs code="C{s}-{i}" displayName="D{i}"/>' for i in range(41))
+                        + "</section>").encode() for s in range(50))
+            + b"</doc>")
+    old = _strict4_render(many)
+    new = DocumentTextExtractor._xml_text(many)
+    assert len(new) <= len(old) * 1.01
+    assert _nchunks(new) <= _nchunks(old)
