@@ -32,6 +32,14 @@ MODEL_CAPACITY_PER_WORKER = 8
 _slots = asyncio.Semaphore(SUMMARY_CAPACITY_PER_WORKER)
 _model_slots = asyncio.Semaphore(MODEL_CAPACITY_PER_WORKER)
 MAX_TRANSIENT_RETRIES = 1
+# The one authoritative per-call ceiling: every LLM/provider call is bounded by this timer in
+# model_call below, and the hooked AsyncOpenAI/httpx clients (llm_factory.py) use the same
+# number so the transport can never outlive the wrapper. The judge (clinical_grounding.py,
+# timeout=30) and consolidation (consolidation.py, timeout=15.0) keep deliberately TIGHTER
+# sub-ceilings below this value. Queue wait for _model_slots is deliberately NOT under this
+# timer: it is owned by the per-job deadline in bounded_summary (SUMMARY_DEADLINE_EXCEEDED),
+# so saturation surfaces as the per-job contract, not a spurious per-call MODEL_TIMEOUT.
+MODEL_CALL_TIMEOUT_S = 45
 
 
 async def model_call(operation, *args, **kwargs):
@@ -42,8 +50,9 @@ async def model_call(operation, *args, **kwargs):
                 raise DocumentProcessingError("MODEL_CALL_BUDGET_EXCEEDED")
             budget.model_calls += 1
         try:
-            async with asyncio.timeout(45):
-                async with _model_slots:
+            # Acquire the shared concurrency gate FIRST; the timer bounds only the call itself.
+            async with _model_slots:
+                async with asyncio.timeout(MODEL_CALL_TIMEOUT_S):
                     return await operation(*args, **kwargs)
         except DocumentProcessingError:
             raise
@@ -52,7 +61,7 @@ async def model_call(operation, *args, **kwargs):
             if code not in {"MODEL_TIMEOUT", "MODEL_RATE_LIMITED"} or attempt >= MAX_TRANSIENT_RETRIES:
                 raise DocumentProcessingError(code) from exc
             delay = retry_delay(exc, attempt)
-            if delay > 45:
+            if delay > MODEL_CALL_TIMEOUT_S:
                 raise DocumentProcessingError(code) from exc
             if budget and budget.deadline and time.monotonic() + delay >= budget.deadline:
                 raise DocumentProcessingError(code) from exc

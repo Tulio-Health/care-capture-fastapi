@@ -36,8 +36,9 @@ def get_chat_model(model_name: str = LLM_MODEL.GPT_4O_MINI, temperature: float =
         openai_api_key=settings.OPENAI_API_KEY,
         temperature=temperature,
         # Without an explicit timeout, init_chat_model/ChatOpenAI ends up with
-        # httpx Timeout(timeout=None) - a stalled connection hangs forever. Bound
-        # it and cap retries so a stall fails within a predictable window instead.
+        # httpx Timeout(timeout=None) - a stalled connection hangs forever. Bound it to the
+        # one authoritative per-call ceiling (summary_runtime.MODEL_CALL_TIMEOUT_S) and cap
+        # retries so a stall fails within a predictable window instead.
         timeout=45,
         max_retries=1,
     )
@@ -84,10 +85,11 @@ def create_document_ai_client():
     if not settings.OPENAI_API_KEY:
         raise ValueError("AI_NOT_CONFIGURED")
     import httpx
-    from src.app.services.summary_runtime import reserve_provider_request, register_client
-    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=45, max_retries=0,
+    from src.app.services.summary_runtime import MODEL_CALL_TIMEOUT_S, reserve_provider_request, register_client
+    # Transport timeout = the one authoritative per-call ceiling, matching model_call's timer.
+    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=MODEL_CALL_TIMEOUT_S, max_retries=0,
                          base_url="https://api.openai.com/v1",
-                         http_client=httpx.AsyncClient(timeout=45, trust_env=False,
+                         http_client=httpx.AsyncClient(timeout=MODEL_CALL_TIMEOUT_S, trust_env=False,
                              event_hooks={"request": [reserve_provider_request]}))
     register_client(client)
     return client

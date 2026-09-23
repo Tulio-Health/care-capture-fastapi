@@ -47,15 +47,6 @@ _MAX_DOC_CHARS = 48_000
 _CHUNK_OVERLAP = 2_000
 _MAX_CHUNKS = 32
 
-# Process-wide cap on concurrent LLM calls from this chain. ProcedureExtractionChain is
-# instantiated fresh per HTTP request, so this MUST be a module-level semaphore (not an
-# instance attribute) to actually bound cross-request concurrency rather than giving every
-# request its own private budget. 8 is a conservative default (this org's actual OpenAI TPM
-# tier isn't known from this repo) and is per-process: with N uvicorn workers, the effective
-# cross-process cap is 8 x N.
-_LLM_SEMAPHORE = asyncio.Semaphore(8)
-
-
 @dataclass
 class ExtractedProcedure:
     """Pairs one extracted ProcedureSummary with its source document's stable identifier.
@@ -246,10 +237,9 @@ class ProcedureExtractionChain:
         # _MAX_DOC_CHARS) — the output_validator reads ctx.deps to check quote-grounding and
         # the anti-omission challenge, so a deps/prompt mismatch lets the validator demand
         # content the model was never shown, causing an unwinnable ModelRetry loop.
-        async with _LLM_SEMAPHORE:
-            result = await model_call(self.agent.run,
-                prompt, deps=doc.extracted_text[:_MAX_DOC_CHARS]
-            )
+        result = await model_call(self.agent.run,
+            prompt, deps=doc.extracted_text[:_MAX_DOC_CHARS]
+        )
         await verify_grounding(self.model, doc.extracted_text, result.output, scope="performed_events")
         return result.output
 
