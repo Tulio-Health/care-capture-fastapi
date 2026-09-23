@@ -61,16 +61,49 @@ def _normalize(s: str) -> str:
 
 
 def _quote_supported(quote: str, source: str, threshold: float = 0.85) -> bool:
-    """Fuzzy-checks that `quote` is (close to) a verbatim substring of `source`, tolerating
-    whitespace/case differences and minor transcription noise from the model."""
+    """True when `quote` matches some quote-sized window of `source` with a true
+    SequenceMatcher.ratio() similarity >= threshold, after whitespace/case normalization
+    (verbatim substrings short-circuit). autojunk is disabled for determinism.
+
+    Audit R9 (B-6): the former score -- longest single contiguous common block divided by
+    len(quote) -- was not the edit-tolerant similarity its docstring claimed: one interior
+    character edit failed 100/100 at every measured source size, and autojunk made the
+    verdict text-dependent and non-monotone in source length (~8% verdict flips on
+    digit/punct-rich sources). The windowed true similarity below keeps the 0.85 threshold
+    and every fail-closed call site; it strictly widens acceptance for interior-edit quotes
+    and by construction cannot accept below 0.85 true similarity to a quote-sized window.
+    """
     q, src = _normalize(quote), _normalize(source)
     if not q:
         return False
     if q in src:
         return True
-    matcher = difflib.SequenceMatcher(None, q, src)
+    # Seed the candidate window from the longest common block, autojunk OFF (autojunk
+    # silently purges popular source characters from the match index on sources > ~200
+    # chars, which is what made the old score collapse text-dependently).
+    matcher = difflib.SequenceMatcher(None, q, src, autojunk=False)
     match = matcher.find_longest_match(0, len(q), 0, len(src))
-    return match.size / max(len(q), 1) >= threshold
+    legacy_score = match.size / max(len(q), 1)
+    slack = max(8, len(q) // 4)
+    anchor = match.b - match.a  # quote's would-be start in src, aligned on the seed block
+    score = 0.0
+    # Two window lengths per candidate start: exactly quote-sized (substitutions/trailing
+    # noise align 1:1 without dilution) and quote+slack (absorbs insertions in the source).
+    for start in {anchor - slack, anchor - slack // 2, anchor, anchor + slack // 2}:
+        start = max(0, min(start, len(src)))
+        for length in (len(q), len(q) + slack):
+            window = src[start:start + length]
+            if window:
+                score = max(score, difflib.SequenceMatcher(None, q, window, autojunk=False).ratio())
+    supported = score >= threshold
+    if supported != (legacy_score >= threshold):
+        # R9 comparison log for the PR-12 corpus re-measurement. Lengths and scores only --
+        # quote/source text is PHI and is never logged.
+        logger.info(
+            "quote_support_comparison: windowed=%.3f legacy=%.3f verdict %s->%s (quote_len=%d source_len=%d)",
+            score, legacy_score, legacy_score >= threshold, supported, len(q), len(src),
+        )
+    return supported
 
 
 _SYSTEM_PROMPT = f"""You are an AI Clinical Summarizer (Non-Advisory) that turns procedure documents
