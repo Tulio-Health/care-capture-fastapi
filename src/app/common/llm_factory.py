@@ -69,8 +69,15 @@ def get_pydantic_ai_model(model_name: str = LLM_MODEL.GPT_4O_MINI):
         raise ValueError("OpenAI API key not configured. Check SSM parameters.")
 
     from src.app.services.summary_runtime import _current_budget
-    if _current_budget.get() is not None:
-        return OpenAIChatModel(model_name, provider=OpenAIProvider(openai_client=create_document_ai_client()))
+    budget = _current_budget.get()
+    if budget is not None:
+        # R11: one hooked AsyncOpenAI (+ httpx client) per WorkBudget, cached lazily on the
+        # budget object, instead of a fresh client per model construction -- the judge alone
+        # used to build ~26 clients on a 26-batch appointment. register_client runs once,
+        # inside create_document_ai_client, on the first construction.
+        if budget.ai_client is None:
+            budget.ai_client = create_document_ai_client()
+        return OpenAIChatModel(model_name, provider=OpenAIProvider(openai_client=budget.ai_client))
     return OpenAIChatModel(model_name, provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY))
 
 def create_document_ai_client():

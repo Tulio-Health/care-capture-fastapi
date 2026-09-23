@@ -252,7 +252,12 @@ class ProcedureExtractionChain:
                 result = await self._extract_one(chunk)
                 for event in result.procedures:
                     quote = event.event_source_quote
-                    if doc.extracted_text.count(quote) != 1:
+                    # R12: grounding (count == 0) stays fail-closed. count >= 2 is normal in
+                    # C-CDA exports with repeated sections and is NOT an evidence failure:
+                    # the `events` conflict check below already rejects same-quote-different-
+                    # event, and first-occurrence index() ordering is well-defined for
+                    # duplicates.
+                    if doc.extracted_text.count(quote) == 0:
                         raise DocumentProcessingError("INVALID_SOURCE_EVIDENCE")
                     if quote in events and events[quote].model_dump() != event.model_dump():
                         raise DocumentProcessingError("CLINICAL_EVIDENCE_FAILED")

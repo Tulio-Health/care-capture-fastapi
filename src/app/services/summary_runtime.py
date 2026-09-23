@@ -24,6 +24,9 @@ class WorkBudget:
     max_output_tokens: int = 4096
     max_images_per_call: int = 1
     clients: list = field(default_factory=list)
+    # R11: the one hooked AsyncOpenAI shared by every model constructed under this budget
+    # (llm_factory caches it here lazily); closed with the rest of `clients` at job end.
+    ai_client: object = None
     deadline: float = 0.0
     started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
