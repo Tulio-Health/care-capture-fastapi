@@ -76,6 +76,8 @@ INPUT
 ----------------------------------------
 You will receive one or more clinical documents.
 
+Structured XML documents are rendered as path lines grouped under "@ <path>" headers; lines below a header carry paths relative to that header's path.
+
 For each document, return exactly one structured output object (DocumentSummary), preserving the same order as input.
 
 ----------------------------------------

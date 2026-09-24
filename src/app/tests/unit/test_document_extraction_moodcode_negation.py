@@ -104,7 +104,9 @@ def test_moodcode_marker_survives_even_with_no_other_surviving_attributes():
     out = _extract('<act classCode="ACT" moodCode="INT"><code nullFlavor="NA"/></act>')
     lines = [l for l in out.splitlines() if "[ORDERED/PLANNED]" in l]
     assert len(lines) == 1
-    assert lines[0] == "[ORDERED/PLANNED] ClinicalDocument/component/structuredBody/component/section/entry/act"
+    # strict-5 grouping: the whole small document is one "@ ClinicalDocument"
+    # group, so the marker line carries the full tail path from the group root.
+    assert lines[0] == "[ORDERED/PLANNED] component/structuredBody/component/section/entry/act"
 
 
 # --- negationInd ----------------------------------------------------------

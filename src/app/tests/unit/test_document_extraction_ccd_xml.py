@@ -125,7 +125,7 @@ def test_extraction_version_bumped():
     # parser_version is persisted and require_parsed gates on it (see
     # document_ingestion.py) - changing extraction output without bumping
     # VERSION would silently mix old and new text for the same document.
-    assert DocumentTextExtractor.VERSION == "strict-4"
+    assert DocumentTextExtractor.VERSION == "strict-5"
 
 
 def test_table_rows_join_onto_one_quotable_line():
