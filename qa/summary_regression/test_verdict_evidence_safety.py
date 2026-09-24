@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import AsyncMock, patch
 from src.app.services.document_extraction import DocumentProcessingError
 from src.app.services.document_ocr import OCRVerification, verification_is_consistent, transcribe_verified_image
-from src.app.services.summary_runtime import WorkBudget, _current_budget
+from src.app.services.summary_runtime import WorkBudget, _current_budget, reserve_provider_request
 from test_ocr_verification_safety import response
 
 TEXT='Mixtard x2\nMixtard x1'
@@ -22,7 +22,11 @@ def verdict(**changes):
 class EvidenceSafety(unittest.IsolatedAsyncioTestCase):
     def client(self,*checks):
         create=AsyncMock(side_effect=[response(json.dumps(dict(text=TEXT,complete=True,unreadable_regions=[]))),*checks])
-        return NS(chat=NS(completions=NS(create=create))),create
+        async def hooked(*args,**kwargs):
+            # Mirror the production hooked client (llm_factory): one budget unit per request.
+            await reserve_provider_request(NS(content=json.dumps({'max_tokens':16}).encode()))
+            return await create(*args,**kwargs)
+        return NS(chat=NS(completions=NS(create=hooked))),create
 
     async def test_wrong_line_quote_rechecked_not_autoapproved(self):
         client,create=self.client(verdict(),verdict(matches=True,issues=[]))

@@ -36,25 +36,11 @@ from src.app.services.clinical_grounding import GROUNDING_POLICY, verify_groundi
 
 logger = logging.getLogger(__name__)
 
-_FOLLOWUP_SECTION_PATTERN = re.compile(
-    r"\b(recommendation|follow[\s-]?up|disposition|discharge instruction|plan)\b",
-    re.IGNORECASE,
-)
-
 # Bound each model input; larger parsed documents are fully covered by overlapping
 # chunks. A failed chunk fails the document and cannot authorize deletion.
 _MAX_DOC_CHARS = 48_000
 _CHUNK_OVERLAP = 2_000
 _MAX_CHUNKS = 32
-
-# Process-wide cap on concurrent LLM calls from this chain. ProcedureExtractionChain is
-# instantiated fresh per HTTP request, so this MUST be a module-level semaphore (not an
-# instance attribute) to actually bound cross-request concurrency rather than giving every
-# request its own private budget. 8 is a conservative default (this org's actual OpenAI TPM
-# tier isn't known from this repo) and is per-process: with N uvicorn workers, the effective
-# cross-process cap is 8 x N.
-_LLM_SEMAPHORE = asyncio.Semaphore(8)
-
 
 @dataclass
 class ExtractedProcedure:
@@ -84,7 +70,45 @@ def _quote_supported(quote: str, source: str, threshold: float = 0.85) -> bool:
         return True
     matcher = difflib.SequenceMatcher(None, q, src)
     match = matcher.find_longest_match(0, len(q), 0, len(src))
-    return match.size / max(len(q), 1) >= threshold
+    # The LIVE verdict: exactly origin/develop's scoring (longest contiguous common block /
+    # len(quote), default autojunk). Audit R9 ships as a comparison LOG only (see
+    # _log_windowed_similarity below): round-2 red-team (MAJOR-3) measured the windowed
+    # metric accepting dosage/EF/date/negation near-misses that this score fail-closes on,
+    # so it must not gate anything until the PR-12 corpus re-measurement clears it.
+    supported = match.size / max(len(q), 1) >= threshold
+    _log_windowed_similarity(q, src, threshold, supported)
+    return supported
+
+
+def _log_windowed_similarity(q: str, src: str, threshold: float, live_verdict: bool) -> None:
+    """Audit R9 (round-3 revision): OBSERVABILITY SIDE-CHANNEL ONLY -- never a decision input.
+
+    Computes the candidate windowed true-similarity metric (SequenceMatcher.ratio() over
+    quote-sized windows seeded by the longest common block, autojunk off) and logs scores
+    and lengths -- never quote/source text (PHI) -- whenever its verdict differs from the
+    live one, feeding the PR-12 corpus re-measurement. Every fail-closed quote anchor in
+    both chains rides on _quote_supported, so nothing computed here may influence the
+    returned verdict; any internal failure is swallowed.
+    """
+    try:
+        matcher = difflib.SequenceMatcher(None, q, src, autojunk=False)
+        match = matcher.find_longest_match(0, len(q), 0, len(src))
+        slack = max(8, len(q) // 4)
+        anchor = match.b - match.a  # quote's would-be start in src, aligned on the seed block
+        score = 0.0
+        for start in {anchor - slack, anchor - slack // 2, anchor, anchor + slack // 2}:
+            start = max(0, min(start, len(src)))
+            for length in (len(q), len(q) + slack):
+                window = src[start:start + length]
+                if window:
+                    score = max(score, difflib.SequenceMatcher(None, q, window, autojunk=False).ratio())
+        if (score >= threshold) != live_verdict:
+            logger.info(
+                "quote_support_comparison: windowed=%.3f verdict live=%s windowed=%s (quote_len=%d source_len=%d)",
+                score, live_verdict, score >= threshold, len(q), len(src),
+            )
+    except Exception:  # pragma: no cover -- observability must never affect a fail-closed verdict
+        logger.exception("quote_support_comparison side-channel failed")
 
 
 _SYSTEM_PROMPT = f"""You are an AI Clinical Summarizer (Non-Advisory) that turns procedure documents
@@ -233,7 +257,12 @@ class ProcedureExtractionChain:
                 result = await self._extract_one(chunk)
                 for event in result.procedures:
                     quote = event.event_source_quote
-                    if doc.extracted_text.count(quote) != 1:
+                    # R12: grounding (count == 0) stays fail-closed. count >= 2 is normal in
+                    # C-CDA exports with repeated sections and is NOT an evidence failure:
+                    # the `events` conflict check below already rejects same-quote-different-
+                    # event, and first-occurrence index() ordering is well-defined for
+                    # duplicates.
+                    if doc.extracted_text.count(quote) == 0:
                         raise DocumentProcessingError("INVALID_SOURCE_EVIDENCE")
                     if quote in events and events[quote].model_dump() != event.model_dump():
                         raise DocumentProcessingError("CLINICAL_EVIDENCE_FAILED")
@@ -246,10 +275,9 @@ class ProcedureExtractionChain:
         # _MAX_DOC_CHARS) — the output_validator reads ctx.deps to check quote-grounding and
         # the anti-omission challenge, so a deps/prompt mismatch lets the validator demand
         # content the model was never shown, causing an unwinnable ModelRetry loop.
-        async with _LLM_SEMAPHORE:
-            result = await model_call(self.agent.run,
-                prompt, deps=doc.extracted_text[:_MAX_DOC_CHARS]
-            )
+        result = await model_call(self.agent.run,
+            prompt, deps=doc.extracted_text[:_MAX_DOC_CHARS]
+        )
         await verify_grounding(self.model, doc.extracted_text, result.output, scope="performed_events")
         return result.output
 

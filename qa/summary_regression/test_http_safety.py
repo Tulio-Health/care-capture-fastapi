@@ -19,7 +19,14 @@ class HttpSafety(unittest.IsolatedAsyncioTestCase):
         self.routes=care_capture
         self.app=FastAPI();self.app.state.summary_ready=True
         self.app.include_router(care_capture.router)
-        async def no_database():yield SimpleNamespace()
+        # Ownership-capable stub: the route's authorize_summary_scope unconditionally
+        # verifies appointment ownership (appointment_belongs_to -> session.execute), so the
+        # stub must answer that one query; route + serialization stay fully real.
+        appointment_id_holder=self
+        class _OwnershipDb:
+            async def execute(self,*_a,**_k):
+                return SimpleNamespace(scalar_one_or_none=lambda:appointment_id_holder.request.appointment_id)
+        async def no_database():yield _OwnershipDb()
         self.app.dependency_overrides[care_capture.get_db]=no_database
         @self.app.middleware('http')
         async def trusted_request(request,call_next):

@@ -1,16 +1,14 @@
-"""PR-9: chunk sizing (CHUNK_CHAR_LIMIT -> BATCH_CHAR_LIMIT) and the non-mutating
-_check_follow_up_grounding wiring into _extract_batch_attempt/_extract_batch.
+"""PR-9: chunk sizing (CHUNK_CHAR_LIMIT -> BATCH_CHAR_LIMIT) and the fail-closed
+follow_up anchor in _extract_batch/_extract_batch_attempt.
 
 Cases 1-3 cover chunk sizing (call-count reduction, exhaustiveness, per-chunk size bound).
-Case 4 unit-tests _check_follow_up_grounding directly.
-Case 5 proves the wiring is reached from _extract_batch_attempt.
-Case 6 is the load-bearing test: a hallucinated follow_up quote must still fail the batch
-closed, and the shared DocumentSummary object the stub agent returns must be untouched
-afterward -- proving the deep-copy discipline in the wiring, not a mutation that would have
-silently deleted the bad entry before validate_quotes ever saw it.
+Case 4 is the load-bearing test: a hallucinated follow_up quote must fail the batch closed
+through the validate_quotes anchor (audit R3 removed the telemetry-only
+_check_follow_up_grounding pre-pass; the fail-closed anchor below it is the real gate and
+stays), and the DocumentSummary object the stub agent returns must be untouched afterward.
 """
 
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -105,65 +103,7 @@ def test_every_chunk_extracted_text_is_within_batch_char_limit():
         assert len(batch[0].extracted_text) <= chain.BATCH_CHAR_LIMIT
 
 
-# --- 4: _check_follow_up_grounding, unit-tested directly ---
-
-
-def test_check_follow_up_grounding_drops_unsupported_keeps_supported():
-    source = "Assessment and Plan: return in 6 weeks for follow-up labs. No other instructions given."
-    supported = FollowUpDetail(
-        follow_up="Return in 6 weeks",
-        source_quote="return in 6 weeks for follow-up labs",
-    )
-    unsupported = FollowUpDetail(
-        follow_up="See a specialist next year",
-        source_quote="you must see a specialist in exactly one year for a full workup",
-    )
-    summary = _summary(follow_up=[supported, unsupported])
-
-    _, dropped = chain._check_follow_up_grounding([summary], source)
-
-    assert [detail.source_quote for detail in summary.follow_up] == [supported.source_quote]
-    assert dropped == [unsupported.source_quote]
-
-
-# --- 5: reachability from _extract_batch_attempt ---
-
-
-@pytest.mark.asyncio
-async def test_check_follow_up_grounding_is_reached_from_extract_batch_attempt(monkeypatch):
-    text = "Assessment and Plan: return in 6 weeks for follow-up labs."
-    doc = _doc(text, resource_id="doc-5")
-    summary = _summary(
-        source_document_id="doc-5",
-        evidence_quotes=[text],
-        follow_up=[
-            FollowUpDetail(
-                follow_up="Return in 6 weeks",
-                source_quote="return in 6 weeks for follow-up labs",
-            )
-        ],
-    )
-
-    chain_instance = chain.AttachmentSummarizationChain()
-    chain_instance._extraction_agent = _StubAgent([[summary]])
-
-    # scoped to chain.py's OWN _check_follow_up_grounding -- an unrelated helper of the same
-    # name lives in test_procedure_extraction.py for a different module.
-    spy = Mock(wraps=chain._check_follow_up_grounding)
-    monkeypatch.setattr(chain, "_check_follow_up_grounding", spy)
-    monkeypatch.setattr(chain, "verify_grounding", AsyncMock())
-
-    token = chain._deferred_grounding.set([])
-    try:
-        result = await chain_instance._extract_batch_attempt([doc], 1, 1)
-    finally:
-        chain._deferred_grounding.reset(token)
-
-    assert spy.called
-    assert result[0].source_document_id == "doc-5"
-
-
-# --- 6: the load-bearing test ---
+# --- 4: the load-bearing test ---
 
 
 @pytest.mark.asyncio
@@ -195,7 +135,7 @@ async def test_hallucinated_follow_up_still_fails_the_batch_closed(monkeypatch):
     assert excinfo.value.code == "CLINICAL_EVIDENCE_FAILED"
     assert chain_instance._extraction_agent.call_count == 2
 
-    # The mutation from _check_follow_up_grounding never reached the real object: paired with
-    # test 5's reachability proof, this shows the wiring ran on deep copies only.
+    # The rejection left the model output object untouched -- nothing dropped the bad
+    # entry before validate_quotes saw it.
     assert summary.follow_up == original_follow_up
     assert summary.follow_up[0].source_quote == hallucinated.source_quote

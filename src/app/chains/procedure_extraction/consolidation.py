@@ -133,6 +133,8 @@ class ProcedureConsolidator:
                 self.model,
                 output_type=_ConsolidationResponse,
                 system_prompt=_SYSTEM_PROMPT,
+                # timeout=15.0 is a deliberate tighter sub-ceiling below the authoritative
+                # per-call ceiling (summary_runtime.MODEL_CALL_TIMEOUT_S = 45).
                 model_settings=ModelSettings(
                     temperature=0.0, timeout=15.0, max_tokens=800
                 ),

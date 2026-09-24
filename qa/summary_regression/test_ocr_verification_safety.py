@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import AsyncMock
 from src.app.services.document_ocr import transcribe_verified_image
 from src.app.services.document_extraction import DocumentProcessingError
-from src.app.services.summary_runtime import WorkBudget, _current_budget
+from src.app.services.summary_runtime import WorkBudget, _current_budget, reserve_provider_request
 from src.app.core.settings import Settings
 
 
@@ -17,7 +17,11 @@ class OCRVerificationSafety(unittest.IsolatedAsyncioTestCase):
     def client(self, *verifications):
         transcription=response(json.dumps({'text':'Chest X-ray ordered. Not performed.', 'complete':True, 'unreadable_regions':[]}))
         create=AsyncMock(side_effect=[transcription,*verifications])
-        return NS(chat=NS(completions=NS(create=create))),create
+        async def hooked(*args,**kwargs):
+            # Mirror the production hooked client (llm_factory): one budget unit per request.
+            await reserve_provider_request(NS(content=json.dumps({'max_tokens':16}).encode()))
+            return await create(*args,**kwargs)
+        return NS(chat=NS(completions=NS(create=hooked))),create
 
     async def test_complete_verification_uses_central_default_without_retry(self):
         client,create=self.client(response('{"matches":true,"issues":[]}'))

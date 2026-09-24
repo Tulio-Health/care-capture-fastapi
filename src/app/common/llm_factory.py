@@ -36,8 +36,9 @@ def get_chat_model(model_name: str = LLM_MODEL.GPT_4O_MINI, temperature: float =
         openai_api_key=settings.OPENAI_API_KEY,
         temperature=temperature,
         # Without an explicit timeout, init_chat_model/ChatOpenAI ends up with
-        # httpx Timeout(timeout=None) - a stalled connection hangs forever. Bound
-        # it and cap retries so a stall fails within a predictable window instead.
+        # httpx Timeout(timeout=None) - a stalled connection hangs forever. Bound it to the
+        # one authoritative per-call ceiling (summary_runtime.MODEL_CALL_TIMEOUT_S) and cap
+        # retries so a stall fails within a predictable window instead.
         timeout=45,
         max_retries=1,
     )
@@ -48,11 +49,6 @@ def get_chat_model(model_name: str = LLM_MODEL.GPT_4O_MINI, temperature: float =
 def get_default_chat_model():
     """Get the default chat model with standard settings"""
     return get_chat_model(LLM_MODEL.GPT_4O_MINI, 0.2)
-
-
-def get_creative_chat_model():
-    """Get a chat model with higher temperature for creative tasks"""
-    return get_chat_model(LLM_MODEL.GPT_4O_MINI, 0.7)
 
 
 def get_pydantic_ai_model(model_name: str = LLM_MODEL.GPT_4O_MINI):
@@ -73,8 +69,15 @@ def get_pydantic_ai_model(model_name: str = LLM_MODEL.GPT_4O_MINI):
         raise ValueError("OpenAI API key not configured. Check SSM parameters.")
 
     from src.app.services.summary_runtime import _current_budget
-    if _current_budget.get() is not None:
-        return OpenAIChatModel(model_name, provider=OpenAIProvider(openai_client=create_document_ai_client()))
+    budget = _current_budget.get()
+    if budget is not None:
+        # R11: one hooked AsyncOpenAI (+ httpx client) per WorkBudget, cached lazily on the
+        # budget object, instead of a fresh client per model construction -- the judge alone
+        # used to build ~26 clients on a 26-batch appointment. register_client runs once,
+        # inside create_document_ai_client, on the first construction.
+        if budget.ai_client is None:
+            budget.ai_client = create_document_ai_client()
+        return OpenAIChatModel(model_name, provider=OpenAIProvider(openai_client=budget.ai_client))
     return OpenAIChatModel(model_name, provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY))
 
 def create_document_ai_client():
@@ -84,10 +87,11 @@ def create_document_ai_client():
     if not settings.OPENAI_API_KEY:
         raise ValueError("AI_NOT_CONFIGURED")
     import httpx
-    from src.app.services.summary_runtime import reserve_provider_request, register_client
-    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=45, max_retries=0,
+    from src.app.services.summary_runtime import MODEL_CALL_TIMEOUT_S, reserve_provider_request, register_client
+    # Transport timeout = the one authoritative per-call ceiling, matching model_call's timer.
+    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, timeout=MODEL_CALL_TIMEOUT_S, max_retries=0,
                          base_url="https://api.openai.com/v1",
-                         http_client=httpx.AsyncClient(timeout=45, trust_env=False,
+                         http_client=httpx.AsyncClient(timeout=MODEL_CALL_TIMEOUT_S, trust_env=False,
                              event_hooks={"request": [reserve_provider_request]}))
     register_client(client)
     return client

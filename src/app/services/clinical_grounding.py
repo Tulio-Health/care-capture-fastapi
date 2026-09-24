@@ -79,6 +79,8 @@ async def verify_grounding(model, source: str, output, *, scope="clinical_summar
     if len(source) + len(serialized) > GROUNDING_MAX_CHARACTERS:
         raise DocumentProcessingError("VALIDATION_BUDGET_EXCEEDED")
     # A second, dedicated verification pass never repairs or invents clinical content.
+    # timeout=30 is a deliberate tighter sub-ceiling below the authoritative per-call
+    # ceiling (summary_runtime.MODEL_CALL_TIMEOUT_S = 45).
     agent = Agent(verification_model, output_type=GroundingVerdict, retries=0,
         model_settings=ModelSettings(temperature=0, max_tokens=1500, timeout=30),
         system_prompt="""You independently audit a candidate summary against its source.

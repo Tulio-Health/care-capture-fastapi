@@ -10,15 +10,27 @@ from src.app.services.document_extraction import DocumentProcessingError
 
 @dataclass
 class WorkBudget:
-    model_calls: int = 0
     max_model_calls: int = 64
+    # Two counters, one ceiling (max_model_calls). `model_calls` is the authoritative
+    # per-call counter, incremented by model_call itself; it is the ONLY enforcement for
+    # clients that install no httpx hook (the LangChain paths: the fhir_analysis and
+    # transcript_summarization chains). `provider_requests` is owned by the per-HTTP-request
+    # hook (reserve_provider_request) and additionally sees SDK-internal retries on hooked
+    # clients. Audit R5 originally merged both onto the hook counter; round-2 red-team
+    # (MAJOR-1) measured that merge silently uncapping every unhooked call (200 completed
+    # where develop refused at #65) -- do not re-merge unless every client is hooked.
+    model_calls: int = 0
     provider_requests: int = 0
-    input_upper_bound: int = 0
-    max_call_input_tokens: int = 160_000
-    max_input_tokens_per_job: int = 4_000_000
+    # Byte-measured bounds (UTF-8 byte length is a conservative bound for text BPE tokens).
+    input_upper_bound_bytes: int = 0
+    max_call_input_bytes: int = 160_000
+    max_input_bytes_per_job: int = 4_000_000
     max_output_tokens: int = 4096
     max_images_per_call: int = 1
     clients: list = field(default_factory=list)
+    # R11: the one hooked AsyncOpenAI shared by every model constructed under this budget
+    # (llm_factory caches it here lazily); closed with the rest of `clients` at job end.
+    ai_client: object = None
     deadline: float = 0.0
     started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -32,18 +44,31 @@ MODEL_CAPACITY_PER_WORKER = 8
 _slots = asyncio.Semaphore(SUMMARY_CAPACITY_PER_WORKER)
 _model_slots = asyncio.Semaphore(MODEL_CAPACITY_PER_WORKER)
 MAX_TRANSIENT_RETRIES = 1
+# The one authoritative per-call ceiling: every LLM/provider call is bounded by this timer in
+# model_call below, and the hooked AsyncOpenAI/httpx clients (llm_factory.py) use the same
+# number so the transport can never outlive the wrapper. The judge (clinical_grounding.py,
+# timeout=30) and consolidation (consolidation.py, timeout=15.0) keep deliberately TIGHTER
+# sub-ceilings below this value. Queue wait for _model_slots is deliberately NOT under this
+# timer: it is owned by the per-job deadline in bounded_summary (SUMMARY_DEADLINE_EXCEEDED),
+# so saturation surfaces as the per-job contract, not a spurious per-call MODEL_TIMEOUT.
+MODEL_CALL_TIMEOUT_S = 45
 
 
 async def model_call(operation, *args, **kwargs):
     budget = _current_budget.get()
     for attempt in range(MAX_TRANSIENT_RETRIES + 1):
         if budget is not None:
-            if budget.model_calls >= budget.max_model_calls:
+            # Authoritative per-call check-then-increment (restored, round-2 MAJOR-1): the
+            # only ceiling on unhooked clients. The provider_requests read is a cheap
+            # fast-fail for hooked clients whose transport counter is already exhausted.
+            if (budget.model_calls >= budget.max_model_calls
+                    or budget.provider_requests >= budget.max_model_calls):
                 raise DocumentProcessingError("MODEL_CALL_BUDGET_EXCEEDED")
             budget.model_calls += 1
         try:
-            async with asyncio.timeout(45):
-                async with _model_slots:
+            # Acquire the shared concurrency gate FIRST; the timer bounds only the call itself.
+            async with _model_slots:
+                async with asyncio.timeout(MODEL_CALL_TIMEOUT_S):
                     return await operation(*args, **kwargs)
         except DocumentProcessingError:
             raise
@@ -52,7 +77,7 @@ async def model_call(operation, *args, **kwargs):
             if code not in {"MODEL_TIMEOUT", "MODEL_RATE_LIMITED"} or attempt >= MAX_TRANSIENT_RETRIES:
                 raise DocumentProcessingError(code) from exc
             delay = retry_delay(exc, attempt)
-            if delay > 45:
+            if delay > MODEL_CALL_TIMEOUT_S:
                 raise DocumentProcessingError(code) from exc
             if budget and budget.deadline and time.monotonic() + delay >= budget.deadline:
                 raise DocumentProcessingError(code) from exc
@@ -160,12 +185,23 @@ async def reserve_provider_request(request):
         # requests have a separate count/pixel budget; do not count base64 as text.
         text_bound = len(json.dumps(text_only(body), ensure_ascii=False).encode())
         output_limit = body.get("max_completion_tokens", body.get("max_tokens"))
-        if (images > budget.max_images_per_call or text_bound > budget.max_call_input_tokens
-                or budget.input_upper_bound + text_bound > budget.max_input_tokens_per_job
+        if (images > budget.max_images_per_call or text_bound > budget.max_call_input_bytes
+                or budget.input_upper_bound_bytes + text_bound > budget.max_input_bytes_per_job
                 or not isinstance(output_limit, int) or output_limit > budget.max_output_tokens):
             raise DocumentProcessingError("MODEL_CALL_BUDGET_EXCEEDED")
-        budget.input_upper_bound += text_bound
+        budget.input_upper_bound_bytes += text_bound
         budget.provider_requests += 1
+
+
+def model_call_headroom():
+    """Remaining model calls under the current budget, or None outside a bounded job."""
+    budget = _current_budget.get()
+    if budget is None:
+        return None
+    # Count whichever counter is further along: provider_requests can exceed model_calls
+    # (SDK-internal retries on hooked clients); model_calls covers unhooked-client spend
+    # the hook never sees (round-2 MINOR-4).
+    return budget.max_model_calls - max(budget.model_calls, budget.provider_requests)
 
 
 def register_client(client):
