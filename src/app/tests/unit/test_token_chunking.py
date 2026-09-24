@@ -20,6 +20,7 @@ import pytest
 
 from src.app.chains.attachment_summarization import chain
 from src.app.models.attachment_summarization import DocumentAttachment
+from src.app.services.document_extraction import DocumentProcessingError
 from src.app.services.document_ingestion import mark_parsed
 
 
@@ -186,3 +187,138 @@ def test_document_exactly_at_char_ceiling_yields_single_chunk_no_ghost_tail():
     chunks = _chunks("x" * chain.CHUNK_CHAR_LIMIT)  # 'x'*48k is ~6k tokens: char-bound
     assert len(chunks) == 1
     assert chunks[0].extracted_text == "x" * chain.CHUNK_CHAR_LIMIT
+
+
+# --- per-document chunk cap (round-3 MAJOR-2): token-dense documents degrade ---
+# --- gracefully instead of consuming the whole request's chunk/model budget  ---
+
+
+# ~1.08 ch/token pure-CJK clinical text: the densest realistic script class. At 1M
+# chars (the MAX_TEXT_CHARS ceiling) this measures ~923k tokens -> 114 chunks uncapped,
+# vs 35 under develop's fixed 30k-char sizing -- enough to exhaust the 64-call model
+# budget in the map phase and hard-fail the whole appointment (see
+# PER_DOCUMENT_CHUNK_LIMIT in chain.py).
+_CJK_UNIT = ("\u60a3\u8005\u306f\u9ad8\u8840\u5727\u3068\u4e8c\u578b\u7cd6\u5c3f\u75c5\u306e"
+             "\u65e2\u5f80\u6b74\u304c\u3042\u308a\u3001\u672c\u65e5\u306e\u8840\u5727\u306f"
+             "\u5b89\u5b9a\u3057\u3066\u3044\u308b\u3002\u7d4c\u904e\u89b3\u5bdf\u3092\u7d99"
+             "\u7d9a\u3059\u308b\u3002\u670d\u85ac\u9075\u5b88\u826f\u597d\u3002\u98df\u4e8b"
+             "\u7642\u6cd5\u3068\u904b\u52d5\u7642\u6cd5\u3092\u6307\u5c0e\u3057\u305f\u3002")
+
+
+def _cjk_1m() -> str:
+    return (_CJK_UNIT * (1_000_000 // len(_CJK_UNIT)))[:1_000_000]
+
+
+@requires_encoder
+def test_dense_document_is_capped_per_document_with_truncation_record():
+    doc = _doc(_cjk_1m(), resource_id="jp-dense")
+    text = doc.extracted_text
+    truncations: list = []
+    chunks = [b[0] for b in chain._create_batches([doc], truncations)]
+
+    # Capped, not raised -- and the cap is the per-document one, not the global 128.
+    assert len(chunks) == chain.PER_DOCUMENT_CHUNK_LIMIT
+    assert len(truncations) == 1
+    assert truncations[0]["error"] == "CHUNK_LIMIT_TRUNCATED"
+
+    # Every EMITTED chunk still honors the full contract: dual ceiling + exact offset.
+    covered_until = 0
+    for chunk_doc in chunks:
+        offset = int(chunk_doc.resource_id.rsplit(":chunk:", 1)[1])
+        chunk = chunk_doc.extracted_text
+        assert chunk == text[offset:offset + len(chunk)]
+        assert len(chunk) <= chain.CHUNK_CHAR_LIMIT
+        assert len(chain._ENC.encode_ordinary(chunk)) <= chain.CHUNK_TOKEN_LIMIT
+        covered_until = max(covered_until, offset + len(chunk))
+
+    # The truncation record points at the first character no chunk covers.
+    recorded = int(truncations[0]["source_id"].rsplit(":chunk:", 1)[1])
+    assert recorded == covered_until
+    assert recorded < len(text)  # a real uncovered tail exists
+
+
+@requires_encoder
+def test_capped_dense_document_does_not_starve_other_documents():
+    """The MAJOR-2 failure mode: one token-dense document must not consume the whole
+    request's chunk budget and fail every OTHER document's content with it."""
+    dense = _doc(_cjk_1m(), resource_id="jp-dense")
+    normal_text = ("Patient presents with hypertension and type 2 diabetes mellitus. "
+                   "Continue metformin 500 mg twice daily. Follow up in six weeks. ") * 1600
+    normal = _doc(normal_text, resource_id="en-normal")
+    truncations: list = []
+
+    batches = chain._create_batches([dense, normal], truncations)  # must not raise
+
+    normal_chunks = [b[0] for b in batches if b[0].resource_id.startswith("en-normal")]
+    dense_chunks = [b[0] for b in batches if b[0].resource_id.startswith("jp-dense")]
+    assert len(dense_chunks) == chain.PER_DOCUMENT_CHUNK_LIMIT
+    assert len(batches) < 128
+    assert [t["error"] for t in truncations] == ["CHUNK_LIMIT_TRUNCATED"]
+    assert truncations[0]["source_id"].startswith("jp-dense:chunk:")
+
+    # The normal document keeps FULL coverage.
+    text = normal.extracted_text
+    covered = bytearray(len(text))
+    for chunk_doc in normal_chunks:
+        offset = int(chunk_doc.resource_id.rsplit(":chunk:", 1)[1])
+        chunk = chunk_doc.extracted_text
+        assert chunk == text[offset:offset + len(chunk)]
+        for i in range(offset, offset + len(chunk)):
+            covered[i] = 1
+    assert all(covered[i] or text[i].isspace() for i in range(len(text)))
+
+
+def test_cap_without_truncation_list_still_caps_and_does_not_crash(monkeypatch):
+    monkeypatch.setattr(chain, "CHUNK_CHAR_LIMIT", 500)
+    monkeypatch.setattr(chain, "PER_DOCUMENT_CHUNK_LIMIT", 3)
+    chunks = [b[0] for b in chain._create_batches([_doc("x" * 5_000)])]
+    assert len(chunks) == 3  # capped, default truncation_failures=None, no crash
+
+
+def test_global_128_cap_still_raises_across_documents(monkeypatch):
+    """The request-wide runaway guard survives the per-document cap: many documents
+    can still trip CHUNK_LIMIT_EXCEEDED (canonicalized to RESOURCE_LIMIT_EXCEEDED)."""
+    monkeypatch.setattr(chain, "CHUNK_CHAR_LIMIT", 500)
+    monkeypatch.setattr(chain, "PER_DOCUMENT_CHUNK_LIMIT", 1_000)
+    docs = [_doc("x" * 40_000, resource_id=f"doc-{i}") for i in range(2)]
+    with pytest.raises(DocumentProcessingError) as excinfo:
+        chain._create_batches(docs)
+    assert excinfo.value.reason_code == "CHUNK_LIMIT_EXCEEDED"
+
+
+@pytest.mark.asyncio
+async def test_truncation_record_reaches_response_extraction_errors(monkeypatch):
+    """_analyze wiring: the CHUNK_LIMIT_TRUNCATED record must surface in
+    response.extraction_errors exactly like any other partial failure."""
+    from unittest.mock import AsyncMock
+
+    from src.app.models.attachment_summarization import AttachmentSummarizationResponse, DocumentSummary
+
+    monkeypatch.setattr(chain, "CHUNK_CHAR_LIMIT", 500)
+    monkeypatch.setattr(chain, "PER_DOCUMENT_CHUNK_LIMIT", 2)
+    doc = _doc("Observation: stable. " * 200, resource_id="doc-long")  # 3+ chunks uncapped
+
+    instance = chain.AttachmentSummarizationChain()
+
+    async def fake_extract(batch, batch_num, total_batches):
+        return [DocumentSummary(
+            source_document_id=batch[0].resource_id,
+            source_document_title="t",
+            source_document_type="t",
+            evidence_quotes=[batch[0].extracted_text[:20]],
+            narrative_summary="s",
+        )]
+
+    monkeypatch.setattr(instance, "_extract_batch", fake_extract)
+    monkeypatch.setattr(
+        instance, "_synthesize",
+        AsyncMock(return_value=AttachmentSummarizationResponse(clinical_summary="x", documents_analyzed=0)),
+    )
+    monkeypatch.setattr(instance, "_verify_final_with_retry", AsyncMock())
+    monkeypatch.setattr(instance, "_verify_final", AsyncMock())
+
+    response = await instance._analyze({}, [doc])
+
+    errors = [f["error"] for f in response.extraction_errors]
+    assert errors == ["CHUNK_LIMIT_TRUNCATED"]
+    assert response.extraction_errors[0]["source_id"].startswith("doc-long:chunk:")

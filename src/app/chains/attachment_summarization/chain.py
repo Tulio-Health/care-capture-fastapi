@@ -361,7 +361,9 @@ GUARDRAILS - Do:
 
 # Dual chunk bound (M4): a chunk is cut where EITHER limit is reached FIRST -- the
 # 48,000-char ceiling (CHUNK_CHAR_LIMIT) or the 9,000-token bound (CHUNK_TOKEN_LIMIT).
-# BOTH checks are unconditional and PERMANENT. Do NOT remove the char ceiling after
+# The char ceiling is unconditional; the token bound applies whenever the encoder
+# loaded, and its absence degrades to char-only sizing (never to token-only). Both
+# legs are PERMANENT. Do NOT remove the char ceiling after
 # feat/cda-redundancy-compression merges: it is not a transitional convenience for that
 # branch's merge order -- it bounds chunk chars for the grounding budget
 # (GROUNDING_MAX_CHARACTERS) and the 160,000-BYTE request wall regardless of token
@@ -382,6 +384,27 @@ CHUNK_CHAR_LIMIT = BATCH_CHAR_LIMIT  # alias preserved: the QA regression harnes
                                      # attachment_chain.CHUNK_CHAR_LIMIT BY NAME
 CHUNK_TOKEN_LIMIT = 9_000
 
+# Per-document chunk cap (round-3 MAJOR-2). Token sizing makes a document's chunk count
+# proportional to its actual o200k_base token content, so a token-dense non-Latin
+# document explodes: a 1,000,000-char CJK clinical document measures ~923k tokens ->
+# 114 chunks here vs 35 under develop's fixed 30k-char sizing. That kills the WHOLE
+# appointment long before the global 128-batch cap: in the staged verification regime
+# each batch costs ~2 model calls (extraction + per-chunk verify_grounding judge), so
+# >~30 batches exhausts WorkBudget.max_model_calls=64 during the map phase and the
+# synthesis call then raises MODEL_CALL_BUDGET_EXCEEDED -- a hard failure of every
+# document in the request. Cap chunks PER DOCUMENT and degrade gracefully instead:
+# the document's first PER_DOCUMENT_CHUNK_LIMIT chunks publish normally and the
+# uncovered tail is reported through the existing failures channel
+# (response.extraction_errors, code CHUNK_LIMIT_TRUNCATED, offset = first uncovered
+# character). 24 because the viable interval is [21, 30]: >=21 keeps FULL coverage for
+# any document up to the largest ever observed in the real dev corpus (183,907 chars)
+# even at worst-case pure-CJK density (~1.08 ch/token -> ~8.8k-char steps -> 21
+# chunks), and <=30 keeps a worst-case single document at <=48 of the 64 model calls,
+# leaving headroom for synthesis plus other documents' chunks. The real corpus maxes
+# out at 5 chunks/document, so 24 is ~5x reality. The 128 global cap stays as the
+# request-wide runaway guard (reachable only via multiple huge documents).
+PER_DOCUMENT_CHUNK_LIMIT = 24
+
 
 def _chunk_end(text: str, start: int) -> int:
     """Largest exclusive end for a chunk starting at ``start`` under the dual bound.
@@ -393,6 +416,13 @@ def _chunk_end(text: str, start: int) -> int:
     characters cannot be corrupted and every chunk is a verbatim substring of the
     source. encode_ordinary (never encode) because encode raises ValueError on literal
     special tokens such as "<|endoftext|>", which can appear in real document text.
+
+    The binary search is a SAFE maximiser, not an exact one: BPE token counts are not
+    strictly monotonic in slice length (extending a slice can merge tokens and LOWER
+    the count), but ``lo`` only ever advances to a midpoint whose slice was verified
+    <= CHUNK_TOKEN_LIMIT, so the returned end always satisfies the ceiling;
+    non-monotonicity can only cost a slightly shorter-than-maximal chunk. Do not
+    "fix" this into an exact linear scan -- safety, not maximality, is the contract.
     """
     end = min(start + CHUNK_CHAR_LIMIT, len(text))
     if _ENC is not None and len(_ENC.encode_ordinary(text[start:end])) > CHUNK_TOKEN_LIMIT:
@@ -411,8 +441,17 @@ def _chunk_end(text: str, start: int) -> int:
 
 def _create_batches(
     documents: List[DocumentAttachment],
+    truncation_failures: list | None = None,
 ) -> List[List[DocumentAttachment]]:
-    """Process every character in bounded, overlapping chunks, retaining source identity."""
+    """Process every character in bounded, overlapping chunks, retaining source identity.
+
+    A single document contributes at most PER_DOCUMENT_CHUNK_LIMIT chunks; a longer
+    (token-dense) document is truncated there and, when the caller passes
+    ``truncation_failures``, the uncovered tail is recorded as a
+    ``{"source_id": "<doc>:chunk:<first uncovered offset>", "error":
+    "CHUNK_LIMIT_TRUNCATED"}`` entry instead of failing the request. The 128-batch
+    cap stays as the request-wide runaway guard across documents.
+    """
     batches = []
     for index, doc in enumerate(documents):
         if doc.extraction_error:
@@ -421,7 +460,28 @@ def _create_batches(
         validate_single_subject(doc.extracted_text)
         text = doc.extracted_text
         start = 0
+        doc_chunks = 0
         while start < len(text):
+            if doc_chunks >= PER_DOCUMENT_CHUNK_LIMIT:
+                # Round-3 MAJOR-2 graceful degradation (see PER_DOCUMENT_CHUNK_LIMIT):
+                # keep this document's already-emitted chunks and every other document
+                # in the request; surface the uncovered tail instead of raising.
+                # `end` is the exclusive end of the last emitted chunk, i.e. the first
+                # character no chunk covers (`start` has already stepped back into the
+                # overlap region, so it under-reports coverage).
+                uncovered_from = end
+                logger.warning(
+                    "Document %s truncated at %d chunks: %d of %d chars uncovered "
+                    "(token-dense content; first uncovered offset %d)",
+                    doc.resource_id or index, doc_chunks,
+                    len(text) - uncovered_from, len(text), uncovered_from,
+                )
+                if truncation_failures is not None:
+                    truncation_failures.append({
+                        "source_id": f"{doc.resource_id or index}:chunk:{uncovered_from}",
+                        "error": "CHUNK_LIMIT_TRUNCATED",
+                    })
+                break
             if len(batches) >= 128:
                 raise DocumentProcessingError("CHUNK_LIMIT_EXCEEDED")
             end = _chunk_end(text, start)
@@ -437,6 +497,7 @@ def _create_batches(
                 "resource_id": f"{doc.resource_id or index}:chunk:{start + lead}",
             })
             batches.append([mark_parsed(chunk)])
+            doc_chunks += 1
             if end >= len(text):
                 # Redundant-final-tail guard: break ONLY when the tail through the end
                 # of the document is fully contained in the chunk just emitted (the
@@ -904,7 +965,8 @@ class AttachmentSummarizationChain:
         Returns:
             AttachmentSummarizationResponse with structured clinical analysis
         """
-        batches = _create_batches(documents)
+        truncations: list = []
+        batches = _create_batches(documents, truncations)
         if not batches:
             raise ValueError(
                 "No valid documents to analyze after filtering extraction errors."
@@ -925,6 +987,10 @@ class AttachmentSummarizationChain:
         all_summaries: List[DocumentSummary] = []
         failures = [{"source_id": doc.resource_id or "unknown", "error": doc.extraction_error}
                     for doc in documents if doc.extraction_error]
+        # Per-document chunk-cap truncations (CHUNK_LIMIT_TRUNCATED) surface exactly
+        # like any other partial failure: the document's emitted chunks still publish,
+        # the uncovered tail is reported in response.extraction_errors.
+        failures.extend(truncations)
         for i, result in enumerate(batch_results):
             if isinstance(result, Exception):
                 failure = {"error": getattr(result, "code", "MODEL_UNAVAILABLE")}
