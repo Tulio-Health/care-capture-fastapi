@@ -281,6 +281,7 @@ dependencies = [
     { name = "redis" },
     { name = "sqlalchemy" },
     { name = "striprtf" },
+    { name = "tiktoken" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -326,6 +327,7 @@ requires-dist = [
     { name = "redis", specifier = ">=5.0.1,<6" },
     { name = "sqlalchemy", specifier = ">=2.0.23,<3" },
     { name = "striprtf", specifier = ">=0.0.26,<0.1" },
+    { name = "tiktoken", specifier = ">=0.12,<0.13" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.27.0,<0.28" },
 ]
 
