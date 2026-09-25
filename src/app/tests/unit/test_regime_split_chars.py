@@ -1,21 +1,37 @@
 """Step 1 (round9-revision.md section 10, prerequisite defined in section 6): REGIME_SPLIT_CHARS
-decouples the Regime A/B audit-topology split from GROUNDING_MAX_CHARACTERS. Pure refactor --
+decouples the Regime A/B audit-topology split from the grounding size gate. Pure refactor --
 these tests pin the constant's value and confirm `analyze()`'s regime-split decision still
-evaluates identically to the pre-change `source_size <= GROUNDING_MAX_CHARACTERS // 2`
-expression, including at its boundary.
+evaluates identically to the pre-change `source_size <= 80_000` expression, including at its
+boundary.
+
+Step 2 (round9-revision.md section 4.4(c)): the grounding size gate's own constant
+(GROUNDING_MAX_CHARACTERS) is deleted -- there is no longer anything to re-derive
+REGIME_SPLIT_CHARS FROM even by coincidence. Section 11 test 5 requires confirming that no
+module-level name in chain.py other than REGIME_SPLIT_CHARS participates in the regime
+decision; the grep-style assertion below pins that directly against chain.py's own source
+rather than against a same-valued sibling constant that no longer exists.
 """
+import inspect
+
 import pytest
 
 from src.app.chains.attachment_summarization import chain
 from src.app.models.attachment_summarization import DocumentAttachment
-from src.app.services.clinical_grounding import GROUNDING_MAX_CHARACTERS
 
 
 def test_regime_split_chars_is_pinned_at_80_000():
     assert chain.REGIME_SPLIT_CHARS == 80_000
-    # Same value as today's GROUNDING_MAX_CHARACTERS // 2, but not re-derived from it --
-    # a later change to GROUNDING_MAX_CHARACTERS must not move this constant.
-    assert chain.REGIME_SPLIT_CHARS == GROUNDING_MAX_CHARACTERS // 2
+
+
+def test_regime_decision_references_no_other_grounding_constant():
+    """section 11 test 5: since the grounding size gate's own constant no longer exists after
+    Step 2, the only name `analyze()`'s regime-split decision can reference is
+    REGIME_SPLIT_CHARS itself."""
+    source = inspect.getsource(chain.AttachmentSummarizationChain.analyze)
+    decision_line = next(line for line in source.splitlines() if "_deferred_grounding.set(" in line)
+    assert "REGIME_SPLIT_CHARS" in decision_line
+    for name in ("GROUNDING_MAX_CHARACTERS", "GROUNDING_SANITY_MAX_CHARACTERS", "_LARGE_JUDGE_RETRY_CUTOFF_BYTES"):
+        assert name not in decision_line
 
 
 def _document(size: int) -> DocumentAttachment:

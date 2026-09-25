@@ -22,6 +22,7 @@ from src.app.models.attachment_summarization import (
     DocumentSummary,
     ProcedureMention,
 )
+from src.app.services.clinical_grounding import GROUNDING_SANITY_MAX_CHARACTERS
 from src.app.services.document_extraction import DocumentProcessingError
 from src.app.services.document_ingestion import mark_parsed
 
@@ -339,12 +340,17 @@ async def test_regime_b_final_grounding_skips_gracefully_when_over_budget(monkey
     """Empirically found running the real Ricardo Febry case: Regime B means source >
     80,000 chars by definition, so accepted_source routinely exceeds verify_grounding's own
     budget before the judge is ever called. This must be skipped gracefully, not treated as a
-    rejection that kills the appointment."""
+    rejection that kills the appointment.
+
+    Step 2 (round9-revision.md section 4.4(c)): GROUNDING_MAX_CHARACTERS is deleted; the size
+    that forces this skip is now GROUNDING_SANITY_MAX_CHARACTERS (the pinned malformed-input
+    bound the resolver still checks first, on every path) -- same real property (an oversized
+    Regime-B source skips gracefully), new name."""
     chain_instance = chain.AttachmentSummarizationChain()
     chain_instance._model = object()
     calls = AsyncMock()
     monkeypatch.setattr(chain, "verify_grounding", calls)
-    oversized_source = "x" * (chain.GROUNDING_MAX_CHARACTERS + 1)
+    oversized_source = "x" * (GROUNDING_SANITY_MAX_CHARACTERS + 1)
     response = AttachmentSummarizationResponse(clinical_summary="x", documents_analyzed=1)
 
     token = chain._deferred_grounding.set(None)  # Regime B
@@ -364,12 +370,17 @@ async def test_regime_b_oversized_skip_emits_final_audit_skipped_record(monkeypa
     """The :830 skip must be logged under the final_audit_skipped family, carrying reason,
     measured size and encounter id -- and never as single_audit_skipped (that family is
     reserved for :877 below; conflating them would corrupt the coverage metric a later step
-    depends on)."""
+    depends on).
+
+    Step 2: GROUNDING_MAX_CHARACTERS is deleted (use GROUNDING_SANITY_MAX_CHARACTERS to force
+    the oversized entrance), and the skip record's size field is now body_bytes -- the real
+    measured judge-request byte count (section 4.4(b)'s judge_request_bytes), not a char
+    approximation."""
     chain_instance = chain.AttachmentSummarizationChain()
     chain_instance._model = object()
     calls = AsyncMock()
     monkeypatch.setattr(chain, "verify_grounding", calls)
-    oversized_source = "x" * (chain.GROUNDING_MAX_CHARACTERS + 1)
+    oversized_source = "x" * (GROUNDING_SANITY_MAX_CHARACTERS + 1)
     response = AttachmentSummarizationResponse(clinical_summary="x", documents_analyzed=1)
 
     token = chain._deferred_grounding.set(None)  # Regime B
@@ -384,8 +395,8 @@ async def test_regime_b_oversized_skip_emits_final_audit_skipped_record(monkeypa
     assert len(skip_records) == 1
     assert skip_records[0].startswith("final_audit_skipped:sanity_bound")
     assert "encounter_id=enc-123" in skip_records[0]
-    # body_chars is source + the serialized candidate, so it's >= the raw source length alone.
-    reported = int(skip_records[0].split("body_chars=")[1])
+    # body_bytes is the measured judge-request byte count, so it's >= the raw source length.
+    reported = int(skip_records[0].split("body_bytes=")[1])
     assert reported >= len(oversized_source)
     assert not any(r.message.startswith("single_audit_skipped:") for r in caplog.records)
 
