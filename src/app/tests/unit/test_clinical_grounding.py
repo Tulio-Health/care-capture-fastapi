@@ -103,3 +103,41 @@ def test_validate_quotes_still_fails_closed_on_zero_support():
         validate_quotes(["Patient was started on lisinopril 10mg daily"], source)
     assert excinfo.value.code == "CLINICAL_EVIDENCE_FAILED"
     assert excinfo.value.reason_code == "INVALID_SOURCE_EVIDENCE"
+
+
+@pytest.mark.asyncio
+async def test_judge_request_bytes_is_logged_for_every_judge_call(caplog):
+    """Step 0 (grounding-check size-gate design, round9-revision.md section 10): every
+    verify_grounding call must emit the measured judge-request size. Measure-only -- the
+    logged call must still be the real judge call with the real request content, unchanged."""
+    source = "Patient denies any medication use. No active prescriptions on file."
+    candidate = {"clinical_findings": ["stable, no new complaints"]}
+    run = _mock_judge(supported=True)
+    with patch("src.app.core.settings.get_settings", return_value=NS(DOCUMENT_VERIFICATION_MODEL="mock")), \
+         patch("src.app.common.llm_factory.get_pydantic_ai_model", return_value=object()), \
+         patch("pydantic_ai.Agent", return_value=NS(run=run)), \
+         caplog.at_level("INFO"):
+        await verify_grounding(None, source, candidate)
+    run.assert_awaited_once()
+    matches = [r.message for r in caplog.records if r.message.startswith("judge_request_bytes=")]
+    assert len(matches) == 1
+    assert "scope=clinical_summary" in matches[0]
+    reported = int(matches[0].split("judge_request_bytes=")[1].split(" ")[0])
+    # The judge request carries the system prompt plus the source/candidate payload, so it
+    # must be strictly larger than the raw source text alone.
+    assert reported > len(source.encode("utf-8"))
+
+
+@pytest.mark.asyncio
+async def test_judge_request_bytes_reflects_the_scope_kwarg(caplog):
+    source = "Patient reports mild cough for two days."
+    candidate = {"key_insights": ["cough"]}
+    run = _mock_judge(supported=True)
+    with patch("src.app.core.settings.get_settings", return_value=NS(DOCUMENT_VERIFICATION_MODEL="mock")), \
+         patch("src.app.common.llm_factory.get_pydantic_ai_model", return_value=object()), \
+         patch("pydantic_ai.Agent", return_value=NS(run=run)), \
+         caplog.at_level("INFO"):
+        await verify_grounding(None, source, candidate, scope="performed_events")
+    matches = [r.message for r in caplog.records if r.message.startswith("judge_request_bytes=")]
+    assert len(matches) == 1
+    assert "scope=performed_events" in matches[0]

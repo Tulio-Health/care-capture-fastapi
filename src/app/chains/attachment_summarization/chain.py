@@ -1,8 +1,9 @@
 """PydanticAI map-reduce chain for analyzing medical document attachments."""
 
-from src.app.services.summary_runtime import MODEL_CALL_TIMEOUT_S, model_call, model_call_headroom
+from src.app.services.summary_runtime import MODEL_CALL_TIMEOUT_S, model_call, model_call_headroom, remaining_seconds
 import asyncio
 from contextvars import ContextVar
+import enum
 import hashlib
 import json
 import logging
@@ -23,24 +24,130 @@ from src.app.models.attachment_summarization import (
 
 from src.app.services.document_ingestion import require_parsed, mark_parsed
 from src.app.services.document_extraction import DocumentProcessingError
-from src.app.services.clinical_grounding import GROUNDING_MAX_CHARACTERS, GROUNDING_POLICY, validate_quotes, verify_grounding, validate_single_subject
+from src.app.services.clinical_grounding import (
+    GROUNDING_POLICY,
+    _LARGE_JUDGE_RETRY_CUTOFF_BYTES,
+    grounding_request_fits,
+    validate_quotes,
+    verify_grounding,
+    validate_single_subject,
+)
 
 logger = logging.getLogger(__name__)
 
 # Per-request state, including parallel map tasks; never shared between requests.
 _deferred_grounding = ContextVar("attachment_deferred_grounding", default=None)
 
-# Fix D (PR-9): verify_grounding's own procedure-splitting transform (`procedures` -> up to
-# three `procedures_<status>` keys) can grow a candidate's serialized size after chain.py
-# already measured it as fitting under GROUNDING_MAX_CHARACTERS. This margin keeps the
-# single-audit eligibility check in _verify_final apples-to-apples with verify_grounding's
-# own re-check of the same constant.
-_GROUNDING_SIZE_MARGIN = 4096
+# REGIME_SPLIT_CHARS selects audit TOPOLOGY (Regime A: staged audits deferred to one final
+# raw-source audit, vs Regime B: per-batch judge audits) for `analyze()` below -- it is not
+# the grounding size gate. It is an audit-topology heuristic, correctly character-denominated
+# because it gates no LLM input. Deliberately independent of the grounding size gate and must
+# NOT be re-derived from it: pinned at 80_000, no later step in this plan moves it, and moving
+# it is a separate, separately-justified change with its own corpus analysis (round-6 MAJOR-4;
+# see .research/fastapi-grounding-check-token-and-model/round9-revision.md section 6).
+REGIME_SPLIT_CHARS = 80_000
+
+# Fix 2 (round9-revision.md section 5.3): failures that mean "the audit could not run", as
+# distinct from "the audit ran and rejected". On the FINAL bonus audit (Regime B's
+# _verify_final_with_retry) these degrade to a recorded skip: chain.py's own comment below
+# states that check is "a bonus, not load-bearing", and a publishable summary must not die
+# because the judge timed out or the byte budget ran dry.
+#
+# Deliberately NOT included: MODEL_AUTH_FAILED and MODEL_UNAVAILABLE (systemic
+# provider/config failures that should surface, and that would already have failed the rest
+# of the pipeline).
+#
+# RESOURCE_LIMIT_EXCEEDED is a many-member canonical group (document_extraction.py). Only
+# MODEL_CALL_BUDGET_EXCEEDED, VALIDATION_BUDGET_EXCEEDED, SUMMARY_BUSY,
+# GROUNDING_REQUEST_TOO_LARGE and GROUNDING_LATENCY_GATE can arise from verify_grounding, and
+# they are the intended scope of this set. Keying on the group needs no maintenance when a
+# sibling code is added under it, and is safe because the catch below is scoped to a single
+# verify_grounding call -- but if a future group addition could be raised by the judge,
+# revisit this comment first.
+#
+# MODEL_RATE_LIMITED is included alongside MODEL_TIMEOUT for the same reason: summary_runtime's
+# model_call treats a 429 and a timeout as the same transient, provider-side failure class (both
+# get the single MAX_TRANSIENT_RETRIES retry before either code is raised). It is not a genuine
+# content rejection and not the systemic provider/config failure MODEL_AUTH_FAILED/
+# MODEL_UNAVAILABLE represent -- it is the single most common transient judge-call failure under
+# load, so it degrades the same way MODEL_TIMEOUT does.
+_BONUS_AUDIT_DEGRADABLE = {"RESOURCE_LIMIT_EXCEEDED", "MODEL_TIMEOUT", "MODEL_RATE_LIMITED"}
+
+
+def _skip_reason(exc):
+    """Map a verify_grounding failure that reached dispatch (i.e. grounding_request_fits
+    already said "fits") to the section-8.6 skip-reason vocabulary. A
+    GROUNDING_REQUEST_TOO_LARGE reaching here can only mean job byte headroom moved
+    underneath the predicate (round9-revision.md section 5.5) -- the per-call ceiling is
+    deterministic given the shared _judge_payload/_build_judge_message, so it cannot itself
+    diverge between the predicate and the dispatch."""
+    return {
+        "GROUNDING_REQUEST_TOO_LARGE": "job_byte_budget",
+        "GROUNDING_LATENCY_GATE": "latency_gate",
+        "MODEL_CALL_BUDGET_EXCEEDED": "call_budget",
+        "MODEL_TIMEOUT": "judge_timeout",
+        "MODEL_RATE_LIMITED": "judge_rate_limited",
+        "VALIDATION_BUDGET_EXCEEDED": "sanity_bound",
+    }.get(exc.reason_code, exc.reason_code)
+
+
+def _record_final_audit_skip(reason, body_bytes, encounter_id=None):
+    """Structured, counted[*] skip record for the Regime-B final raw-source audit (site 2).
+    Nothing replaces this audit when skipped -- this is the ONLY record family that counts
+    toward the coverage metric (round9-revision.md section 8.6).
+    [*] "Counted" (a dashboard-queryable counter) is Step 4 scope; this step keeps Step 0's
+    logging-only shape."""
+    logger.warning(
+        "final_audit_skipped:%s encounter_id=%s body_bytes=%d",
+        reason, encounter_id, body_bytes,
+    )
+
+
+def _record_single_audit_skip(reason, body_bytes, encounter_id=None):
+    """Structured skip record for the Regime-A single whole-candidate audit (site 4).
+    Deliberately a DIFFERENT family from final_audit_skipped: the staged per-chunk replay
+    still runs right after this record (or fails closed at VALIDATION_BUDGET_EXCEEDED), so
+    this candidate is not left unaudited the way a final_audit_skipped one is (round9-
+    revision.md section 8.6)."""
+    logger.warning(
+        "single_audit_skipped:%s encounter_id=%s body_bytes=%d",
+        reason, encounter_id, body_bytes,
+    )
+
+
+def _record_replay_audit_skip(reason, body_bytes):
+    """Structured skip record for ONE snapshot within a Regime-A staged replay (site 3).
+    Always accompanied by a _record_replay_incomplete call on the whole batch -- a single
+    snapshot skip alone says nothing about whether the batch published (round9-revision.md
+    section 8.6)."""
+    logger.warning("replay_audit_skipped:%s body_bytes=%d", reason, body_bytes)
+
+
+def _record_replay_incomplete(skipped, total):
+    """The replay batch was incomplete and _verify_final is about to fail closed -- the
+    summary does NOT publish. Distinct from a *_skipped record (round9-revision.md section
+    8.6): this is a per-batch failure record, not a per-item skip."""
+    logger.warning("replay_incomplete skipped=%d total=%d", skipped, total)
+
+
+class ReplayOutcome(enum.Enum):
+    """Fix 2 (round9-revision.md section 5.4.3(i), round-6 BLOCKER): _audit_once_retried's
+    return value. AUDITED/SKIPPED_SIZE are the only values ever actually returned; REJECTED is
+    reserved, not literally returned -- a genuine rejection RAISES through _audit_once_retried
+    and propagates through asyncio.gather (default return_exceptions=False) rather than being
+    returned as a value. It exists so that a future change to return_exceptions=True cannot
+    silently convert a rejection into a falsy-but-unexamined value without an implementer
+    having to decide what REJECTED means in the post-gather combine."""
+
+    AUDITED = "audited"
+    SKIPPED_SIZE = "skipped_size"
+    REJECTED = "rejected"
+
 
 # BATCH_CHAR_LIMIT is the per-chunk char CEILING leg of the dual chunk bound enforced
 # in _create_batches (the other leg is CHUNK_TOKEN_LIMIT, defined next to the chunk
 # loop). PERMANENT and load-bearing -- do NOT remove after feat/cda-redundancy-compression
-# merges: it bounds chunk characters for the grounding budget (GROUNDING_MAX_CHARACTERS)
+# merges: it bounds chunk characters for the grounding request-byte sizer (judge_request_bytes)
 # and for the request-byte wall (WorkBudget.max_call_input_tokens = 160,000 is enforced
 # as serialized-body BYTES despite its name) regardless of token density. Any future
 # increase must be re-checked against that byte wall, including validation-retry resend
@@ -365,8 +472,8 @@ GUARDRAILS - Do:
 # loaded, and its absence degrades to char-only sizing (never to token-only). Both
 # legs are PERMANENT. Do NOT remove the char ceiling after
 # feat/cda-redundancy-compression merges: it is not a transitional convenience for that
-# branch's merge order -- it bounds chunk chars for the grounding budget
-# (GROUNDING_MAX_CHARACTERS) and the 160,000-BYTE request wall regardless of token
+# branch's merge order -- it bounds chunk chars for the grounding request-byte sizer
+# (judge_request_bytes) and the 160,000-BYTE request wall regardless of token
 # density (whitespace/layout-padded text measures up to 13.8 ch/token; token-only sizing
 # would emit ~165k-char chunks there). See the BATCH_CHAR_LIMIT comment.
 #
@@ -799,7 +906,7 @@ class AttachmentSummarizationChain:
         # audit path. An intermediate candidate is never published from this queue.
         audits.append((stage, source, candidate.model_copy(deep=True)))
 
-    async def _verify_final_with_retry(self, source, candidate):
+    async def _verify_final_with_retry(self, source, candidate, *, encounter_id=None):
         """PR-12b item 6: chain.py's end-of-_analyze call used to be a bare
         validate_high_risk_claims(accepted_source, response) / validate_explicit_facts(...)
         pair, with no try/except and no retry (PR-12 research topic B). Both classifiers are
@@ -818,30 +925,55 @@ class AttachmentSummarizationChain:
         Empirically found running the real Ricardo Febry case (PR-12b real-data
         re-verification): Regime B means source > 80,000 chars by definition, so
         `accepted_source` alone -- let alone with the serialized response added -- routinely
-        exceeds verify_grounding's own GROUNDING_MAX_CHARACTERS budget before the judge is ever
-        called. Skip gracefully in that case rather than hard-failing an appointment on a call
-        that was never going to be able to run anyway; Regime B already ran a real judge against
-        real per-chunk source text on every extraction batch, so this stays a bonus check, not a
+        exceeds verify_grounding's own byte budget before the judge is ever called. Skip
+        gracefully in that case rather than hard-failing an appointment on a call that was
+        never going to be able to run anyway; Regime B already ran a real judge against real
+        per-chunk source text on every extraction batch, so this stays a bonus check, not a
         load-bearing one.
+
+        Fix 2 (round9-revision.md section 5.1): the char gate is now the shared
+        grounding_request_fits predicate; infrastructure failures on this BONUS check degrade
+        to a recorded skip instead of killing the appointment (_BONUS_AUDIT_DEGRADABLE); the
+        previously-bare retry below is now wrapped (round-4 MAJOR-2); and the outer retry is
+        skipped above the large-body cutoff (section 8.2) -- inert in Step 2 since
+        grounding_request_fits' body_bytes can never exceed _LARGE_JUDGE_RETRY_CUTOFF_BYTES
+        here, kept because Step 4 needs the branch to already exist.
         """
+        # Step 0 (grounding-check size-gate design, round9-revision.md section 10, round-6
+        # MAJOR-3): the single number that decides how much of the design's byte-coverage is
+        # actually reachable under the per-job wall-clock (section 8.4). Observability only --
+        # never gates, never raises.
+        logger.info(
+            "grounding_job_clock:verify_final_entry encounter_id=%s remaining_seconds=%s",
+            encounter_id, remaining_seconds(0),
+        )
         if _deferred_grounding.get() is not None:
             return
-        size = len(source) + len(json.dumps(candidate.model_dump(), ensure_ascii=False, default=str))
-        if size > GROUNDING_MAX_CHARACTERS - _GROUNDING_SIZE_MARGIN:
-            logger.warning(
-                "Skipping the retried final-grounding check: accepted_source + response "
-                "(%d chars) exceed verify_grounding's budget for this large appointment.",
-                size,
-            )
+        fit = grounding_request_fits(source, candidate)
+        if not fit:
+            _record_final_audit_skip(fit.reason, fit.body_bytes, encounter_id)
             return
         try:
             await verify_grounding(self.model, source, candidate)
+            return
         except DocumentProcessingError as exc:
+            if exc.code in _BONUS_AUDIT_DEGRADABLE:
+                _record_final_audit_skip(_skip_reason(exc), fit.body_bytes, encounter_id)
+                return
             if exc.code not in {"CLINICAL_EVIDENCE_FAILED", "MODEL_OUTPUT_INVALID"}:
                 raise
-            await verify_grounding(self.model, source, candidate)
+        if fit.body_bytes > _LARGE_JUDGE_RETRY_CUTOFF_BYTES:
+            _record_final_audit_skip("retry_skipped:body_too_large", fit.body_bytes, encounter_id)
+            return
+        try:
+            await verify_grounding(self.model, source, candidate)  # spurious-rejection retry
+        except DocumentProcessingError as exc:  # round-4 MAJOR-2: this retry is now wrapped
+            if exc.code in _BONUS_AUDIT_DEGRADABLE:
+                _record_final_audit_skip("retry_exhausted", fit.body_bytes, encounter_id)
+                return
+            raise  # a real rejection fails closed
 
-    async def _audit_once_retried(self, evidence, output, retry_slots=None):
+    async def _audit_once_retried(self, evidence, output, retry_slots=None) -> ReplayOutcome:
         """Revised R8 (round-3): retry a spuriously rejected replay audit exactly once (the
         judge is temperature=0 yet measured non-deterministic), funded from `retry_slots` --
         the batch-level reservation _verify_final computes BEFORE launching the concurrent
@@ -851,7 +983,18 @@ class AttachmentSummarizationChain:
         per-coroutine live headroom read racing -- at N=30 all 15 rejected coroutines saw
         headroom >= 1 and collectively burned to the 64-call wall mid-flight. Budget
         pressure degrades retries first, then recovery, and the path terminates in the
-        honest judge verdict."""
+        honest judge verdict.
+
+        Fix 2 (round9-revision.md section 5.4.3(i), round-6 BLOCKER): this coroutine now
+        RETURNS its outcome. It is gathered by _verify_final below and the caller AND-combines
+        the results. A snapshot the predicate refuses is a snapshot no judge examined, so it
+        must not count toward the replay's pass -- returning None (indistinguishable from a
+        pass) is exactly the defect this return value exists to close.
+        """
+        fit = grounding_request_fits(evidence, output)
+        if not fit:
+            _record_replay_audit_skip(fit.reason, fit.body_bytes)
+            return ReplayOutcome.SKIPPED_SIZE
         try:
             await verify_grounding(self.model, evidence, output)
         except DocumentProcessingError as exc:
@@ -862,19 +1005,21 @@ class AttachmentSummarizationChain:
                     raise
                 retry_slots[0] -= 1  # synchronous take; safe under asyncio's single thread
             await verify_grounding(self.model, evidence, output)
+        return ReplayOutcome.AUDITED
 
-    async def _verify_final(self, source, candidate, accepted_ids):
+    async def _verify_final(self, source, candidate, accepted_ids, *, encounter_id=None):
         audits = _deferred_grounding.get()
         if audits is None:
             return  # Large requests already used the unchanged staged audit path.
         rejection = None  # the single audit's verdict; stays None on the oversized entrance
-        size = len(source) + len(json.dumps(candidate.model_dump(), ensure_ascii=False, default=str))
-        # Fix D: compare against a margin below GROUNDING_MAX_CHARACTERS, not the raw constant.
-        # verify_grounding splits `procedures` into up to three procedures_<status> keys before
-        # its own re-check of the same constant, which can grow the payload past what we
-        # measured here; the margin keeps this eligibility check apples-to-apples with that
-        # re-check.
-        if size <= GROUNDING_MAX_CHARACTERS - _GROUNDING_SIZE_MARGIN:
+        fit = grounding_request_fits(source, candidate)
+        # Fix 2 (round9-revision.md section 5.2, round-4 BLOCKER-1 -- FROZEN, round-6-traced
+        # branch-by-branch): this is an EXPRESSION-ONLY substitution of the old char gate. The
+        # surrounding control flow does NOT change -- no `return` in the false branch, the
+        # VALIDATION_BUDGET_EXCEEDED raise below and the headroom guard further down both
+        # survive untouched. DO NOT add a return here; do not convert the false branch into a
+        # skip; do not log this as final_audit_skipped.
+        if fit:
             # One semantic audit of the final candidate against original parsed text. Fix C: on
             # failure, fall through to the staged per-chunk audits below instead of losing the
             # whole appointment to a single audit call -- the per-chunk snapshots already exist
@@ -883,14 +1028,27 @@ class AttachmentSummarizationChain:
                 await verify_grounding(self.model, source, candidate)
                 return
             except DocumentProcessingError as exc:
-                # R13 (C-3): if the single audit itself died of budget exhaustion, replaying
-                # N+1 further audits is guaranteed futile -- re-raise immediately instead of
-                # burning the remaining budget behind a misleading fallback log. Any other
-                # failure class (a real rejection, timeouts, rate limits, ...) keeps today's
-                # working fallback recovery.
-                if exc.reason_code == "MODEL_CALL_BUDGET_EXCEEDED":
+                # R13 (C-3), widened by section 5.5: a GROUNDING_REQUEST_TOO_LARGE reaching
+                # here can only mean job byte headroom moved between the predicate above and
+                # this dispatch -- the per-call ceiling is deterministic given the shared
+                # _judge_payload/_build_judge_message, so it cannot itself diverge -- and
+                # replaying N further audits is exactly as futile as MODEL_CALL_BUDGET_EXCEEDED.
+                # Re-raise immediately instead of burning the remaining budget behind a
+                # misleading fallback log. Any other failure class (a real rejection, timeouts,
+                # rate limits, ...) keeps today's working fallback recovery.
+                # GROUNDING_LATENCY_GATE is deliberately NOT in this set: Regime A source is
+                # pinned <= REGIME_SPLIT_CHARS by section 6, so the latency gate cannot fire
+                # here at all (sections 5.5, 5.4.3 iv).
+                if exc.reason_code in {"MODEL_CALL_BUDGET_EXCEEDED", "GROUNDING_REQUEST_TOO_LARGE"}:
                     raise
                 rejection = exc
+        else:
+            # section 8.6: single_audit_skipped, deliberately DIFFERENT from final_audit_skipped
+            # above -- the staged per-chunk replay below still runs (or fails closed at
+            # VALIDATION_BUDGET_EXCEEDED), so this candidate is not left unaudited the way a
+            # final_audit_skipped one is. Observation only; falls through identically to before
+            # (replay follows unless `audits` is empty, in which case the raise below fires).
+            _record_single_audit_skip(fit.reason, fit.body_bytes, encounter_id)
         # Preserve large-document support without truncating evidence or raising the
         # existing per-audit budget. Reuse the former staged validation graph.
         if not audits:
@@ -931,19 +1089,39 @@ class AttachmentSummarizationChain:
         # pool inside _audit_once_retried. Total replay spend is therefore <= headroom by
         # construction (the budget wall stays the backstop for transient-retry spend only).
         retry_slots = None if headroom is None else [headroom - len(surviving_audits)]
-        await asyncio.gather(*(
+        results = await asyncio.gather(*(
             self._audit_once_retried(evidence, output, retry_slots)
             for evidence, output in surviving_audits
         ))
+        # Fix 2 (round9-revision.md section 5.4, round-6 BLOCKER): an incomplete replay is not
+        # a pass. `results` is empty only when every audit was filtered out by the
+        # accepted_ids test above -- UNREACHABLE through the real pipeline (a synthesis
+        # snapshot is appended unconditionally on every successful synthesis and always
+        # survives that filter, section 5.4.3 iii), kept as defence-in-depth. Fail closed on
+        # the judge's real verdict when we have one, exactly as the headroom guard above does;
+        # otherwise on the same VALIDATION_BUDGET_EXCEEDED the empty-`audits` raise above uses
+        # for "there is no complete audit available". Do NOT use any() here -- section 5.4.2 is
+        # the whole reason: a partial replay is not weaker evidence, it is NO evidence for the
+        # unexamined region, and a held genuine rejection must never be discarded because one
+        # of several replay snapshots happened to pass.
+        if not results or not all(result is ReplayOutcome.AUDITED for result in results):
+            skipped = sum(1 for result in results if result is not ReplayOutcome.AUDITED)
+            logger.warning(
+                "Staged replay incomplete: %d of %d snapshots were not audited; failing closed.",
+                skipped, len(results),
+            )
+            _record_replay_incomplete(skipped, len(results))
+            raise rejection if rejection is not None else DocumentProcessingError("VALIDATION_BUDGET_EXCEEDED")
 
     @traceable(name="analyze_attachments")
-    async def analyze(self, appointment_context: dict, documents: List[DocumentAttachment]):
-        # Reserve half the existing audit budget for the candidate and chunk overlap.
-        # Large inputs keep their previous staged/partial-success behavior throughout.
+    async def analyze(self, appointment_context: dict, documents: List[DocumentAttachment], *, encounter_id: str | None = None):
+        # REGIME_SPLIT_CHARS picks audit topology, not the grounding budget (see its
+        # definition above). Large inputs keep their previous staged/partial-success
+        # behavior throughout.
         source_size = sum(len(doc.extracted_text) for doc in documents if not doc.extraction_error)
-        token = _deferred_grounding.set([] if source_size <= GROUNDING_MAX_CHARACTERS // 2 else None)
+        token = _deferred_grounding.set([] if source_size <= REGIME_SPLIT_CHARS else None)
         try:
-            return await self._analyze(appointment_context, documents)
+            return await self._analyze(appointment_context, documents, encounter_id=encounter_id)
         finally:
             _deferred_grounding.reset(token)
 
@@ -951,6 +1129,8 @@ class AttachmentSummarizationChain:
         self,
         appointment_context: dict,
         documents: List[DocumentAttachment],
+        *,
+        encounter_id: str | None = None,
     ) -> AttachmentSummarizationResponse:
         """
         Analyze medical document attachments using a map-reduce pipeline.
@@ -1019,7 +1199,7 @@ class AttachmentSummarizationChain:
         # intermediate model output, which cannot establish source truth.
         accepted_ids = {item.source_document_id.rsplit(":chunk:", 1)[0] for item in all_summaries}
         accepted_source = "\n".join(doc.extracted_text for index, doc in enumerate(documents) if not doc.extraction_error and (doc.resource_id or str(index)) in accepted_ids)
-        await self._verify_final_with_retry(accepted_source, response)
+        await self._verify_final_with_retry(accepted_source, response, encounter_id=encounter_id)
         response.documents_analyzed = len({summary.source_document_id.rsplit(":chunk:", 1)[0] for summary in all_summaries})
         response.extraction_errors = failures
         # For partial jobs, audit only successful original source chunks. Failed
@@ -1028,6 +1208,6 @@ class AttachmentSummarizationChain:
                                    for batch, result in zip(batches, batch_results)
                                    if not isinstance(result, Exception)
                                    for document in batch)
-        await self._verify_final(covered_source, response, {item.source_document_id for item in all_summaries})
+        await self._verify_final(covered_source, response, {item.source_document_id for item in all_summaries}, encounter_id=encounter_id)
         from src.app.services.validated_summary import seal_summary
         return seal_summary(response)

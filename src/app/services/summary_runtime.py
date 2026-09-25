@@ -1,11 +1,14 @@
 """Per-worker admission, request deadlines and shared model-call budgets."""
 import asyncio
+import logging
 import time
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import wraps
 from src.app.services.document_extraction import DocumentProcessingError
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -23,6 +26,12 @@ class WorkBudget:
     provider_requests: int = 0
     # Byte-measured bounds (UTF-8 byte length is a conservative bound for text BPE tokens).
     input_upper_bound_bytes: int = 0
+    # Fix 1 (round9-revision.md section 4.6): bytes held by an in-flight synchronous
+    # reservation (reserve_input_bytes/release_input_bytes below) -- pre-charged before
+    # dispatch, converted to a real input_upper_bound_bytes charge as it is spent, refunded
+    # in `finally` for whatever a call never spent. Present but always zero until
+    # verify_grounding starts calling reserve_input_bytes (Step 2).
+    reserved_input_bytes: int = 0
     max_call_input_bytes: int = 160_000
     max_input_bytes_per_job: int = 4_000_000
     max_output_tokens: int = 4096
@@ -38,6 +47,14 @@ class WorkBudget:
 request_started = ContextVar("summary_request_started", default=None)
 
 _current_budget = ContextVar("summary_work_budget", default=None)
+# Fix 1 (round9-revision.md section 4.6): the carrier for a synchronous byte reservation.
+# `_prepaid`'s payload is a MUTABLE LIST deliberately: contextvars copy the reference (not a
+# snapshot) into child tasks, so a request dispatched from a pydantic_ai child task decrements
+# the parent's bucket. `_UNBUDGETED` is a distinct sentinel (truthy, not None) so
+# `if token is None:` is the caller's only failure test -- `token is _UNBUDGETED` means
+# "budget is None: no hook, no wall, nothing reserved" (round-4 MAJOR-4).
+_prepaid = ContextVar("summary_prepaid_request_bytes", default=None)
+_UNBUDGETED = object()
 _active_summary_tasks = set()
 SUMMARY_CAPACITY_PER_WORKER = 4
 MODEL_CAPACITY_PER_WORKER = 8
@@ -138,7 +155,8 @@ def bounded_summary(operation):
             raise DocumentProcessingError("SUMMARY_BUSY")
         async with _slots:
             duration = min(getattr(request, "timeout_seconds", 120), 300)
-            deadline = (request_started.get() or time.monotonic()) + duration
+            job_started = request_started.get() or time.monotonic()
+            deadline = job_started + duration
             token = _current_budget.set(WorkBudget(deadline=deadline))
             task = asyncio.current_task()
             _active_summary_tasks.add(task)
@@ -155,6 +173,17 @@ def bounded_summary(operation):
                 except TimeoutError:
                     pass
                 finally:
+                    # Step 0 (grounding-check size-gate design, round9-revision.md section 10):
+                    # job-end observability only -- read before reset, since
+                    # model_call_headroom() and the fields below depend on _current_budget
+                    # still pointing at this job's WorkBudget. Never gates, never raises.
+                    logger.info(
+                        "budget.job_end input_upper_bound_bytes=%d provider_requests=%d "
+                        "model_calls=%d model_call_headroom=%s wall_seconds=%.3f",
+                        budget.input_upper_bound_bytes, budget.provider_requests,
+                        budget.model_calls, model_call_headroom(),
+                        time.monotonic() - job_started,
+                    )
                     _current_budget.reset(token)
                     _active_summary_tasks.discard(task)
     return wrapped
@@ -185,12 +214,77 @@ async def reserve_provider_request(request):
         # requests have a separate count/pixel budget; do not count base64 as text.
         text_bound = len(json.dumps(text_only(body), ensure_ascii=False).encode())
         output_limit = body.get("max_completion_tokens", body.get("max_tokens"))
+        # Fix 1 (round9-revision.md section 4.6): a judge call pre-reserved its bytes via
+        # reserve_input_bytes before dispatch (verify_grounding). Convert that reservation into
+        # the real charge instead of double-charging against a second, independent job-wall
+        # test. Deferred import: clinical_grounding imports summary_runtime at module scope, so
+        # a top-level import here would be a circular import.
+        prepaid = _prepaid.get()
+        if prepaid is not None:
+            from src.app.services.clinical_grounding import _judge_call_limit
+            take = min(prepaid[0], text_bound)
+            # Check BEFORE mutating, exactly as the non-prepaid leg below does. The job-wall
+            # leg is RETAINED (round-6 MINOR-5), not dropped: it can only fire when
+            # text_bound > take, i.e. when the real wire body exceeded its prepayment. Judge
+            # request_bytes is never optimistic (section 11 test 1) and
+            # create_document_ai_client sets max_retries=0 (llm_factory.py) so one dispatch ==
+            # one hook invocation today -- but if either invariant ever changes, the job wall
+            # must still be enforced rather than silently uncapped for judge calls.
+            if (images > budget.max_images_per_call
+                    or text_bound > _judge_call_limit(budget)
+                    or budget.input_upper_bound_bytes + text_bound + budget.reserved_input_bytes - take
+                       > budget.max_input_bytes_per_job
+                    or not isinstance(output_limit, int) or output_limit > budget.max_output_tokens):
+                raise DocumentProcessingError("MODEL_CALL_BUDGET_EXCEEDED")
+            prepaid[0] -= take                       # synchronous; single-threaded
+            budget.reserved_input_bytes -= take
+            budget.input_upper_bound_bytes += text_bound
+            budget.provider_requests += 1
+            return
         if (images > budget.max_images_per_call or text_bound > budget.max_call_input_bytes
                 or budget.input_upper_bound_bytes + text_bound > budget.max_input_bytes_per_job
                 or not isinstance(output_limit, int) or output_limit > budget.max_output_tokens):
             raise DocumentProcessingError("MODEL_CALL_BUDGET_EXCEEDED")
         budget.input_upper_bound_bytes += text_bound
         budget.provider_requests += 1
+
+
+def reserve_input_bytes(budget, body_bytes, dispatches):
+    """Fix 1 (round9-revision.md section 4.6): THE canonical reservation, used by every call
+    site. Synchronous take: no `await` between the check and the charge (mirrors
+    chain.py's `retry_slots` synchronous take at its own headroom guard).
+
+    Returns:
+      _UNBUDGETED -- budget is None: no hook, no wall, nothing reserved (round-4 MAJOR-4).
+      a ContextVar token -- reservation held; caller MUST pass it to release_input_bytes.
+      None -- the job wall cannot fund this request; caller must raise.
+
+    The three returns are distinguishable: `token is None` is the only failure, and
+    `_UNBUDGETED` is truthy, so `if token is None:` is the correct and only caller-side test.
+
+    round-6 MAJOR-2: the `budget is None` guard lives INSIDE this pair, not around each call
+    site's own try/finally -- that is what makes it impossible for a future call site to
+    reintroduce the crash a prior draft shipped (a bare release on an unguarded reserve raised
+    TypeError on every unbudgeted grounding call).
+    """
+    if budget is None:
+        return _UNBUDGETED
+    want = body_bytes * dispatches
+    if (budget.input_upper_bound_bytes + budget.reserved_input_bytes + want
+            > budget.max_input_bytes_per_job):
+        return None
+    budget.reserved_input_bytes += want
+    return _prepaid.set([want])
+
+
+def release_input_bytes(budget, token):
+    """Total and idempotent: safe for _UNBUDGETED, safe for None, safe on any exit path.
+    Refunds whatever the dispatch(es) never spent."""
+    if token is None or token is _UNBUDGETED:
+        return
+    remaining = _prepaid.get()
+    budget.reserved_input_bytes -= max(0, remaining[0] if remaining else 0)
+    _prepaid.reset(token)
 
 
 def model_call_headroom():
