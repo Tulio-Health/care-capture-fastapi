@@ -30,6 +30,16 @@ logger = logging.getLogger(__name__)
 # Per-request state, including parallel map tasks; never shared between requests.
 _deferred_grounding = ContextVar("attachment_deferred_grounding", default=None)
 
+# REGIME_SPLIT_CHARS selects audit TOPOLOGY (Regime A: staged audits deferred to one final
+# raw-source audit, vs Regime B: per-batch judge audits) for `analyze()` below -- it is not
+# the grounding size gate. It is an audit-topology heuristic, correctly character-denominated
+# because it gates no LLM input. Deliberately independent of GROUNDING_MAX_CHARACTERS and must
+# NOT be re-derived from it: pinned at 80_000 (today's GROUNDING_MAX_CHARACTERS // 2 value), no
+# later step in this plan moves it, and moving it is a separate, separately-justified change
+# with its own corpus analysis (round-6 MAJOR-4; see
+# .research/fastapi-grounding-check-token-and-model/round9-revision.md section 6).
+REGIME_SPLIT_CHARS = 80_000
+
 # Fix D (PR-9): verify_grounding's own procedure-splitting transform (`procedures` -> up to
 # three `procedures_<status>` keys) can grow a candidate's serialized size after chain.py
 # already measured it as fitting under GROUNDING_MAX_CHARACTERS. This margin keeps the
@@ -960,10 +970,11 @@ class AttachmentSummarizationChain:
 
     @traceable(name="analyze_attachments")
     async def analyze(self, appointment_context: dict, documents: List[DocumentAttachment], *, encounter_id: str | None = None):
-        # Reserve half the existing audit budget for the candidate and chunk overlap.
-        # Large inputs keep their previous staged/partial-success behavior throughout.
+        # REGIME_SPLIT_CHARS picks audit topology, not the grounding budget (see its
+        # definition above). Large inputs keep their previous staged/partial-success
+        # behavior throughout.
         source_size = sum(len(doc.extracted_text) for doc in documents if not doc.extraction_error)
-        token = _deferred_grounding.set([] if source_size <= GROUNDING_MAX_CHARACTERS // 2 else None)
+        token = _deferred_grounding.set([] if source_size <= REGIME_SPLIT_CHARS else None)
         try:
             return await self._analyze(appointment_context, documents, encounter_id=encounter_id)
         finally:
