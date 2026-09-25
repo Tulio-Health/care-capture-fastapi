@@ -194,7 +194,7 @@ class AttachmentSummarizationService:
 
         # Run AI analysis
         try:
-            analysis_result = await self._run_ai_analysis(appointment_context, extracted_documents)
+            analysis_result = await self._run_ai_analysis(appointment_context, extracted_documents, encounter_id=appointment.ehr_entity_id)
             from src.app.services.validated_summary import require_validated_summary
             if analysis_result.documents_analyzed:
                 require_validated_summary(analysis_result)
@@ -352,6 +352,8 @@ class AttachmentSummarizationService:
         self,
         appointment_context: Dict[str, str],
         extracted_documents: List[DocumentAttachment],
+        *,
+        encounter_id: str | None = None,
     ) -> Any:
         """
         Run AI analysis on extracted documents using the map-reduce pipeline.
@@ -359,6 +361,8 @@ class AttachmentSummarizationService:
         Args:
             appointment_context: Context about the appointment
             extracted_documents: List of DocumentAttachment objects
+            encounter_id: EHR entity id, threaded through for Step 0 observability
+                (grounding-check size-gate design) only -- not used for any decision.
 
         Returns:
             Analysis result object
@@ -371,6 +375,7 @@ class AttachmentSummarizationService:
             analysis_result = await analysis_chain.analyze(
                 appointment_context=appointment_context,
                 documents=extracted_documents,
+                encounter_id=encounter_id,
             )
 
             self.logger.debug("AI analysis completed successfully")

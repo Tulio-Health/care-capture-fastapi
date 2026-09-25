@@ -1,6 +1,6 @@
 """PydanticAI map-reduce chain for analyzing medical document attachments."""
 
-from src.app.services.summary_runtime import MODEL_CALL_TIMEOUT_S, model_call, model_call_headroom
+from src.app.services.summary_runtime import MODEL_CALL_TIMEOUT_S, model_call, model_call_headroom, remaining_seconds
 import asyncio
 from contextvars import ContextVar
 import hashlib
@@ -799,7 +799,7 @@ class AttachmentSummarizationChain:
         # audit path. An intermediate candidate is never published from this queue.
         audits.append((stage, source, candidate.model_copy(deep=True)))
 
-    async def _verify_final_with_retry(self, source, candidate):
+    async def _verify_final_with_retry(self, source, candidate, *, encounter_id=None):
         """PR-12b item 6: chain.py's end-of-_analyze call used to be a bare
         validate_high_risk_claims(accepted_source, response) / validate_explicit_facts(...)
         pair, with no try/except and no retry (PR-12 research topic B). Both classifiers are
@@ -824,14 +824,25 @@ class AttachmentSummarizationChain:
         real per-chunk source text on every extraction batch, so this stays a bonus check, not a
         load-bearing one.
         """
+        # Step 0 (grounding-check size-gate design, round9-revision.md section 10, round-6
+        # MAJOR-3): the single number that decides how much of the design's byte-coverage is
+        # actually reachable under the per-job wall-clock (section 8.4). Observability only --
+        # never gates, never raises.
+        logger.info(
+            "grounding_job_clock:verify_final_entry encounter_id=%s remaining_seconds=%s",
+            encounter_id, remaining_seconds(0),
+        )
         if _deferred_grounding.get() is not None:
             return
         size = len(source) + len(json.dumps(candidate.model_dump(), ensure_ascii=False, default=str))
         if size > GROUNDING_MAX_CHARACTERS - _GROUNDING_SIZE_MARGIN:
+            # Step 0 (section 8.6): structured, counted skip record. Family name is
+            # deliberately DIFFERENT from single_audit_skipped (chain.py:877 below) -- this is
+            # the Regime B final raw-source audit, and nothing replaces it when skipped; a
+            # later step's coverage metric depends on the two families never being conflated.
             logger.warning(
-                "Skipping the retried final-grounding check: accepted_source + response "
-                "(%d chars) exceed verify_grounding's budget for this large appointment.",
-                size,
+                "final_audit_skipped:sanity_bound encounter_id=%s body_chars=%d",
+                encounter_id, size,
             )
             return
         try:
@@ -863,7 +874,7 @@ class AttachmentSummarizationChain:
                 retry_slots[0] -= 1  # synchronous take; safe under asyncio's single thread
             await verify_grounding(self.model, evidence, output)
 
-    async def _verify_final(self, source, candidate, accepted_ids):
+    async def _verify_final(self, source, candidate, accepted_ids, *, encounter_id=None):
         audits = _deferred_grounding.get()
         if audits is None:
             return  # Large requests already used the unchanged staged audit path.
@@ -891,6 +902,17 @@ class AttachmentSummarizationChain:
                 if exc.reason_code == "MODEL_CALL_BUDGET_EXCEEDED":
                     raise
                 rejection = exc
+        else:
+            # Step 0 (grounding-check size-gate design, round9-revision.md section 10/8.6):
+            # structured, counted skip record for this size check's false branch. Family name
+            # deliberately DIFFERENT from final_audit_skipped (chain.py:830 above) -- the staged
+            # per-chunk replay below still runs (or fails closed at VALIDATION_BUDGET_EXCEEDED),
+            # so this candidate is not left unaudited the way a final_audit_skipped one is.
+            # Observation only; falls through identically to before.
+            logger.warning(
+                "single_audit_skipped:sanity_bound encounter_id=%s body_chars=%d",
+                encounter_id, size,
+            )
         # Preserve large-document support without truncating evidence or raising the
         # existing per-audit budget. Reuse the former staged validation graph.
         if not audits:
@@ -937,13 +959,13 @@ class AttachmentSummarizationChain:
         ))
 
     @traceable(name="analyze_attachments")
-    async def analyze(self, appointment_context: dict, documents: List[DocumentAttachment]):
+    async def analyze(self, appointment_context: dict, documents: List[DocumentAttachment], *, encounter_id: str | None = None):
         # Reserve half the existing audit budget for the candidate and chunk overlap.
         # Large inputs keep their previous staged/partial-success behavior throughout.
         source_size = sum(len(doc.extracted_text) for doc in documents if not doc.extraction_error)
         token = _deferred_grounding.set([] if source_size <= GROUNDING_MAX_CHARACTERS // 2 else None)
         try:
-            return await self._analyze(appointment_context, documents)
+            return await self._analyze(appointment_context, documents, encounter_id=encounter_id)
         finally:
             _deferred_grounding.reset(token)
 
@@ -951,6 +973,8 @@ class AttachmentSummarizationChain:
         self,
         appointment_context: dict,
         documents: List[DocumentAttachment],
+        *,
+        encounter_id: str | None = None,
     ) -> AttachmentSummarizationResponse:
         """
         Analyze medical document attachments using a map-reduce pipeline.
@@ -1019,7 +1043,7 @@ class AttachmentSummarizationChain:
         # intermediate model output, which cannot establish source truth.
         accepted_ids = {item.source_document_id.rsplit(":chunk:", 1)[0] for item in all_summaries}
         accepted_source = "\n".join(doc.extracted_text for index, doc in enumerate(documents) if not doc.extraction_error and (doc.resource_id or str(index)) in accepted_ids)
-        await self._verify_final_with_retry(accepted_source, response)
+        await self._verify_final_with_retry(accepted_source, response, encounter_id=encounter_id)
         response.documents_analyzed = len({summary.source_document_id.rsplit(":chunk:", 1)[0] for summary in all_summaries})
         response.extraction_errors = failures
         # For partial jobs, audit only successful original source chunks. Failed
@@ -1028,6 +1052,6 @@ class AttachmentSummarizationChain:
                                    for batch, result in zip(batches, batch_results)
                                    if not isinstance(result, Exception)
                                    for document in batch)
-        await self._verify_final(covered_source, response, {item.source_document_id for item in all_summaries})
+        await self._verify_final(covered_source, response, {item.source_document_id for item in all_summaries}, encounter_id=encounter_id)
         from src.app.services.validated_summary import seal_summary
         return seal_summary(response)

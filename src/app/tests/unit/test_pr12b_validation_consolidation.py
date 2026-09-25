@@ -356,6 +356,97 @@ async def test_regime_b_final_grounding_skips_gracefully_when_over_budget(monkey
     calls.assert_not_awaited()
 
 
+# --- Step 0 (grounding-check size-gate design, round9-revision.md section 10/8.6):
+# observability records, zero behavior change ---
+
+@pytest.mark.asyncio
+async def test_regime_b_oversized_skip_emits_final_audit_skipped_record(monkeypatch, caplog):
+    """The :830 skip must be logged under the final_audit_skipped family, carrying reason,
+    measured size and encounter id -- and never as single_audit_skipped (that family is
+    reserved for :877 below; conflating them would corrupt the coverage metric a later step
+    depends on)."""
+    chain_instance = chain.AttachmentSummarizationChain()
+    chain_instance._model = object()
+    calls = AsyncMock()
+    monkeypatch.setattr(chain, "verify_grounding", calls)
+    oversized_source = "x" * (chain.GROUNDING_MAX_CHARACTERS + 1)
+    response = AttachmentSummarizationResponse(clinical_summary="x", documents_analyzed=1)
+
+    token = chain._deferred_grounding.set(None)  # Regime B
+    try:
+        with caplog.at_level("WARNING"):
+            await chain_instance._verify_final_with_retry(oversized_source, response, encounter_id="enc-123")
+    finally:
+        chain._deferred_grounding.reset(token)
+
+    calls.assert_not_awaited()  # behavior unchanged: still a graceful skip
+    skip_records = [r.message for r in caplog.records if r.message.startswith("final_audit_skipped:")]
+    assert len(skip_records) == 1
+    assert skip_records[0].startswith("final_audit_skipped:sanity_bound")
+    assert "encounter_id=enc-123" in skip_records[0]
+    # body_chars is source + the serialized candidate, so it's >= the raw source length alone.
+    reported = int(skip_records[0].split("body_chars=")[1])
+    assert reported >= len(oversized_source)
+    assert not any(r.message.startswith("single_audit_skipped:") for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_verify_final_with_retry_logs_remaining_seconds_at_entry(monkeypatch, caplog):
+    """round-6 MAJOR-3: remaining_seconds(0) must be emitted the moment
+    _verify_final_with_retry is entered, before any regime branch or skip decision -- this is
+    the number that decides how much byte-coverage is reachable under the per-job clock."""
+    chain_instance = chain.AttachmentSummarizationChain()
+    calls = AsyncMock()
+    monkeypatch.setattr(chain, "verify_grounding", calls)
+    response = AttachmentSummarizationResponse(clinical_summary="x", documents_analyzed=1)
+
+    token = chain._deferred_grounding.set([])  # Regime A -- takes the early-return path
+    try:
+        with caplog.at_level("INFO"):
+            await chain_instance._verify_final_with_retry("source text", response, encounter_id="enc-A")
+    finally:
+        chain._deferred_grounding.reset(token)
+
+    calls.assert_not_awaited()  # behavior unchanged: Regime A still no-ops here
+    clock_records = [r.message for r in caplog.records if r.message.startswith("grounding_job_clock:verify_final_entry")]
+    assert len(clock_records) == 1
+    assert "encounter_id=enc-A" in clock_records[0]
+    assert "remaining_seconds=" in clock_records[0]
+
+
+@pytest.mark.asyncio
+async def test_verify_final_oversized_single_audit_emits_single_audit_skipped_record(monkeypatch, caplog):
+    """The :877 false-branch skip must be logged under single_audit_skipped -- never
+    final_audit_skipped -- because the staged per-chunk replay still runs right after, unlike
+    a final_audit_skipped candidate which is left completely unaudited."""
+    chain_instance = chain.AttachmentSummarizationChain()
+    chain_instance._model = object()
+    seen = []
+
+    async def fake_verify_grounding(model, evidence, output):
+        seen.append(evidence)
+
+    monkeypatch.setattr(chain, "verify_grounding", fake_verify_grounding)
+    output_a = NS(source_document_id="doc-a")
+    audits = [("extraction", "evidence-a", output_a)]
+    candidate = NS(model_dump=lambda: {"clinical_summary": "irrelevant"})
+    oversized_source = "x" * 200_000
+
+    token = chain._deferred_grounding.set(audits)
+    try:
+        with caplog.at_level("WARNING"):
+            await chain_instance._verify_final(oversized_source, candidate, accepted_ids={"doc-a"}, encounter_id="enc-B")
+    finally:
+        chain._deferred_grounding.reset(token)
+
+    assert seen == ["evidence-a"]  # behavior unchanged: staged replay still ran
+    skip_records = [r.message for r in caplog.records if r.message.startswith("single_audit_skipped:")]
+    assert len(skip_records) == 1
+    assert skip_records[0].startswith("single_audit_skipped:sanity_bound")
+    assert "encounter_id=enc-B" in skip_records[0]
+    assert not any(r.message.startswith("final_audit_skipped:") for r in caplog.records)
+
+
 # --- item 8: confirm the ordered-vs-performed gate is unaffected (DO NOT TOUCH) ---
 
 @pytest.mark.asyncio

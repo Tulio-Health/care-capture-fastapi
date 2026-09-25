@@ -1,11 +1,14 @@
 """Per-worker admission, request deadlines and shared model-call budgets."""
 import asyncio
+import logging
 import time
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import wraps
 from src.app.services.document_extraction import DocumentProcessingError
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -138,7 +141,8 @@ def bounded_summary(operation):
             raise DocumentProcessingError("SUMMARY_BUSY")
         async with _slots:
             duration = min(getattr(request, "timeout_seconds", 120), 300)
-            deadline = (request_started.get() or time.monotonic()) + duration
+            job_started = request_started.get() or time.monotonic()
+            deadline = job_started + duration
             token = _current_budget.set(WorkBudget(deadline=deadline))
             task = asyncio.current_task()
             _active_summary_tasks.add(task)
@@ -155,6 +159,17 @@ def bounded_summary(operation):
                 except TimeoutError:
                     pass
                 finally:
+                    # Step 0 (grounding-check size-gate design, round9-revision.md section 10):
+                    # job-end observability only -- read before reset, since
+                    # model_call_headroom() and the fields below depend on _current_budget
+                    # still pointing at this job's WorkBudget. Never gates, never raises.
+                    logger.info(
+                        "budget.job_end input_upper_bound_bytes=%d provider_requests=%d "
+                        "model_calls=%d model_call_headroom=%s wall_seconds=%.3f",
+                        budget.input_upper_bound_bytes, budget.provider_requests,
+                        budget.model_calls, model_call_headroom(),
+                        time.monotonic() - job_started,
+                    )
                     _current_budget.reset(token)
                     _active_summary_tasks.discard(task)
     return wrapped
