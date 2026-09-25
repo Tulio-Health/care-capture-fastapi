@@ -768,6 +768,48 @@ class TestBonusAuditDegradation:
         assert skip_records[0].startswith("final_audit_skipped:judge_timeout")
 
     @pytest.mark.asyncio
+    async def test_model_rate_limited_degrades_to_a_recorded_skip_and_publishes(
+        self, monkeypatch, caplog
+    ):
+        chain_instance = chain.AttachmentSummarizationChain()
+        chain_instance._model = object()
+        monkeypatch.setattr(
+            chain,
+            "grounding_request_fits",
+            lambda source, output, **kw: GroundingFit(
+                fits=True, reason=None, body_bytes=1
+            ),
+        )
+        calls = []
+
+        async def fake_verify_grounding(model, source, output):
+            calls.append(1)
+            raise DocumentProcessingError("MODEL_RATE_LIMITED")
+
+        monkeypatch.setattr(chain, "verify_grounding", fake_verify_grounding)
+        response = AttachmentSummarizationResponse(
+            clinical_summary="x", documents_analyzed=1
+        )
+        token = chain._deferred_grounding.set(None)  # Regime B
+        try:
+            with caplog.at_level("WARNING"):
+                await chain_instance._verify_final_with_retry(
+                    "source", response, encounter_id="enc-1"
+                )
+        finally:
+            chain._deferred_grounding.reset(token)
+        assert (
+            len(calls) == 1
+        )  # degrades on the FIRST failure -- no retry for a rate limit
+        skip_records = [
+            r.message
+            for r in caplog.records
+            if r.message.startswith("final_audit_skipped:")
+        ]
+        assert len(skip_records) == 1
+        assert skip_records[0].startswith("final_audit_skipped:judge_rate_limited")
+
+    @pytest.mark.asyncio
     async def test_clinical_evidence_failed_on_retry_still_raises(self, monkeypatch):
         chain_instance = chain.AttachmentSummarizationChain()
         chain_instance._model = object()

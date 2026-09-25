@@ -64,7 +64,14 @@ REGIME_SPLIT_CHARS = 80_000
 # sibling code is added under it, and is safe because the catch below is scoped to a single
 # verify_grounding call -- but if a future group addition could be raised by the judge,
 # revisit this comment first.
-_BONUS_AUDIT_DEGRADABLE = {"RESOURCE_LIMIT_EXCEEDED", "MODEL_TIMEOUT"}
+#
+# MODEL_RATE_LIMITED is included alongside MODEL_TIMEOUT for the same reason: summary_runtime's
+# model_call treats a 429 and a timeout as the same transient, provider-side failure class (both
+# get the single MAX_TRANSIENT_RETRIES retry before either code is raised). It is not a genuine
+# content rejection and not the systemic provider/config failure MODEL_AUTH_FAILED/
+# MODEL_UNAVAILABLE represent -- it is the single most common transient judge-call failure under
+# load, so it degrades the same way MODEL_TIMEOUT does.
+_BONUS_AUDIT_DEGRADABLE = {"RESOURCE_LIMIT_EXCEEDED", "MODEL_TIMEOUT", "MODEL_RATE_LIMITED"}
 
 
 def _skip_reason(exc):
@@ -79,6 +86,7 @@ def _skip_reason(exc):
         "GROUNDING_LATENCY_GATE": "latency_gate",
         "MODEL_CALL_BUDGET_EXCEEDED": "call_budget",
         "MODEL_TIMEOUT": "judge_timeout",
+        "MODEL_RATE_LIMITED": "judge_rate_limited",
         "VALIDATION_BUDGET_EXCEEDED": "sanity_bound",
     }.get(exc.reason_code, exc.reason_code)
 
