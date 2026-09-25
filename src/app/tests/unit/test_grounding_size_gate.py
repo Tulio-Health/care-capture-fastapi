@@ -51,6 +51,7 @@ from src.app.services.summary_runtime import (
     _UNBUDGETED,
     reserve_input_bytes,
     release_input_bytes,
+    reserve_provider_request,
 )
 
 import json
@@ -659,6 +660,97 @@ class TestUnbudgetedPath:
             )
             == clinical_grounding._JUDGE_LARGE_TIMEOUT_S
         )
+
+
+# ---------------------------------------------------------------------------
+# Test 7b (MAJOR-2, implementation-redteam-1.md): the budgeted reservation path.
+# TestUnbudgetedPath above only exercises `budget is None`; these prove the SAME
+# reserve_input_bytes/release_input_bytes pair is leak-free with an ACTIVE WorkBudget --
+# the arithmetic the red-team verified by hand with a throwaway probe (reserve -> 2
+# dispatches -> release ends at reserved=0, upper=2x text_bound; a refused reservation
+# leaves the budget at 0) reproduced here as a real, committed test.
+# ---------------------------------------------------------------------------
+
+
+class TestBudgetedReservationPath:
+    @pytest.mark.asyncio
+    async def test_reserve_two_dispatches_release_ends_at_zero_reserved_and_upper_bound_charged_twice(
+        self,
+    ):
+        budget = WorkBudget()
+        cb_token = _current_budget.set(budget)
+        try:
+            body = {
+                "messages": [{"role": "user", "content": "y" * 5_000}],
+                "max_tokens": 100,
+            }
+            # Same transform reserve_provider_request applies internally: text_only is the
+            # identity map for a body with no image_url content, so this IS the real charge
+            # dispatch will measure, not an approximation of it.
+            text_bound = len(json.dumps(body, ensure_ascii=False).encode())
+            margin = 250
+            predicted = text_bound + margin
+
+            token = reserve_input_bytes(budget, predicted, 1)
+            assert token is not None and token is not _UNBUDGETED
+            assert budget.reserved_input_bytes == predicted
+
+            request = NS(content=json.dumps(body).encode())
+            await reserve_provider_request(request)  # dispatch 1
+            assert budget.reserved_input_bytes == margin
+            assert budget.input_upper_bound_bytes == text_bound
+            assert budget.provider_requests == 1
+
+            await reserve_provider_request(request)  # dispatch 2 (simulated transient retry)
+            assert budget.reserved_input_bytes == 0
+            assert budget.input_upper_bound_bytes == 2 * text_bound
+            assert budget.provider_requests == 2
+
+            release_input_bytes(budget, token)
+            assert budget.reserved_input_bytes == 0  # no leak: nothing left to refund
+            assert (
+                budget.input_upper_bound_bytes == 2 * text_bound
+            )  # release only refunds `reserved`, it never touches the real charge
+        finally:
+            _current_budget.reset(cb_token)
+
+    def test_reservation_exceeding_job_headroom_is_refused_and_charges_nothing(self):
+        budget = WorkBudget(max_input_bytes_per_job=100)
+        token = reserve_input_bytes(budget, 1_000, 1)
+        assert token is None
+        assert budget.reserved_input_bytes == 0  # refused: no partial charge, no leak
+
+    @pytest.mark.asyncio
+    async def test_verify_grounding_raises_grounding_request_too_large_before_any_dispatch_when_job_wall_is_full(
+        self,
+    ):
+        budget = WorkBudget(max_input_bytes_per_job=1)
+        cb_token = _current_budget.set(budget)
+        run = _passing_run()
+        p1, p2, p3 = _settings_patches(run)
+        try:
+            with p1, p2, p3:
+                with pytest.raises(DocumentProcessingError) as excinfo:
+                    await verify_grounding(None, "source", {"clinical_summary": "x"})
+            assert excinfo.value.reason_code == "GROUNDING_REQUEST_TOO_LARGE"
+            run.assert_not_called()  # refused before the model was ever dispatched
+            assert budget.reserved_input_bytes == 0  # no leak on the refusal path
+        finally:
+            _current_budget.reset(cb_token)
+
+    def test_grounding_request_fits_reports_job_byte_budget_reason_when_job_wall_is_full(
+        self,
+    ):
+        budget = WorkBudget(max_input_bytes_per_job=1)
+        cb_token = _current_budget.set(budget)
+        try:
+            fit = clinical_grounding.grounding_request_fits(
+                "source", {"clinical_summary": "x"}
+            )
+            assert not fit.fits
+            assert fit.reason == "job_byte_budget"
+        finally:
+            _current_budget.reset(cb_token)
 
 
 # ---------------------------------------------------------------------------
