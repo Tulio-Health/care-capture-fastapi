@@ -9,6 +9,7 @@ deletion tests (items 1-2). Minimal local copies of test_attachment_chunking.py'
 _doc/_summary/_StubAgent helpers are used here to keep this file self-contained and reviewable
 as one unit for a safety-critical PR.
 """
+import time
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
@@ -25,6 +26,7 @@ from src.app.models.attachment_summarization import (
 from src.app.services.clinical_grounding import GROUNDING_SANITY_MAX_CHARACTERS
 from src.app.services.document_extraction import DocumentProcessingError
 from src.app.services.document_ingestion import mark_parsed
+from src.app.services.summary_runtime import WorkBudget, _current_budget
 
 
 def _doc(text: str, resource_id: str = "doc-1") -> DocumentAttachment:
@@ -403,9 +405,46 @@ async def test_regime_b_oversized_skip_emits_final_audit_skipped_record(monkeypa
 
 @pytest.mark.asyncio
 async def test_verify_final_with_retry_logs_remaining_seconds_at_entry(monkeypatch, caplog):
-    """round-6 MAJOR-3: remaining_seconds(0) must be emitted the moment
+    """round-6 MAJOR-3: remaining_seconds(...) must be emitted the moment
     _verify_final_with_retry is entered, before any regime branch or skip decision -- this is
-    the number that decides how much byte-coverage is reachable under the per-job clock."""
+    the number that decides how much byte-coverage is reachable under the per-job clock.
+
+    Regression test: the original call used remaining_seconds(0), which under any active
+    budget always evaluates min(0, real_remaining) == 0 -- a constant 0 regardless of real
+    time left. Install a real WorkBudget with a known deadline and assert the logged value
+    tracks real remaining wall-clock time, not a hardcoded 0."""
+    chain_instance = chain.AttachmentSummarizationChain()
+    calls = AsyncMock()
+    monkeypatch.setattr(chain, "verify_grounding", calls)
+    response = AttachmentSummarizationResponse(clinical_summary="x", documents_analyzed=1)
+
+    remaining_s = 219.0
+    budget = WorkBudget(deadline=time.monotonic() + remaining_s)
+    budget_token = _current_budget.set(budget)
+    token = chain._deferred_grounding.set([])  # Regime A -- takes the early-return path
+    try:
+        with caplog.at_level("INFO"):
+            await chain_instance._verify_final_with_retry("source text", response, encounter_id="enc-A")
+    finally:
+        chain._deferred_grounding.reset(token)
+        _current_budget.reset(budget_token)
+
+    calls.assert_not_awaited()  # behavior unchanged: Regime A still no-ops here
+    clock_records = [r.message for r in caplog.records if r.message.startswith("grounding_job_clock:verify_final_entry")]
+    assert len(clock_records) == 1
+    assert "encounter_id=enc-A" in clock_records[0]
+    logged = float(clock_records[0].split("remaining_seconds=")[1])
+    # remaining_seconds subtracts a 1-second safety margin and real wall-clock elapses between
+    # budget setup and the log call, so allow a small window rather than exact equality --
+    # the bug this guards against logged exactly 0, nowhere close to remaining_s.
+    assert remaining_s - 5 < logged < remaining_s
+
+
+@pytest.mark.asyncio
+async def test_verify_final_with_retry_logs_remaining_seconds_default_when_unbudgeted(monkeypatch, caplog):
+    """No active budget: remaining_seconds(default) must fall back to its `default` argument
+    (float('inf')) rather than crash or silently log a misleading finite number."""
+    assert _current_budget.get() is None
     chain_instance = chain.AttachmentSummarizationChain()
     calls = AsyncMock()
     monkeypatch.setattr(chain, "verify_grounding", calls)
@@ -414,15 +453,14 @@ async def test_verify_final_with_retry_logs_remaining_seconds_at_entry(monkeypat
     token = chain._deferred_grounding.set([])  # Regime A -- takes the early-return path
     try:
         with caplog.at_level("INFO"):
-            await chain_instance._verify_final_with_retry("source text", response, encounter_id="enc-A")
+            await chain_instance._verify_final_with_retry("source text", response, encounter_id="enc-B")
     finally:
         chain._deferred_grounding.reset(token)
 
-    calls.assert_not_awaited()  # behavior unchanged: Regime A still no-ops here
     clock_records = [r.message for r in caplog.records if r.message.startswith("grounding_job_clock:verify_final_entry")]
     assert len(clock_records) == 1
-    assert "encounter_id=enc-A" in clock_records[0]
-    assert "remaining_seconds=" in clock_records[0]
+    assert "encounter_id=enc-B" in clock_records[0]
+    assert "remaining_seconds=inf" in clock_records[0]
 
 
 @pytest.mark.asyncio

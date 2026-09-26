@@ -942,10 +942,13 @@ class AttachmentSummarizationChain:
         # Step 0 (grounding-check size-gate design, round9-revision.md section 10, round-6
         # MAJOR-3): the single number that decides how much of the design's byte-coverage is
         # actually reachable under the per-job wall-clock (section 8.4). Observability only --
-        # never gates, never raises.
+        # never gates, never raises. default=inf so this read is never itself an artificial
+        # cap (min(inf, real_remaining) == real_remaining); unbudgeted jobs log the honest
+        # "inf" -- calling with default=0 previously logged a constant 0 under any active
+        # budget, since min(0, real_remaining) == 0 whenever real_remaining >= 0.
         logger.info(
             "grounding_job_clock:verify_final_entry encounter_id=%s remaining_seconds=%s",
-            encounter_id, remaining_seconds(0),
+            encounter_id, remaining_seconds(float("inf")),
         )
         if _deferred_grounding.get() is not None:
             return
