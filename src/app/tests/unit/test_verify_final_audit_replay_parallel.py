@@ -16,8 +16,9 @@ from src.app.services.document_extraction import DocumentProcessingError
 # Large enough that `_verify_final`'s single deferred-audit attempt is skipped outright (over
 # GROUNDING_SANITY_MAX_CHARACTERS, section 4.4(c)'s pinned malformed-input bound -- the same
 # bound grounding_request_fits checks first, on every path), landing straight in the
-# replay-loop fallback path this test targets.
-_HUGE_SOURCE = "x" * 200_000
+# replay-loop fallback path this test targets. STEP 4: GROUNDING_SANITY_MAX_CHARACTERS is now
+# 600_000 (was 160_000), so this must clear that, not the old value.
+_HUGE_SOURCE = "x" * 650_000
 _CANDIDATE = NS(model_dump=lambda: {"clinical_summary": "irrelevant"})
 
 

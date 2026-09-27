@@ -26,6 +26,7 @@ from src.app.services.document_ingestion import require_parsed, mark_parsed
 from src.app.services.document_extraction import DocumentProcessingError
 from src.app.services.clinical_grounding import (
     GROUNDING_POLICY,
+    _JUDGE_DISPATCHES,
     _LARGE_JUDGE_RETRY_CUTOFF_BYTES,
     grounding_request_fits,
     validate_quotes,
@@ -935,9 +936,17 @@ class AttachmentSummarizationChain:
         grounding_request_fits predicate; infrastructure failures on this BONUS check degrade
         to a recorded skip instead of killing the appointment (_BONUS_AUDIT_DEGRADABLE); the
         previously-bare retry below is now wrapped (round-4 MAJOR-2); and the outer retry is
-        skipped above the large-body cutoff (section 8.2) -- inert in Step 2 since
-        grounding_request_fits' body_bytes can never exceed _LARGE_JUDGE_RETRY_CUTOFF_BYTES
-        here, kept because Step 4 needs the branch to already exist.
+        skipped above the large-body cutoff (section 8.2) -- on today's measured corpus this
+        stays inert (body_bytes never exceeds _LARGE_JUDGE_RETRY_CUTOFF_BYTES), but the
+        branch is live-if-reached now: STEP 4 (step4-corrected-scope.md) raised the size gate
+        to admit judge bodies up to max_judge_input_bytes=700_000, so a body landing in the
+        500,000-700,000 B band would trip this cutoff and skip the retry for real.
+
+        STEP 4: both verify_grounding calls below reserve at dispatches=_JUDGE_DISPATCHES
+        (=2) instead of the default 1 -- this is the ONLY call site that does (sites 1, 3 and
+        4 keep the default), covering the internal MAX_TRANSIENT_RETRIES layer at the one
+        site whose body can be large enough to matter (step4-corrected-scope.md section 2,
+        round9-revision.md section 8.2).
         """
         # Step 0 (grounding-check size-gate design, round9-revision.md section 10, round-6
         # MAJOR-3): the single number that decides how much of the design's byte-coverage is
@@ -957,7 +966,9 @@ class AttachmentSummarizationChain:
             _record_final_audit_skip(fit.reason, fit.body_bytes, encounter_id)
             return
         try:
-            await verify_grounding(self.model, source, candidate)
+            await verify_grounding(
+                self.model, source, candidate, dispatches=_JUDGE_DISPATCHES
+            )
             return
         except DocumentProcessingError as exc:
             if exc.code in _BONUS_AUDIT_DEGRADABLE:
@@ -969,7 +980,10 @@ class AttachmentSummarizationChain:
             _record_final_audit_skip("retry_skipped:body_too_large", fit.body_bytes, encounter_id)
             return
         try:
-            await verify_grounding(self.model, source, candidate)  # spurious-rejection retry
+            # spurious-rejection retry
+            await verify_grounding(
+                self.model, source, candidate, dispatches=_JUDGE_DISPATCHES
+            )
         except DocumentProcessingError as exc:  # round-4 MAJOR-2: this retry is now wrapped
             if exc.code in _BONUS_AUDIT_DEGRADABLE:
                 _record_final_audit_skip("retry_exhausted", fit.body_bytes, encounter_id)
