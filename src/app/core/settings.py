@@ -41,7 +41,20 @@ class Settings(BaseSettings):
     # Document Storage (S3 download scope allowlist)
     DOCUMENT_S3_BUCKET: str = ""
 
-    ENABLE_DOCUMENT_OCR: bool = True
+    # Disabled 2026-09-28 pending a fix: the post-transcription verification gate
+    # (document_ocr.transcribe_verified_image) rejects nearly every correct transcription over
+    # non-differences (identical quotes, self-contradictory "No discrepancy" verdicts with
+    # matches=False) and discards the whole document on rejection. Measured 24/24 real dev
+    # OCR-routed documents -> 0 extracted characters, including 3/4 of this repo's own
+    # "should pass" fixtures. Root cause + proposed fix (partial-page acceptance, out of scope
+    # for this change): .claude/debug-reports/2026-09-28-disable-broken-document-ocr.md.
+    # This is a pure code-level default: no env var, .env file, Dockerfile, or SSM parameter
+    # (see ssm_loader.py's explicit PARAMETER_MAPPINGS allowlist) sets ENABLE_DOCUMENT_OCR in
+    # any real environment, so this default is the actual effective value everywhere. Disabling
+    # it loses no content today (a failing OCR call already yields 0 chars) and stops ~4,000
+    # wasted gpt-4o-mini vision calls per full corpus pass. Do not re-enable without first
+    # fixing the verification gate and re-measuring against real documents.
+    ENABLE_DOCUMENT_OCR: bool = False
     DOCUMENT_OCR_MODEL: str = "gpt-4o-mini"
     DOCUMENT_VERIFICATION_MODEL: str = "gpt-4.1-mini"
     # Defaults require no deployment/environment changes. Retry is only for truncation.
