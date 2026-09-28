@@ -1,0 +1,8 @@
+SYNTHETIC QA
+Right knee pain, not left.
+Dose: 0.5 mg, not 5 mg.
+Temperature: 37.5 C.
+Vitamin B12: 180 pg/mL.
+Follow-up: 2026-10-01.
+No evidence of fracture.
+Prescription status: stopped.

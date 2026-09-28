@@ -1,0 +1,132 @@
+{
+  "clinical.html": {
+    "diagnoses": [
+      {
+        "official_diagnosis": "Iron deficiency anemia",
+        "lay_explanation": "Iron deficiency anemia"
+      }
+    ],
+    "procedures": [
+      {
+        "description": "Abdominal ultrasound",
+        "status": "ordered",
+        "source_section": "Procedure",
+        "source_quote": "Ordered; not performed"
+      }
+    ]
+  },
+  "clinical_utf8.txt": {
+    "diagnoses": [
+      {
+        "official_diagnosis": "Iron deficiency anemia",
+        "lay_explanation": "Iron deficiency anemia"
+      }
+    ],
+    "medications": [
+      "Ferrous sulfate 325 mg orally once daily"
+    ],
+    "procedures": [
+      {
+        "description": "Abdominal ultrasound",
+        "status": "ordered",
+        "source_section": "Plan",
+        "source_quote": "Abdominal ultrasound ordered; not performed at this visit."
+      }
+    ]
+  },
+  "clinical_statuses.txt": {
+    "procedures": [
+      {
+        "description": "ECG",
+        "status": "performed",
+        "source_quote": "2026-09-08: ECG performed; normal sinus rhythm."
+      },
+      {
+        "description": "Ultrasound",
+        "status": "ordered",
+        "source_quote": "Ultrasound ordered, not performed."
+      }
+    ],
+    "medications": [
+      "Metformin stopped",
+      "Amoxicillin prescribed; dose not documented"
+    ]
+  },
+  "later_completed.txt": {
+    "procedures": [
+      {
+        "description": "Abdominal ultrasound",
+        "status": "performed",
+        "source_quote": "2026-09-10: Abdominal ultrasound performed."
+      }
+    ]
+  },
+  "scan_page2.jpg": {
+    "lab_results": [
+      "Ferritin: 8 ng/mL",
+      "Hemoglobin: 10.2 g/dL"
+    ]
+  },
+  "duplicate_sections.txt": {
+    "narrative_summary": "Assessment: Iron deficiency anemia. Plan: Return in 2 weeks.",
+    "diagnoses": [
+      {
+        "official_diagnosis": "Iron deficiency anemia",
+        "lay_explanation": "Iron deficiency anemia"
+      }
+    ]
+  },
+  "prompt_injection.txt": {
+    "diagnoses": [
+      {
+        "official_diagnosis": "Iron deficiency anemia",
+        "lay_explanation": "Iron deficiency anemia"
+      }
+    ],
+    "medications": [
+      "Ferrous sulfate 325 mg orally once daily"
+    ],
+    "procedures": [
+      {
+        "description": "Abdominal ultrasound",
+        "status": "ordered",
+        "source_section": "Plan",
+        "source_quote": "Abdominal ultrasound ordered; not performed at this visit."
+      }
+    ],
+    "narrative_summary": "Iron deficiency anemia. Abdominal ultrasound ordered; not performed at this visit. Ferrous sulfate 325 mg orally once daily. Repeat CBC in 2 weeks."
+  },
+  "conflicting_doses.txt": {
+    "narrative_summary": "Conflicting documented doses: 2026-09-01: Medication Q 5 mg daily. 2026-09-08: Medication Q 10 mg daily. Undated note: Medication Q 20 mg daily. The current dose is not established by these conflicting records."
+  },
+  "followup_a.txt": {
+    "follow_up": [
+      {
+        "follow_up": "Return in 2 weeks.",
+        "source_quote": "Return in 2 weeks."
+      }
+    ],
+    "procedures": [
+      {
+        "description": "ECG",
+        "status": "performed",
+        "source_quote": "ECG performed 2026-09-08. Finding A. Return in 2 weeks."
+      }
+    ]
+  },
+  "followup_b.txt": {
+    "follow_up": [
+      {
+        "follow_up": "Arrange a repeat laboratory test in one month.",
+        "source_quote": "Arrange a repeat laboratory test in one month."
+      }
+    ],
+    "procedures": [
+      {
+        "description": "ECG",
+        "status": "performed",
+        "source_quote": "ECG performed 2026-09-08. A substantially longer description of finding B. Arrange a repeat laboratory test in one month."
+      }
+    ]
+  }
+}

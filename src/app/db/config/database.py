@@ -27,6 +27,7 @@ def get_engine() -> AsyncEngine:
         # Create async engine with appropriate configuration
         engine_config = {
             "echo": settings.DEBUG,
+            "hide_parameters": True,  # Clinical JSON/credentials must not enter SQL logs.
             "pool_pre_ping": True,  # Test connections before using them
             "pool_recycle": 300,    # Recycle connections after 5 minutes
         }
@@ -92,4 +93,4 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         try:
             yield session
         finally:
-            await session.close() 
+            await session.close()

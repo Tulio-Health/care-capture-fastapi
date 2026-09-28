@@ -1,0 +1,7 @@
+SYNTHETIC QA DOCUMENT - NOT A REAL PATIENT
+Patient: QA Example 001
+Encounter: 2026-09-08
+Assessment: Iron deficiency anemia.
+Plan: Abdominal ultrasound ordered; not performed at this visit.
+Medication: Ferrous sulfate 325 mg orally once daily.
+Follow-up: Repeat CBC in 2 weeks.

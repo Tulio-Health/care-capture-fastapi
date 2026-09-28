@@ -6,6 +6,8 @@ import logging
 from typing import List
 from sqlalchemy import text
 
+from src.app.core.settings import resolve_redis_password
+
 logger = logging.getLogger(__name__)
 
 async def validate_clerk_key() -> bool:
@@ -108,7 +110,7 @@ async def validate_redis_connection() -> bool:
         redis_client = redis.Redis(
             host=redis_host,
             port=redis_port,
-            password=redis_password if redis_password else None,
+            password=resolve_redis_password(redis_password),
             decode_responses=True
         )
         

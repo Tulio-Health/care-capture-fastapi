@@ -1,0 +1,3 @@
+SYNTHETIC QA
+Patient QA Example 001: Ultrasound ordered.
+Patient QA Example 002: Ultrasound performed.

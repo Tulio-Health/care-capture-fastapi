@@ -221,12 +221,12 @@ function switchTab(t) {
   });
 }
 
-function onFileSelect(files) { selFiles = Array.from(files).filter(f=>f.size>0); renderFiles(); }
+function onFileSelect(files) { selFiles = Array.from(files); renderFiles(); }
 function onDragOver(e) { e.preventDefault(); document.getElementById('drop-zone').classList.add('drag-over'); }
 function onDrop(e) {
   e.preventDefault();
   document.getElementById('drop-zone').classList.remove('drag-over');
-  selFiles = Array.from(e.dataTransfer.files).filter(f=>f.size>0);
+  selFiles = Array.from(e.dataTransfer.files);
   renderFiles();
 }
 function renderFiles() {
@@ -367,28 +367,27 @@ async def playground_attachment_summary(
     Each file becomes its own DocumentAttachment, preserving per-document structure
     for the map-reduce pipeline. Protected by ``X-Playground-Key`` header.
     """
+    from src.app.services.document_ingestion import mark_parsed
+    from src.app.core.settings import get_settings
+    settings = get_settings()
     extractor = DocumentTextExtractor()
     documents: List[DocumentAttachment] = []
 
     if files:
-        real_files = [f for f in files if f.filename and f.size and f.size > 0]
+        real_files = files
+        if len(real_files) > 100:
+            raise HTTPException(status_code=413, detail="DOCUMENT_LIMIT_EXCEEDED")
         if not real_files and not documents_text:
             raise HTTPException(
                 status_code=422, detail="No document text or valid files provided"
             )
 
         for upload in real_files:
-            content = await upload.read()
-            if not content:
-                continue
-            inferred_type = extractor._infer_type_from_filename(upload.filename or "")
-            content_type = (
-                inferred_type
-                if inferred_type != "application/octet-stream"
-                else (upload.content_type or "text/plain")
-            )
+            content = await upload.read(extractor.MAX_FILE_SIZE + 1)
+            await upload.close()
+            content_type = upload.content_type or "application/octet-stream"
             try:
-                text = extractor.extract_text(content, content_type, upload.filename)
+                text = await extractor.extract_text_async(content, content_type, upload.filename)
                 documents.append(
                     DocumentAttachment(
                         file_path=f"playground://{upload.filename}",
@@ -400,7 +399,7 @@ async def playground_attachment_summary(
                     )
                 )
             except Exception as exc:
-                logger.warning("Failed to extract text from %s: %s", upload.filename, exc)
+                logger.warning("Playground extraction failed; error_type=%s", type(exc).__name__)
                 documents.append(
                     DocumentAttachment(
                         file_path=f"playground://{upload.filename}",
@@ -409,7 +408,7 @@ async def playground_attachment_summary(
                         file_name=upload.filename,
                         size=upload.size,
                         extracted_text="",
-                        extraction_error=str(exc),
+                        extraction_error=getattr(exc, "code", "DOCUMENT_PROCESSING_FAILED"),
                     )
                 )
 
@@ -423,9 +422,11 @@ async def playground_attachment_summary(
                 file_path="playground://paste",
                 content_type="text/plain",
                 title="Pasted Document",
-                extracted_text=documents_text,
+                extracted_text=extractor.extract_text(documents_text.encode("utf-8"), "text/plain"),
             )
         )
+
+    documents = [mark_parsed(doc) if not doc.extraction_error else doc for doc in documents]
 
     request = PlaygroundAttachmentRequest(
         extraction_system_prompt=extraction_system_prompt,

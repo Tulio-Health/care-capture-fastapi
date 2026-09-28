@@ -1,0 +1,13 @@
+{
+  "pages": [
+    {
+      "page": 1,
+      "text": "SYNTHETIC QA DOCUMENT - NOT A REAL PATIENT\nPatient: QA Example 001\nEncounter: 2026-09-08\nAssessment: Iron deficiency anemia.\nPlan: Abdominal ultrasound ordered; not performed at this visit.\nMedication: Ferrous sulfate 325 mg orally once daily.\nFollow-up: Repeat CBC in 2 weeks."
+    },
+    {
+      "page": 2,
+      "text": "SYNTHETIC QA DOCUMENT - PAGE 2\nPatient: QA Example 001\nFerritin: 8 ng/mL\nHemoglobin: 10.2 g/dL\nNo evidence of pneumonia."
+    }
+  ],
+  "note": "Human-authored source used to render scans. A model transcript is not ground truth."
+}

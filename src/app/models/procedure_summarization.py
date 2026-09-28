@@ -23,6 +23,7 @@ class ProcedureSummary(BaseModel):
     source_document_title: str = Field(
         ..., description="Title of the source document as provided in the metadata"
     )
+    event_source_quote: str = Field(min_length=1, description="Verbatim source passage identifying this distinct performed event. Include its name, date or local context so the passage occurs exactly once in the document.")
     procedure_type: str = Field(
         ...,
         description=(
@@ -85,6 +86,12 @@ class ProcedureSummary(BaseModel):
     )
 
 
+class ProcedureDocumentExtraction(BaseModel):
+    """Zero or more distinct performed events from one document; orders are not events."""
+    procedures: List[ProcedureSummary] = Field(default_factory=list, max_length=30)
+    evidence_quotes: List[str] = Field(default_factory=list, description="Exact source passages for all returned events")
+
+
 class ProcedureSummarizationRequest(BaseModel):
     """Request model for procedure summarization."""
 
@@ -102,4 +109,10 @@ class ProcedureSummarizationRequest(BaseModel):
     user_id: UUID = Field(..., description="User ID (primary key from users table)")
     encounter_id: Optional[str] = Field(
         None, description="Optional encounter ID to filter DocumentReferences"
+    )
+    timeout_seconds: Optional[int] = Field(
+        default=120,
+        description="Maximum execution time in seconds. Default: 120 seconds.",
+        ge=10,
+        le=300,
     )

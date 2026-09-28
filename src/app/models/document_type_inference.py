@@ -6,11 +6,13 @@ request/response model or route (RESEARCH.md §7a).
 
 from typing import Any, List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class DocumentTypeInferenceRequest(BaseModel):
     """Minimal CodeableConcept-derived fields only. Never includes raw document/attachment content."""
+
+    model_config = ConfigDict(extra="forbid")
 
     id: str = Field(
         ...,

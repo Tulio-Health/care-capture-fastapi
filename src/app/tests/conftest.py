@@ -1,13 +1,13 @@
 import pytest
 from fastapi.testclient import TestClient
 from typing import Generator
-from ..main import app
 from ..db.config.database import engine
 from ..db.objects.entities.users import Base
 
 @pytest.fixture(scope="session")
 def test_client() -> Generator[TestClient, None, None]:
     """Create a test client for the FastAPI application"""
+    from ..main import app
     with TestClient(app) as client:
         yield client
 

@@ -1,0 +1,4 @@
+SYNTHETIC QA
+Assessment: Iron deficiency anemia.
+Copied prior assessment: Iron deficiency anemia.
+Plan: Return in 2 weeks.

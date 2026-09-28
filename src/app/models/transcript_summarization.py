@@ -1,5 +1,6 @@
 from uuid import UUID
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from datetime import datetime
 
 from src.app.models.attachment_summarization import (
     DiagnosisDetail,
@@ -7,13 +8,22 @@ from src.app.models.attachment_summarization import (
 )
 
 class Transcript(BaseModel):
-    text: str
+    text: str = Field(min_length=1, max_length=100_000)
     created_at: str
     language_code: str
 
+    @field_validator("created_at")
+    @classmethod
+    def validate_created_at(cls, value):
+        try:
+            datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("created_at must be an ISO timestamp") from exc
+        return value
+
 class TranscriptSummarizationRequest(BaseModel):
     appointment_id: UUID
-    transcripts:list[Transcript]
+    transcripts:list[Transcript] = Field(min_length=1, max_length=1000)
     user_id: UUID
 
 

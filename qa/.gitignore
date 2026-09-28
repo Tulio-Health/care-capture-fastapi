@@ -1,0 +1,11 @@
+# Regression-only local credentials. Keep the example tracked.
+.env.regression.local
+.env.regression.*.local
+
+# Generated regression/review artifacts stay local; retain generators and testdata.
+/outputs/
+/client_review/
+/OCR_review_pack/
+/*.zip
+/CLINICAL_REVIEW.md
+/OCR_RESULTS.md

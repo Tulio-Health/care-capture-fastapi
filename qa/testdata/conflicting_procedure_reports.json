@@ -1,0 +1,18 @@
+{
+  "reports": [
+    {
+      "document_id": "doc-a",
+      "date": "2026-09-08",
+      "procedure": "ECG",
+      "outcome": "normal",
+      "followup": "Return in 2 weeks."
+    },
+    {
+      "document_id": "doc-b",
+      "date": "2026-09-08",
+      "procedure": "ECG",
+      "outcome": "abnormal",
+      "followup": "Repeat ECG tomorrow."
+    }
+  ]
+}

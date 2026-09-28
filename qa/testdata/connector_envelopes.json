@@ -1,0 +1,56 @@
+{
+  "note": "Synthetic normalized examples, not official vendor wire contracts",
+  "sources": [
+    {
+      "connector": "cerner",
+      "documents": [
+        {
+          "id": "doc-a",
+          "contentType": "text/html; charset=\"utf-8\"",
+          "file": "clinical.html",
+          "downloadStatus": "success"
+        },
+        {
+          "id": "doc-b",
+          "contentType": "application/pdf",
+          "file": "scanned.pdf",
+          "downloadStatus": "failed"
+        }
+      ]
+    },
+    {
+      "connector": "fasten",
+      "documents": [
+        {
+          "id": "doc-a",
+          "contentType": "text/html; charset=\"utf-8\"",
+          "file": "clinical.html",
+          "downloadStatus": "success"
+        },
+        {
+          "id": "doc-b",
+          "contentType": "application/pdf",
+          "file": "scanned.pdf",
+          "downloadStatus": "failed"
+        }
+      ]
+    },
+    {
+      "connector": "generic",
+      "documents": [
+        {
+          "id": "doc-a",
+          "contentType": "text/html; charset=\"utf-8\"",
+          "file": "clinical.html",
+          "downloadStatus": "success"
+        },
+        {
+          "id": "doc-b",
+          "contentType": "application/pdf",
+          "file": "scanned.pdf",
+          "downloadStatus": "failed"
+        }
+      ]
+    }
+  ]
+}

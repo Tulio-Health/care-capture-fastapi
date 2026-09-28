@@ -64,7 +64,17 @@ jobs:
             --build-arg GIT_COMMIT="${{ github.sha }}" \
             --build-arg GIT_BRANCH="${{ github.ref_name }}" \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          
+
+          # Gate the push: prove the final image loads the baked o200k_base tiktoken
+          # encoding with ALL network access disabled. The in-Dockerfile sha256 assert
+          # alone cannot catch this on a networked build step (tiktoken silently
+          # re-downloads a corrupt cache before the assert runs); this re-loads the
+          # ALREADY-BAKED encoding in the built image under --network none and fails
+          # the job loudly if the runtime would ever need the network for it.
+          timeout 120 docker run --rm --network none \
+            $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            python -c "import tiktoken; enc = tiktoken.get_encoding('o200k_base'); assert enc.encode_ordinary('offline check'), 'no tokens'; print('tiktoken offline load OK')"
+
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           # Note: Not pushing 'latest' tag in production to avoid auto-deployment conflicts
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:production

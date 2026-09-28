@@ -2,7 +2,10 @@ from langchain.prompts import ChatPromptTemplate
 from langsmith import traceable
 from langchain_core.output_parsers import PydanticOutputParser
 
-from src.app.common.llm_factory import get_default_chat_model
+from src.app.common.llm_factory import get_default_chat_model, get_pydantic_ai_model
+from src.app.services.clinical_grounding import GROUNDING_POLICY, verify_grounding
+from src.app.services.document_extraction import DocumentTextExtractor, DocumentProcessingError
+from src.app.services.summary_runtime import model_call
 from src.app.core.langsmith_trace import LangSmithTrace
 from src.app.models.transcript_summarization import TranscriptSummarizationResponse
 
@@ -28,7 +31,7 @@ class TranscriptSummarizationChain:
         self._model = None
         self.parser = PydanticOutputParser(pydantic_object=TranscriptSummarizationResponse)
         self.prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a medical information extraction assistant. Your task is to analyze medical conversations and extract key information in a structured format.
+            ("system", GROUNDING_POLICY + "\n" + """You are a medical information extraction assistant. Your task is to analyze medical conversations and extract key information in a structured format.
             Rules:
             - Extract only explicitly stated health or medical information
             - Be precise with medical terminology
@@ -44,18 +47,18 @@ class TranscriptSummarizationChain:
             - Keep provider_patient_discussion_summary_text to a brief 2-3 sentence overview only; put exam/history/objective specifics in provider_patient_discussion_key_points instead
 
             Output Format Requirements:{output_format}"""),
-            ("user", 
+            ("user",
              'Conversation: {text}')
         ])
         self._chain = None
-    
+
     @property
     def model(self):
         """Lazy load the model on first access"""
         if self._model is None:
             self._model = get_default_chat_model()
         return self._model
-    
+
     @property
     def chain(self):
         """Lazy load the chain on first access"""
@@ -65,5 +68,9 @@ class TranscriptSummarizationChain:
 
     @traceable(name="summarize")
     async def summarize(self, text) -> TranscriptSummarizationResponse:
-        result = await self.chain.ainvoke({"text": text, "output_format": self.parser.get_format_instructions()}, config={"callbacks": get_callbacks()})
+        text = DocumentTextExtractor().extract_text(text.encode("utf-8"), "text/plain; charset=utf-8")
+        if len(text) > 100_000:
+            raise DocumentProcessingError("TRANSCRIPT_CONTEXT_LIMIT_EXCEEDED")
+        result = await model_call(self.chain.ainvoke, {"text": text, "output_format": self.parser.get_format_instructions()}, config={"callbacks": get_callbacks()})
+        await verify_grounding(get_pydantic_ai_model(), text, result)
         return result

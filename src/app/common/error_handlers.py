@@ -9,10 +9,10 @@ from pydantic import ValidationError
 from starlette.responses import JSONResponse
 
 from .error_models import (
-    APIErrorResponse, 
-    ErrorType, 
-    ValidationErrorDetail, 
-    BusinessLogicError, 
+    APIErrorResponse,
+    ErrorType,
+    ValidationErrorDetail,
+    BusinessLogicError,
     ExternalServiceError
 )
 from .logging import get_logger
@@ -48,9 +48,9 @@ def create_validation_error_response(
     request_id: str = None
 ) -> JSONResponse:
     """Create a detailed validation error response"""
-    
+
     validation_errors = []
-    
+
     # Handle FastAPI RequestValidationError
     if isinstance(exc, RequestValidationError):
         for error in exc.errors():
@@ -62,14 +62,14 @@ def create_validation_error_response(
                     json.dumps(invalid_value)
                 except (TypeError, ValueError):
                     invalid_value = serialize_for_json(invalid_value)
-            
+
             validation_errors.append(ValidationErrorDetail(
                 field=field,
                 message=error["msg"],
                 invalid_value=invalid_value,
                 expected_type=error.get("type")
             ))
-    
+
     # Handle Pydantic ValidationError
     elif isinstance(exc, ValidationError):
         for error in exc.errors():
@@ -81,14 +81,14 @@ def create_validation_error_response(
                     json.dumps(invalid_value)
                 except (TypeError, ValueError):
                     invalid_value = serialize_for_json(invalid_value)
-            
+
             validation_errors.append(ValidationErrorDetail(
                 field=field,
                 message=error["msg"],
                 invalid_value=invalid_value,
                 expected_type=error.get("type")
             ))
-    
+
     error_response = APIErrorResponse(
         error_type=ErrorType.VALIDATION_ERROR,
         message="Request validation failed",
@@ -99,9 +99,9 @@ def create_validation_error_response(
         path=str(request.url.path),
         method=request.method
     )
-    
+
     logger.warning(f"Validation error on {request.method} {request.url.path}: {validation_errors}")
-    
+
     try:
         content = error_response.model_dump(exclude_none=True)
         return JSONResponse(
@@ -130,7 +130,7 @@ def create_business_logic_error_response(
     request_id: str = None
 ) -> JSONResponse:
     """Create a business logic error response"""
-    
+
     error_response = APIErrorResponse(
         error_type=ErrorType.BUSINESS_LOGIC_ERROR,
         message=exc.message,
@@ -140,9 +140,9 @@ def create_business_logic_error_response(
         path=str(request.url.path),
         method=request.method
     )
-    
+
     logger.warning(f"Business logic error on {request.method} {request.url.path}: {exc.message}")
-    
+
     return JSONResponse(
         status_code=400,
         content=error_response.model_dump(exclude_none=True)
@@ -155,19 +155,19 @@ def create_external_service_error_response(
     request_id: str = None
 ) -> JSONResponse:
     """Create an external service error response"""
-    
+
     error_response = APIErrorResponse(
         error_type=ErrorType.EXTERNAL_SERVICE_ERROR,
         message=f"External service error: {exc.service}",
-        details=exc.details or exc.message,
+        details="Please try again later.",
         request_id=request_id,
         timestamp=datetime.utcnow().isoformat(),
         path=str(request.url.path),
         method=request.method
     )
-    
-    logger.error(f"External service error on {request.method} {request.url.path}: {exc.service} - {exc.message}")
-    
+
+    logger.error("External dependency failed; diagnostic_id=%s", request_id)
+
     return JSONResponse(
         status_code=503,
         content=error_response.model_dump(exclude_none=True)
@@ -180,7 +180,7 @@ def create_http_error_response(
     request_id: str = None
 ) -> JSONResponse:
     """Create a standardized HTTP error response"""
-    
+
     # Determine error type based on status code
     error_type_mapping = {
         401: ErrorType.AUTHENTICATION_ERROR,
@@ -188,9 +188,9 @@ def create_http_error_response(
         404: ErrorType.NOT_FOUND_ERROR,
         429: ErrorType.RATE_LIMIT_ERROR,
     }
-    
+
     error_type = error_type_mapping.get(exc.status_code, ErrorType.INTERNAL_ERROR)
-    
+
     error_response = APIErrorResponse(
         error_type=error_type,
         message=str(exc.detail),
@@ -199,7 +199,7 @@ def create_http_error_response(
         path=str(request.url.path),
         method=request.method
     )
-    
+
     return JSONResponse(
         status_code=exc.status_code,
         content=error_response.model_dump(exclude_none=True)
@@ -212,7 +212,7 @@ def create_internal_error_response(
     request_id: str = None
 ) -> JSONResponse:
     """Create an internal server error response"""
-    
+
     error_response = APIErrorResponse(
         error_type=ErrorType.INTERNAL_ERROR,
         message="An internal error occurred",
@@ -222,12 +222,11 @@ def create_internal_error_response(
         path=str(request.url.path),
         method=request.method
     )
-    
+
     logger.error(
-        f"Internal error on {request.method} {request.url.path}: {str(exc)}",
-        exc_info=True
+        "Internal error; diagnostic_id=%s error_type=%s", request_id, type(exc).__name__
     )
-    
+
     return JSONResponse(
         status_code=500,
         content=error_response.model_dump(exclude_none=True)
@@ -236,8 +235,10 @@ def create_internal_error_response(
 
 def extract_request_id(request: Request) -> str:
     """Extract request ID from request headers or generate one"""
-    # Try to get request ID from headers (if set by middleware)
-    request_id = request.headers.get("x-request-id")
-    if not request_id and hasattr(request.state, "request_id"):
-        request_id = request.state.request_id
-    return request_id
+    from uuid import uuid4
+    # Never trust an externally supplied correlation identifier as the diagnostic ID.
+    diagnostic_id = getattr(request.state, "diagnostic_id", None)
+    if not diagnostic_id:
+        diagnostic_id = str(uuid4())
+        request.state.diagnostic_id = diagnostic_id
+    return diagnostic_id

@@ -1,0 +1,58 @@
+{
+  "fabricated_procedure": {
+    "procedures": [
+      {
+        "name": "Ultrasound",
+        "status": "performed",
+        "quote": "Ultrasound ordered, not performed."
+      }
+    ]
+  },
+  "same_count_wrong_identity": {
+    "procedures": [
+      {
+        "name": "Ultrasound",
+        "status": "performed"
+      }
+    ]
+  },
+  "missing_quote": {
+    "facts": [
+      {
+        "claim": "Surgery completed",
+        "quote": "Surgery completed"
+      }
+    ]
+  },
+  "invalid_json": "{\"facts\": [",
+  "empty": {
+    "facts": []
+  },
+  "truncated": {
+    "finish_reason": "length",
+    "text": "{\"pages\":["
+  },
+  "invented_page": {
+    "pages": [
+      {
+        "page": 999,
+        "text": "Ultrasound performed."
+      }
+    ]
+  },
+  "overconfident_wrong": {
+    "confidence": 1.0,
+    "text": "Ultrasound performed."
+  },
+  "translated_scalars": {
+    "dose": 50,
+    "active": true
+  },
+  "translation_source": {
+    "dose": 5,
+    "active": false
+  },
+  "changed_negation": "Evidence of pneumonia.",
+  "changed_unit": "Ferritin: 8 mg/mL",
+  "unsafe_error": "Traceback SECRET_QA_TOKEN https://qa.example.invalid/signed?token=SECRET_QA_TOKEN"
+}

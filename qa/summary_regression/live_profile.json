@@ -1,0 +1,33 @@
+{
+  "description": "Selected accuracy cases against the SAME fixed FastAPI pipeline with real OpenAI. External storage/repositories remain local/in-memory. Fault injection stays in mock mode.",
+  "case_ids": [
+    "MIME-01",
+    "MIME-03",
+    "MIME-04",
+    "ENC-02",
+    "ENC-03",
+    "ENC-05",
+    "PARSE-06",
+    "DOCX-TABLE",
+    "CLIN-02",
+    "CLIN-04",
+    "CLIN-05",
+    "GROUND-NEGATION",
+    "GROUND-UNCERTAIN",
+    "GROUND-FAMILY",
+    "GROUND-DOSE",
+    "GROUND-STOPPED",
+    "SEC-03",
+    "A05-MERGE",
+    "CLIN-LATERALITY",
+    "CLIN-CONFLICTDOSE",
+    "OCR-01",
+    "OCR-02",
+    "VISION-REGION",
+    "VISION-TIFF",
+    "VISION-ROTATED",
+    "VISION-TABLE",
+    "VISION-REVIEW"
+  ],
+  "manual_review_required": true
+}

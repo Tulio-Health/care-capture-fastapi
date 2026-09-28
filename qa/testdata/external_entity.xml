@@ -1,0 +1,1 @@
+<!DOCTYPE x [<!ENTITY external SYSTEM "https://qa.example.invalid/entity">]><x>&external;</x>

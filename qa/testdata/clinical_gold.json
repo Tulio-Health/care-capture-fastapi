@@ -1,0 +1,55 @@
+{
+  "facts": [
+    {
+      "id": "f1",
+      "quote": "ECG performed",
+      "subject": "patient",
+      "status": "performed",
+      "date": "2026-09-08"
+    },
+    {
+      "id": "f2",
+      "quote": "Ultrasound ordered, not performed.",
+      "subject": "patient",
+      "status": "ordered"
+    },
+    {
+      "id": "f3",
+      "quote": "No evidence of pneumonia.",
+      "subject": "patient",
+      "status": "negated"
+    },
+    {
+      "id": "f4",
+      "quote": "Rule out malignancy; no confirmed malignancy.",
+      "subject": "patient",
+      "status": "uncertain"
+    },
+    {
+      "id": "f5",
+      "quote": "Mother had breast cancer.",
+      "subject": "family",
+      "status": "history"
+    },
+    {
+      "id": "f6",
+      "quote": "Metformin stopped.",
+      "subject": "patient",
+      "status": "stopped"
+    },
+    {
+      "id": "f7",
+      "quote": "Amoxicillin prescribed; dose not documented.",
+      "subject": "patient",
+      "status": "prescribed",
+      "dose": null
+    }
+  ],
+  "unsupported_claims": [
+    "Ultrasound performed at this visit",
+    "Confirmed pneumonia",
+    "Confirmed malignancy",
+    "Patient has breast cancer",
+    "Amoxicillin 500 mg"
+  ]
+}

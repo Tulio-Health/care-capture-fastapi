@@ -1,0 +1,101 @@
+{
+  "derivation": "Image-only rasterization of public clinical sample PDFs; originals unchanged.",
+  "documents": [
+    {
+      "file": "doctor_pediatric_progress_examples_ocr.pdf",
+      "original": "../doctor_pediatric_progress_examples.pdf",
+      "source_url": "https://www.uthsc.edu/pediatrics/clerkship/documents/progress-notes.pdf",
+      "original_sha256": "5946612d18cc449259e203b5445561fff103e20b59ed55c6f3ea72d45bd6e537",
+      "original_pages": [
+        1,
+        2
+      ],
+      "pages": 2,
+      "raster_dpi": 180,
+      "native_text_characters": 0,
+      "bytes": 626272,
+      "sha256": "891accd2a1367953e361875fe065d0dde31c0a56d680cf2d49df8a50b3b4002d",
+      "ocr_test_status": "NOT_RUN"
+    },
+    {
+      "file": "lab_24hour_urine_sample_ocr.pdf",
+      "original": "../lab_24hour_urine_sample.pdf",
+      "source_url": "https://litholink.labcorp.com/sites/default/files/2025-08/Litholink%2024-hour%20Enhanced%20Report%20Sample%20-%20910235.pdf",
+      "original_sha256": "7e4d6eeaf578325172211e71906d358053d0d27d1865cb0ef992d86c66f6a7a8",
+      "original_pages": [
+        1,
+        5
+      ],
+      "pages": 5,
+      "raster_dpi": 180,
+      "native_text_characters": 0,
+      "bytes": 1162616,
+      "sha256": "06b69190d8d4631af6231426f75e74c8f3b1f4ccce0ae5c0534f80c5a7121de6",
+      "ocr_test_status": "NOT_RUN"
+    },
+    {
+      "file": "lab_stone_urinalysis_sample_ocr.pdf",
+      "original": "../lab_stone_urinalysis_sample.pdf",
+      "source_url": "https://dianon.labcorp.com/sites/default/files/2021-07/AH3500627%20CLN.pdf",
+      "original_sha256": "8908bb1a6c270a0ad889a305986311ade18a908427a97d3fd95bcaadf6df817f",
+      "original_pages": [
+        1,
+        4
+      ],
+      "pages": 4,
+      "raster_dpi": 180,
+      "native_text_characters": 0,
+      "bytes": 1350704,
+      "sha256": "3783549a971800e80bde234c5232c535fc503b023b28a19559a4c8e648a481d7",
+      "ocr_test_status": "NOT_RUN"
+    },
+    {
+      "file": "lab_blood_test_sample_reports_pages_01-20_ocr.pdf",
+      "original": "../lab_blood_test_sample_reports.pdf",
+      "source_url": "https://www.lifeextension.com/-/media/lef/files/pdf/sample_reports.pdf",
+      "original_sha256": "1f16c5ec94ca8eb7f6cb887b19f1cc7b486c731615570d38c610d6fa75528e5e",
+      "original_pages": [
+        1,
+        20
+      ],
+      "pages": 20,
+      "raster_dpi": 180,
+      "native_text_characters": 0,
+      "bytes": 6813571,
+      "sha256": "52234cd80344cc8d9f7f7d12fdec625acd5fd43e9312bd8f742843c4ef8d6bcd",
+      "ocr_test_status": "NOT_RUN"
+    },
+    {
+      "file": "lab_blood_test_sample_reports_pages_21-29_ocr.pdf",
+      "original": "../lab_blood_test_sample_reports.pdf",
+      "source_url": "https://www.lifeextension.com/-/media/lef/files/pdf/sample_reports.pdf",
+      "original_sha256": "1f16c5ec94ca8eb7f6cb887b19f1cc7b486c731615570d38c610d6fa75528e5e",
+      "original_pages": [
+        21,
+        29
+      ],
+      "pages": 9,
+      "raster_dpi": 180,
+      "native_text_characters": 0,
+      "bytes": 2634595,
+      "sha256": "32c0781670d785d5857713e90d2fb9b2cea00fb04600bfe0eb24ee16283a6cf4",
+      "ocr_test_status": "NOT_RUN"
+    },
+    {
+      "file": "doctor_medical_necessity_soap_example_ocr.pdf",
+      "original": "../doctor_medical_necessity_soap_example.pdf",
+      "source_url": "https://nationalfe.com/images/SOAP%20sample%20NOT%20FOR%20ACTUAL%20USE.pdf",
+      "original_sha256": "e82e6d472b643797580816f9b9645522a7b45d5004f79e71f5d3235ddf9ac98f",
+      "original_pages": [
+        1,
+        2
+      ],
+      "pages": 2,
+      "raster_dpi": 180,
+      "native_text_characters": 0,
+      "bytes": 506535,
+      "sha256": "0e952117a44052e44df3d38aba14ed58b6d6f14383900f6ab3e00f78237602bc",
+      "ocr_test_status": "NOT_RUN"
+    }
+  ]
+}

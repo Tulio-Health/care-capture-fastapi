@@ -1,9 +1,8 @@
 """Attachment Summarization Service - Handles document attachment analysis and clinical insights."""
 
-from datetime import datetime
 from typing import Any, Dict, List
 
-from sqlalchemy import select
+from sqlalchemy import select, cast, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.app.chains.attachment_summarization.chain import AttachmentSummarizationChain
@@ -17,10 +16,15 @@ from src.app.db.objects.repositories.fhir_resources import FhirResourcesReposito
 from src.app.models.attachment_summarization import (
     AttachmentSummarizationRequest,
     DocumentAttachment,
+    AttachmentSummarizationResponse,
 )
 from src.app.models.conversation_summaries import ConversationSummary
-from src.app.services.document_extraction import DocumentTextExtractor
+from src.app.services.document_extraction import DocumentTextExtractor, DocumentProcessingError
 from src.app.utils.s3_client import S3DocumentClient
+
+from src.app.services.summary_outcomes import MESSAGES, outcome_metadata, source_manifest
+
+from src.app.services.summary_runtime import bounded_summary
 
 logger = get_logger(__name__)
 
@@ -34,31 +38,8 @@ def _static_fallback_summary_data(
 
     Pure function — no I/O — so it is directly testable without DB/network mocking.
     """
-    appt_date = (
-        appointment.appointment_date.strftime("%B %d, %Y")
-        if appointment.appointment_date
-        else None
-    )
-    purpose = appointment.purpose
-    if provider_name and provider_name != "N/A":
-        if appt_date:
-            base = f"Your appointment with {provider_name} on {appt_date}"
-        else:
-            base = f"Your appointment with {provider_name}"
-    else:
-        if appt_date:
-            base = f"Your appointment on {appt_date}"
-        else:
-            base = "Your appointment"
-    if purpose:
-        base += f" was for {purpose}."
-    else:
-        base += "."
-    fallback_summary_text = (
-        f"{base} No clinical documents were available for this encounter."
-    )
     return {
-        "summary_text": fallback_summary_text,
+        "summary_text": MESSAGES["no_documents"],
         "user_id": request.user_id,
         "created_by": request.user_id,
         "updated_by": request.user_id,
@@ -71,6 +52,7 @@ def _static_fallback_summary_data(
         "summary_metadata": {
             "source": "attachment_summary",
             "analysis_version": "1.0",
+            **outcome_metadata("no_documents"),
             "total_documents": 0,
             "successful_documents": 0,
             "failed_documents": 0,
@@ -118,6 +100,7 @@ class AttachmentSummarizationService:
         self.text_extractor = DocumentTextExtractor()
         self.logger = logger
 
+    @bounded_summary
     async def analyze_attachments(self, request: AttachmentSummarizationRequest) -> ConversationSummary:
         """
         Analyze document attachments for a patient appointment and generate clinical insights.
@@ -147,7 +130,19 @@ class AttachmentSummarizationService:
         appointment, provider_name = await self._fetch_appointment_details(request)
 
         # Fetch DocumentReference resources with attachments
-        doc_references = await self._fetch_document_references(request, appointment)
+        try:
+            doc_references = await self._fetch_document_references(request, appointment)
+        except Exception:
+            await self.db.rollback()
+            payload = _static_fallback_summary_data(request, appointment, provider_name)
+            payload["summary_text"] = MESSAGES["unavailable"]
+            payload["summary_metadata"].update(outcome_metadata("unavailable", [{"error": "SOURCE_INVENTORY_FAILED"}]))
+            payload["summary_metadata"].update(total_documents=None, successful_documents=None, failed_documents=None)
+            saved = await self.summaries_repo.upsert(request.appointment_id, payload)
+            return ConversationSummary.model_validate(saved)
+
+        initial_manifest = source_manifest(doc_references)
+        eligibility_snapshot = self._inventory_context()
 
         if not doc_references:
             self.logger.info(
@@ -156,6 +151,7 @@ class AttachmentSummarizationService:
             summary_data = _static_fallback_summary_data(
                 request, appointment, provider_name
             )
+            summary_data["summary_metadata"].update(eligibility_snapshot)
             db_summary = await self.summaries_repo.upsert(
                 appointment_id=request.appointment_id, summary_data=summary_data
             )
@@ -165,13 +161,55 @@ class AttachmentSummarizationService:
         extracted_documents = await self._process_attachments(doc_references)
 
         if not extracted_documents:
-            raise ValueError(f"Failed to extract text from any attachments for appointment {request.appointment_id}")
+            self.logger.warning(
+                f"Failed to extract text from any attachments for appointment {request.appointment_id} - recording unavailable summary"
+            )
+            payload = _static_fallback_summary_data(request, appointment, provider_name)
+            payload["summary_text"] = MESSAGES["unavailable"]
+            payload["summary_metadata"].update(outcome_metadata("unavailable", [{"error": "TEXT_EXTRACTION_FAILED"}]))
+            payload["summary_metadata"].update(total_documents=len(doc_references), successful_documents=0, failed_documents=len(doc_references))
+            payload["summary_metadata"].update(eligibility_snapshot)
+            saved = await self.summaries_repo.upsert(request.appointment_id, payload)
+            return ConversationSummary.model_validate(saved)
 
         # Build appointment context
         appointment_context = self._build_appointment_context(appointment, provider_name)
+        if eligibility_snapshot:
+            appointment_context["document_eligibility"] = eligibility_snapshot
+
+        # Reuse only after downloading/parsing current bytes and checking ownership,
+        # complete validation, source membership, prompts and processing versions.
+        from src.app.services.summary_cache import attachment_fingerprint, verified_attachment_cache
+        from src.app.core.settings import get_settings
+        # attachment_fingerprint itself returns None for any unhashed/failed document
+        # (summary_cache.py's own guard); the former duplicate pre-check here was deleted (R6).
+        fingerprint = attachment_fingerprint(extracted_documents, initial_manifest, appointment_context, get_settings())
+        cached = await verified_attachment_cache(self.summaries_repo, request, fingerprint)
+        if cached is not None:
+            current_references = await self._fetch_document_references(request, appointment)
+            if source_manifest(current_references) != initial_manifest or self._inventory_context() != eligibility_snapshot:
+                raise DocumentProcessingError("SOURCE_MANIFEST_CHANGED")
+            await self.s3_client.validate_download_versions()
+            return cached
 
         # Run AI analysis
-        analysis_result = await self._run_ai_analysis(appointment_context, extracted_documents)
+        try:
+            analysis_result = await self._run_ai_analysis(appointment_context, extracted_documents, encounter_id=appointment.ehr_entity_id)
+            from src.app.services.validated_summary import require_validated_summary
+            if analysis_result.documents_analyzed:
+                require_validated_summary(analysis_result)
+            current_references = await self._fetch_document_references(request, appointment)
+            if source_manifest(current_references) != initial_manifest or self._inventory_context() != eligibility_snapshot:
+                raise DocumentProcessingError("SOURCE_MANIFEST_CHANGED")
+            await self.s3_client.validate_download_versions()
+        except Exception as exc:
+            failure = {"error": getattr(exc, "code", "SUMMARY_GENERATION_FAILED")}
+            if isinstance(getattr(exc, "reason_code", None), str):
+                failure["reason"] = exc.reason_code  # additive; `error` stays canonical
+            analysis_result = AttachmentSummarizationResponse(
+                clinical_summary=MESSAGES["unavailable"], documents_analyzed=0,
+                extraction_errors=[failure],
+            )
 
         # Store analysis in database
         summary_data = self._prepare_summary_data(
@@ -182,6 +220,9 @@ class AttachmentSummarizationService:
             extracted_documents,
         )
 
+        summary_data["summary_metadata"].update(eligibility_snapshot)
+        if fingerprint and summary_data["summary_metadata"]["processing_outcome"] == "complete":
+            summary_data["summary_metadata"]["source_fingerprint"] = fingerprint
         db_summary = await self.summaries_repo.upsert(appointment_id=request.appointment_id, summary_data=summary_data)
 
         self.logger.info(
@@ -191,6 +232,16 @@ class AttachmentSummarizationService:
         )
 
         return ConversationSummary.model_validate(db_summary)
+
+    def _inventory_context(self):
+        from copy import deepcopy
+        repository = getattr(self, "fhir_repo", None)
+        context = {}
+        if getattr(repository, "eligibility_provenance", None) is not None:
+            context["document_rule_provenance"] = deepcopy(repository.eligibility_provenance)
+        if getattr(repository, "document_inventory", None) is not None:
+            context["document_inventory"] = deepcopy(repository.document_inventory)
+        return context
 
     async def _fetch_appointment_details(self, request: AttachmentSummarizationRequest) -> tuple[Appointment, str]:
         """
@@ -206,7 +257,7 @@ class AttachmentSummarizationService:
             ValueError: If appointment not found
         """
         # Fetch appointment
-        appointment_stmt = select(Appointment).where(Appointment.id == request.appointment_id)
+        appointment_stmt = select(Appointment).where(Appointment.id == request.appointment_id, cast(Appointment.user_id, String) == str(request.user_id))
         appointment_result = await self.db.execute(appointment_stmt)
         appointment = appointment_result.scalar_one_or_none()
 
@@ -254,6 +305,21 @@ class AttachmentSummarizationService:
             encounter_id=appointment.ehr_entity_id,
         )
 
+        # Soft preference (not a hard filter): prefer documents the AI type-inference
+        # classifier flagged `includeForSummary=True` (clinically substantive — visit/
+        # progress/consult/discharge notes, lab/imaging/pathology/operative reports)
+        # when at least one exists for this encounter. Fall back to the full unfiltered
+        # set when none are flagged true (field absent/null/false for every doc) — ~15%
+        # of visits (telephone/imaging-only encounters) have no flagged document at all,
+        # so a hard restrict would leave them with nothing. See care-capture-nodeapi's
+        # 2026-09-17 document-scope-question research report, recommendation #2.
+        flagged = [
+            doc for doc in doc_references
+            if isinstance(doc.data, dict) and doc.data.get("includeForSummary") is True
+        ]
+        if flagged:
+            doc_references = flagged
+
         self.logger.debug(
             f"Fetched {len(doc_references)} DocumentReferences with attachments - "
             f"appointment_id: {request.appointment_id}"
@@ -262,117 +328,8 @@ class AttachmentSummarizationService:
         return doc_references
 
     async def _process_attachments(self, doc_references: List[Any]) -> List[DocumentAttachment]:
-        """
-        Download and extract text from all attachments.
-
-        Handles partial failures gracefully - continues processing other documents
-        if some fail to download or extract.
-
-        Args:
-            doc_references: List of FhirResource objects (DocumentReferences)
-
-        Returns:
-            List of DocumentAttachment objects with extracted text
-        """
-        extracted_documents = []
-
-        for doc_ref in doc_references:
-            attachments_data = doc_ref.data.get("attachments")
-            if not attachments_data:
-                continue
-
-            # Handle both array and single object (defensive)
-            attachments = attachments_data if isinstance(attachments_data, list) else [attachments_data]
-
-            for attachment in attachments:
-                try:
-                    # Skip attachments that weren't successfully downloaded
-                    if attachment.get("downloadStatus") != "success":
-                        self.logger.debug(f"Skipping attachment with status '{attachment.get('downloadStatus')}' for document {doc_ref.ehr_resource_id}")
-                        continue
-
-                    # Extract attachment metadata
-                    file_path = attachment.get("filePath")
-                    if not file_path:
-                        self.logger.warning(f"Attachment missing filePath for document {doc_ref.ehr_resource_id}")
-                        continue
-
-                    content_type = attachment.get("contentType", "application/pdf")
-                    title = attachment.get("title") or doc_ref.data.get("type", "Document")
-                    file_name = attachment.get("fileName")
-                    size = attachment.get("size")
-
-                    # Parse document date
-                    doc_date = None
-                    if doc_ref.data.get("date"):
-                        try:
-                            doc_date = datetime.fromisoformat(doc_ref.data["date"].replace("Z", "+00:00"))
-                        except (ValueError, AttributeError):
-                            pass
-
-                    self.logger.info(
-                        f"Processing attachment: {file_name or file_path} (type: {content_type}, size: {size})"
-                    )
-
-                    # Download from S3
-                    content = await self.s3_client.download_document(file_path)
-
-                    # Verify content type against file extension if mismatch
-                    if content_type and file_path:
-                        inferred_type = self.s3_client.get_content_type_from_path(file_path)
-                        if inferred_type != content_type:
-                            self.logger.warning(
-                                f"Content type mismatch - declared: {content_type}, "
-                                f"inferred: {inferred_type}. Using declared type."
-                            )
-
-                    # Extract text
-                    text = self.text_extractor.extract_text(content, content_type, file_name or file_path)
-
-                    extracted_documents.append(
-                        DocumentAttachment(
-                            file_path=file_path,
-                            content_type=content_type,
-                            title=title,
-                            date=doc_date,
-                            document_type=doc_ref.data.get("type"),
-                            file_name=file_name,
-                            size=size,
-                            extracted_text=text,
-                            extraction_error=None,
-                        )
-                    )
-
-                    self.logger.info(f"Successfully extracted {len(text)} characters from {file_name or file_path}")
-
-                except Exception as e:
-                    error_msg = f"{type(e).__name__}: {str(e)}"
-                    self.logger.error(
-                        f"Failed to process attachment: {file_path} - {error_msg}",
-                        exc_info=True,
-                    )
-
-                    # Include partial result with error metadata for tracking
-                    extracted_documents.append(
-                        DocumentAttachment(
-                            file_path=file_path,
-                            content_type=attachment.get("contentType", "unknown"),
-                            title=attachment.get("title", "Unknown Document"),
-                            date=None,
-                            document_type=doc_ref.data.get("type"),
-                            file_name=attachment.get("fileName"),
-                            size=attachment.get("size"),
-                            extracted_text="",
-                            extraction_error=error_msg,
-                        )
-                    )
-
-        successful_count = sum(1 for doc in extracted_documents if not doc.extraction_error)
-        failed_count = len(extracted_documents) - successful_count
-
-        self.logger.info(f"Attachment processing complete - successful: {successful_count}, failed: {failed_count}")
-
-        return extracted_documents
+        from src.app.services.document_ingestion import process_attachments
+        return await process_attachments(doc_references, self.s3_client, self.text_extractor)
 
     def _build_appointment_context(self, appointment: Appointment, provider_name: str) -> Dict[str, str]:
         """
@@ -395,6 +352,8 @@ class AttachmentSummarizationService:
         self,
         appointment_context: Dict[str, str],
         extracted_documents: List[DocumentAttachment],
+        *,
+        encounter_id: str | None = None,
     ) -> Any:
         """
         Run AI analysis on extracted documents using the map-reduce pipeline.
@@ -402,6 +361,8 @@ class AttachmentSummarizationService:
         Args:
             appointment_context: Context about the appointment
             extracted_documents: List of DocumentAttachment objects
+            encounter_id: EHR entity id, threaded through for Step 0 observability
+                (grounding-check size-gate design) only -- not used for any decision.
 
         Returns:
             Analysis result object
@@ -414,14 +375,15 @@ class AttachmentSummarizationService:
             analysis_result = await analysis_chain.analyze(
                 appointment_context=appointment_context,
                 documents=extracted_documents,
+                encounter_id=encounter_id,
             )
 
             self.logger.debug("AI analysis completed successfully")
             return analysis_result
 
         except Exception as e:
-            self.logger.error(f"AI analysis failed: {str(e)}", exc_info=True)
-            raise Exception(f"AI analysis failed: {str(e)}")
+            self.logger.error("AI analysis failed; error_type=%s", type(e).__name__)
+            raise
 
     def _prepare_summary_data(
         self,
@@ -444,6 +406,13 @@ class AttachmentSummarizationService:
         Returns:
             Dictionary ready for database insertion
         """
+        if analysis_result.documents_analyzed:
+            from src.app.services.validated_summary import require_validated_summary
+            require_validated_summary(analysis_result)
+        else:
+            # Failed output is never a source of clinical fields.
+            analysis_result = AttachmentSummarizationResponse(clinical_summary="", documents_analyzed=0, extraction_errors=analysis_result.extraction_errors)
+
         # Build document metadata list
         document_metadata = []
         extraction_errors = []
@@ -456,16 +425,35 @@ class AttachmentSummarizationService:
                 "size": doc.size,
                 "date": doc.date.isoformat() if doc.date else None,
                 "clinical_document_type": doc.document_type,
+                "source_id": doc.resource_id,
+                "content_sha256": doc.content_sha256,
+                "parsed_text_sha256": doc.parsed_text_sha256,
+                "parser_version": doc.parser_version,
             }
             document_metadata.append(metadata)
 
             if doc.extraction_error:
-                extraction_errors.append({"file_path": doc.file_path, "error": doc.extraction_error})
+                extraction_errors.append({"source_id": doc.resource_id or "unknown", "error": doc.extraction_error})
 
-        successful_docs = len([d for d in extracted_documents if not d.extraction_error])
+        extraction_errors.extend(analysis_result.extraction_errors)
+        # A failed source can be reported by both ingestion and the chain. Keep one record
+        # per source/code/reason and count documents, not error events. `reason` is part of
+        # the key (audit R7/B-6): two same-document failures canonicalizing to the same
+        # `error` but carrying different reasons must both survive into triage metadata
+        # instead of last-wins collapsing.
+        extraction_errors = list({(error.get("source_id", ""), error.get("error", "INTERNAL_PROCESSING_ERROR"), error.get("reason")): error for error in extraction_errors}.values())
+        failed_ids = {error.get("source_id", "").rsplit(":chunk:", 1)[0] for error in extraction_errors if error.get("source_id")}
+        successful_docs = analysis_result.documents_analyzed
+        state = "unavailable" if not successful_docs else "partial" if extraction_errors else "complete"
+        summary_text = analysis_result.clinical_summary
+        if state == "partial":
+            summary_text = MESSAGES["partial"] + "\n\n" + summary_text
+        elif state == "unavailable":
+            from src.app.services.summary_outcomes import unavailable_message
+            summary_text = unavailable_message(extraction_errors)
 
         return {
-            "summary_text": analysis_result.clinical_summary,
+            "summary_text": summary_text,
             "user_id": request.user_id,
             "created_by": request.user_id,
             "updated_by": request.user_id,
@@ -480,10 +468,12 @@ class AttachmentSummarizationService:
             },
             "summary_metadata": {
                 "source": "attachment_summary",
-                "analysis_version": "2.1",
+                "analysis_version": "3.0",
+                **outcome_metadata(state, extraction_errors),
                 "total_documents": len(extracted_documents),
-                "successful_documents": successful_docs,
-                "failed_documents": len(extraction_errors),
+                "successful_documents": max(0, len(extracted_documents) - len(failed_ids)) if successful_docs else 0,
+                "documents_with_accepted_content": successful_docs,
+                "failed_documents": len(failed_ids) if successful_docs else len(extracted_documents),
                 "document_metadata": document_metadata,
                 "extraction_errors": extraction_errors,
                 "encounter_id": appointment.ehr_entity_id,

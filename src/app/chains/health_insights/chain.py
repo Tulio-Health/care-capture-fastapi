@@ -42,7 +42,7 @@ class GenerateHealthInsightsChain:
         if self._model is None:
             self._model = get_default_chat_model()
         return self._model
-    
+
     @property
     def chain(self):
         """Lazy load the chain on first access"""
@@ -51,6 +51,6 @@ class GenerateHealthInsightsChain:
         return self._chain
 
     @traceable(name="generate_health_insights")
-    def generate_health_insights(self, summary_text: str) -> HealthInsightsResponse:
-        result = self.chain.invoke({"summary_text": summary_text, "output_format": self.parser.get_format_instructions()}, config={"callbacks": get_callbacks()})
+    async def generate_health_insights(self, summary_text: str) -> HealthInsightsResponse:
+        result = await self.chain.ainvoke({"summary_text": summary_text, "output_format": self.parser.get_format_instructions()}, config={"callbacks": get_callbacks()})
         return result

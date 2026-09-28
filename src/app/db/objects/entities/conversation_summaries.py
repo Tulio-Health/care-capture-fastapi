@@ -10,7 +10,7 @@ class ConversationSummaries(Base):
     __tablename__ = "conversation_summaries"
 
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=func.uuid_generate_v4())
-    appointment_id = Column(UUID(as_uuid=True), nullable=False , unique=True , index=True)
+    appointment_id = Column(UUID(as_uuid=True), nullable=False , index=True)
     user_id = Column(UUID(as_uuid=True), nullable=False)
     summary_text = Column(Text, nullable=False)
     key_points = Column(JSON, nullable=True)
@@ -25,15 +25,15 @@ class ConversationSummaries(Base):
     # AddDataColumnToConversationSummaries2026081900001) - mapped here to match, same as
     # `metadata` above; this app does not run its own migrations against this table.
     data = Column(JSON, nullable=True)
-    
+
     # Audit columns
-    created_at = Column(DateTime(timezone=True), server_default=text("TIMEZONE('utc', NOW())"))  
+    created_at = Column(DateTime(timezone=True), server_default=text("TIMEZONE('utc', NOW())"))
     updated_at = Column(DateTime(timezone=True), server_default=text("TIMEZONE('utc', NOW())"), onupdate=text("TIMEZONE('utc', NOW())"))
     created_by = Column(UUID(as_uuid=True), nullable=False)
     updated_by = Column(UUID(as_uuid=True), nullable=False)
 
     model_config = ConfigDict(
-        from_attributes=True, 
+        from_attributes=True,
         populate_by_name=True,
         json_encoders={
             UUID: str

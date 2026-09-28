@@ -15,6 +15,8 @@ from src.app.models.playground_attachment_summarization import (
     PlaygroundAttachmentResponse,
 )
 
+from src.app.services.summary_runtime import bounded_summary
+
 logger = get_logger(__name__)
 
 
@@ -27,6 +29,7 @@ class PlaygroundAttachmentSummarizationService:
     so the route can provide per-file structure for uploads.
     """
 
+    @bounded_summary
     async def summarize(
         self,
         request: PlaygroundAttachmentRequest,

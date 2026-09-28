@@ -2,7 +2,9 @@ from langchain.prompts import ChatPromptTemplate
 from langsmith import traceable
 from langchain_core.output_parsers import PydanticOutputParser
 
-from src.app.common.llm_factory import get_default_chat_model
+from src.app.common.llm_factory import get_default_chat_model, get_pydantic_ai_model
+from src.app.services.clinical_grounding import GROUNDING_POLICY, verify_grounding
+from src.app.services.summary_runtime import model_call
 from src.app.core.langsmith_trace import LangSmithTrace
 from src.app.models.fhir_analysis import FhirAnalysisResponse
 
@@ -24,26 +26,26 @@ def get_callbacks():
 
 class FhirAnalysisChain:
     """AI chain for analyzing FHIR resources and generating clinical insights"""
-    
+
     def __init__(self):
         # Initialize components except model
         self._model = None
         self.parser = PydanticOutputParser(pydantic_object=FhirAnalysisResponse)
         self.prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a clinical AI assistant specialized in analyzing FHIR healthcare data. 
+            ("system", GROUNDING_POLICY + "\n" + """You are a clinical AI assistant specialized in analyzing FHIR healthcare data.
             Your task is to analyze patient FHIR resources and provide comprehensive clinical insights.
 
             Analysis Guidelines:
-            - Focus on clinically significant patterns and findings
-            - Identify potential health risks and concerns
-            - Highlight medication interactions or polypharmacy risks
-            - Note trends in lab results and vital signs
-            - Provide actionable recommendations for care
+            - Report explicitly documented findings without inferring significance
+            - Include risks or concerns only when explicitly documented
+            - Include medication interactions only when the source explicitly documents them
+            - Preserve recorded lab values and vital signs with dates and units; do not infer trends
+            - Copy only source-documented recommendations
             - Be precise with medical terminology
             - Base insights only on data provided
             - Synthesize information across multiple resource types
-            - Consider chronic vs acute conditions
-            - Note any gaps in care or missing follow-ups
+            - Preserve chronic or acute labels only when explicitly documented
+            - Do not infer gaps in care or missing follow-ups
 
             GUARDRAILS - Don't Do:
             - Add any new facts, values, or events not explicitly present in the EHR data
@@ -99,14 +101,14 @@ Provide a comprehensive clinical analysis including:
 7. Clinical recommendations""")
         ])
         self._chain = None
-    
+
     @property
     def model(self):
         """Lazy load the model on first access"""
         if self._model is None:
             self._model = get_default_chat_model()
         return self._model
-    
+
     @property
     def chain(self):
         """Lazy load the chain on first access"""
@@ -115,27 +117,27 @@ Provide a comprehensive clinical analysis including:
         return self._chain
 
     @traceable(name="fhir_analysis")
-    def analyze(
-        self, 
+    async def analyze(
+        self,
         appointment_context: dict,
         fhir_summary: str,
         resource_counts: dict[str, int]
     ) -> FhirAnalysisResponse:
         """
         Analyze FHIR resources and generate clinical insights
-        
+
         Args:
             appointment_context: Dict with appointment details (date, purpose, provider)
             fhir_summary: Summarized FHIR data by resource type
             resource_counts: Count of each resource type
-            
+
         Returns:
             FhirAnalysisResponse with clinical insights
         """
         # Format resource counts for display
         counts_text = "\n".join([f"- {resource_type}: {count}" for resource_type, count in resource_counts.items()])
-        
-        result = self.chain.invoke({
+
+        result = await model_call(self.chain.ainvoke, {
             "appointment_date": appointment_context.get("appointment_date", "N/A"),
             "appointment_purpose": appointment_context.get("purpose", "N/A"),
             "provider_name": appointment_context.get("provider_name", "N/A"),
@@ -143,5 +145,6 @@ Provide a comprehensive clinical analysis including:
             "resource_counts": counts_text,
             "output_format": self.parser.get_format_instructions()
         }, config={"callbacks": get_callbacks()})
-        
+
+        await verify_grounding(get_pydantic_ai_model(), fhir_summary, result)
         return result
