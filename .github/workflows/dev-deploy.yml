@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - develop
+      - fix/async-summary-quickfix
   pull_request:
     branches:
       - develop
@@ -14,7 +15,7 @@ permissions:
 
 jobs:
   build_and_push:
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/develop')
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/fix/async-summary-quickfix'))
     runs-on: ubuntu-latest
     environment: develop
     outputs:
@@ -86,7 +87,7 @@ jobs:
 
   deploy:
     needs: build_and_push
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/fix/async-summary-quickfix')
     runs-on: ubuntu-latest
     environment: develop
     steps:
