@@ -213,6 +213,7 @@ class ProcedureSummarizationService:
             p = item.summary
             summary_metadata: dict = {
                 "source": _SOURCE,
+                "async_token": request.async_token,
                 **outcome_metadata("partial" if extraction_errors else "complete", extraction_errors),
                 "processing_errors": extraction_errors,
                 "pipeline_version": "document-safety-1",
