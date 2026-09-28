@@ -167,7 +167,13 @@ def bounded_summary(operation):
         if _slots.locked():
             raise DocumentProcessingError("SUMMARY_BUSY")
         async with _slots:
-            duration = min(getattr(request, "timeout_seconds", 120), 300)
+            # AWS App Runner caps every HTTP request at 120s (hard, unconfigurable --
+            # see .research/fastapi-deadline-and-retry-architecture/findings.md). 110 is
+            # the fallback used only when `request` has no timeout_seconds attribute at
+            # all; real callers (Attachment/Procedure/ComprehensiveSummarizationRequest)
+            # declare the field themselves, so this keeps the *intended* margin at 10s
+            # instead of tying the platform cap exactly.
+            duration = min(getattr(request, "timeout_seconds", 110), 300)
             job_started = request_started.get() or time.monotonic()
             deadline = job_started + duration
             token = _current_budget.set(WorkBudget(deadline=deadline))
