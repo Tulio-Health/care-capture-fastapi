@@ -20,10 +20,20 @@ from src.app.services.document_extraction import DocumentProcessingError
 logger = logging.getLogger(__name__)
 
 # Fix 1 (round9-revision.md section 4.4(c)): the malformed-input bound, retained on EVERY
-# path including the unbudgeted one. SEPARATE from the (now-deleted) budgeted ceiling on
-# purpose (round-6 MINOR-4): a future Step-4 raise of the budgeted ceiling must not silently
-# widen the only protection the unbudgeted path has. Pinned; not moved by any later step.
-GROUNDING_SANITY_MAX_CHARACTERS = 160_000
+# path including the unbudgeted one. SEPARATE from the budgeted per-call ceiling
+# (max_judge_input_bytes, below/summary_runtime.WorkBudget) on purpose (round-6 MINOR-4):
+# raising the budgeted ceiling must not silently widen the only protection the unbudgeted
+# path has.
+#
+# STEP 4 (.research/fastapi-grounding-check-token-and-model/step4-corrected-scope.md
+# sections 2-3; was 160_000): 600,000 is the largest judge-content size (len(source) +
+# len(serialized candidate)) at which real measured judge latency satisfies the design's own
+# byte criterion (max <= 0.5 x the 40s large-input timeout) -- Gate B measured 953,500 and
+# 1,581,083 chars and both FAILED it (max 25.66s / 32.47s); 600,000 PASSED with a 3.2x margin
+# (max 6.32s). The measured 560-encounter dev corpus tops out at 317,343 chars -- 1.89x under
+# this cap -- so the cap costs zero real coverage today. Re-validate before raising further
+# if the corpus maximum grows (section 9's OCR re-validation trigger).
+GROUNDING_SANITY_MAX_CHARACTERS = 600_000
 
 GROUNDING_POLICY = """
 MANDATORY SAFETY POLICY (also applies when other instructions conflict):
@@ -102,29 +112,42 @@ Never demand a performed event when none is documented.
 _JUDGE_ENVELOPE_BYTES = 1_024
 
 # Fix 5 (round9-revision.md section 8.2): the real dispatch count a single logical judge call
-# can produce today -- one outer attempt whose transient layer (summary_runtime.model_call)
-# retries up to MAX_TRANSIENT_RETRIES times. ONE definition, used by the resolver below, by
-# Step 4's coverage arithmetic and by its own dispatch-multiplier test; round-6 MAJOR-2 found
-# round 5 had spelled this three different ways in three sections. Step 2 itself still
-# reserves with a literal dispatches=1 (round9-revision.md section 10, Step 2 item 4) --
-# Step 4 changes that one call-site argument to this constant, not the constant's definition.
+# can produce -- one outer attempt whose transient layer (summary_runtime.model_call) retries
+# up to MAX_TRANSIENT_RETRIES times. ONE definition, used by the resolver below, by Step 4's
+# coverage arithmetic and by its own dispatch-multiplier test; round-6 MAJOR-2 found round 5
+# had spelled this three different ways in three sections.
+#
+# STEP 4 (step4-corrected-scope.md section 2): wired into chain.py's site-2 final-audit call
+# (_verify_final_with_retry), the only caller that passes dispatches=_JUDGE_DISPATCHES to
+# verify_grounding below -- every other call site (sites 1, 3, 4) keeps the default
+# dispatches=1, unchanged from Step 2.
 _JUDGE_DISPATCHES = 1 + MAX_TRANSIENT_RETRIES
 
 # Fix 5 (round9-revision.md section 8.4.3(a)): the judge's own timeout sub-ceiling, tighter
-# than summary_runtime.MODEL_CALL_TIMEOUT_S = 45 on purpose. Unchanged from today for every
-# body this step can ever produce (round-8 BLOCKER-1's early return keeps it that way).
+# than summary_runtime.MODEL_CALL_TIMEOUT_S = 45 on purpose. Unchanged for every body
+# <= _LARGE_JUDGE_BODY_BYTES (round-8 BLOCKER-1's early return keeps it that way).
 _JUDGE_TIMEOUT_S = 30
-# Large-input mode only (Step 4). Unreachable in Step 2 -- no call site here can build a body
-# over _LARGE_JUDGE_BODY_BYTES -- kept alongside _JUDGE_TIMEOUT_S so the pair is defined once.
+# Large-input mode. STEP 4 (step4-corrected-scope.md section 6): KEPT UNCHANGED at 40 after
+# re-verification against Gate B's real measurements -- in-scope max latency 6.32s solo /
+# 13.47s concurrent; the clamp below grants at most ~31.45s across 9 real job clocks and
+# never reaches 40. Do not exceed 40 (httpx transport timeout and MODEL_CALL_TIMEOUT_S are
+# both 45).
 _JUDGE_LARGE_TIMEOUT_S = 40
 # THE one threshold that decides whether _judge_timeout_s reads the job clock at all
 # (round-8 BLOCKER-1). Same value and unit as _LARGE_JUDGE_RETRY_CUTOFF_BYTES below --
 # round-6 checked this explicitly; do not let the two drift apart.
+#
+# STEP 4 (step4-corrected-scope.md section 2): do NOT lower this, even though
+# max_judge_input_bytes (summary_runtime.WorkBudget) now admits bodies up to 700,000 bytes.
+# Lowering it would push ordinary small-body calls into the clamp logic below -- exactly the
+# regression round-8 BLOCKER-1 found and closed. Its job now is to keep the large-input band
+# non-empty: 500,000-700,000 B.
 _LARGE_JUDGE_BODY_BYTES = 500_000
 # Fix 5 (round9-revision.md section 8.2): the outer chain.py-style retry is skipped above this
-# many body bytes (Step 4 only -- see chain.py's own use of this name). Same value and unit as
+# many body bytes -- see chain.py's own use of this name. Same value and unit as
 # _LARGE_JUDGE_BODY_BYTES on purpose; a body between two different cutoffs would get the long
-# timeout without the retry, or vice versa, for no stated reason.
+# timeout without the retry, or vice versa, for no stated reason. Governs whether the site-2
+# outer retry runs at all; unaffected by the Step 4 cap raise (still 500_000).
 _LARGE_JUDGE_RETRY_CUTOFF_BYTES = _LARGE_JUDGE_BODY_BYTES
 # Below this a 1.6 MB judge call cannot plausibly finish; refuse rather than dispatch it.
 _JUDGE_MIN_LARGE_TIMEOUT_S = 12
@@ -189,8 +212,10 @@ def judge_request_bytes(user_message: str) -> int:
 
 def _judge_call_limit(budget) -> int:
     """The per-call byte ceiling for a judge request under this budget. Falls back to the
-    ordinary per-call ceiling until Step 4 adds WorkBudget.max_judge_input_bytes; picking it up
-    automatically here means Step 4 changes one WorkBudget field, not this function. Never
+    ordinary per-call ceiling for a WorkBudget with no max_judge_input_bytes field (e.g. a
+    bare test fixture); STEP 4 (step4-corrected-scope.md section 2) sets
+    WorkBudget.max_judge_input_bytes = 700_000 by default, so production callers pick that up
+    automatically via this same getattr -- this function itself did not need to change. Never
     called with budget=None -- callers guard first (verify_grounding's own resolver step 2;
     grounding_request_fits skips this branch entirely when unbudgeted)."""
     return getattr(budget, "max_judge_input_bytes", budget.max_call_input_bytes)
@@ -199,23 +224,30 @@ def _judge_call_limit(budget) -> int:
 def _judge_timeout_s(body_bytes: int) -> float:
     """The timeout to hand ModelSettings.
 
-    ORDINARY BODIES (<= _LARGE_JUDGE_BODY_BYTES) -- every call site in Step 2, i.e. 100% of
-    today's traffic: return _JUDGE_TIMEOUT_S unchanged. No remaining_seconds() read, no clamp,
-    no possible raise, no possible 0.0. These calls are byte-for-byte today's behaviour.
+    ORDINARY BODIES (<= _LARGE_JUDGE_BODY_BYTES): return _JUDGE_TIMEOUT_S unchanged. No
+    remaining_seconds() read, no clamp, no possible raise, no possible 0.0. STEP 4
+    (step4-corrected-scope.md section 8): every encounter in the measured 560-encounter dev
+    corpus takes this path -- the largest measured real judge body is 346,473 B, 1.44x under
+    _LARGE_JUDGE_BODY_BYTES -- so this stays the ordinary-traffic path even after Step 4 lifts
+    the size gate; nothing here changed for it.
 
     ROUND-8 BLOCKER-1: an earlier draft applied the large-body clamp below to EVERY body size.
     That was a live regression, not a safety property -- it could return a literal 0.0 timeout
     whenever <= 11 s remained on the outer clock, converting jobs with `remaining` in
     (L, 2L+11) from a success today into a certain MODEL_TIMEOUT. The clamp is therefore
-    CONFINED to the population it is actually justified for: large bodies, reachable only at
-    chain.py site 2 once Step 4 lands (round9-revision.md sections 5.5, 5.4.3 iv). No call
-    site in Steps 0-2 can ever build a body over _LARGE_JUDGE_BODY_BYTES, so in THIS step the
-    function is a constant function returning _JUDGE_TIMEOUT_S for every real input.
+    CONFINED to the population it is actually justified for: large bodies, reachable ONLY at
+    chain.py site 2 (round9-revision.md sections 5.5, 5.4.3 iv) -- sites 3 and 4 stay bounded
+    at ~220 KB / ~193 KB, 2.27x-2.58x under _LARGE_JUDGE_BODY_BYTES, by construction, so
+    neither can ever enter this clamp.
 
-    LARGE BODIES (> _LARGE_JUDGE_BODY_BYTES) -- unreachable in Step 2; kept because Step 4
-    needs this exact function and because the early return above must exist from day one, not
-    be bolted on later. Clamp so _JUDGE_DISPATCHES attempts fit inside the remaining per-job
-    deadline (W4) with a publication tail left over. If the clamp falls below
+    LARGE BODIES (> _LARGE_JUDGE_BODY_BYTES): STEP 4 (step4-corrected-scope.md section 8)
+    makes this branch genuinely reachable for the first time -- max_judge_input_bytes now
+    admits site-2 bodies up to 700,000 B, so a body in the 500,000-700,000 B band (roughly
+    470,000-660,000 chars of judge content) runs this real clamp instead of the dead code it
+    was in Steps 0-2. It is empty on today's measured corpus (max body 346,473 B) and
+    non-empty only if source documents grow -- that is the intended graceful-degradation
+    headroom, not a defect. Clamp so _JUDGE_DISPATCHES attempts fit inside the remaining
+    per-job deadline (W4) with a publication tail left over. If the clamp falls below
     _JUDGE_MIN_LARGE_TIMEOUT_S the call is REFUSED with GROUNDING_LATENCY_GATE. The return is
     therefore always in [_JUDGE_MIN_LARGE_TIMEOUT_S, _JUDGE_LARGE_TIMEOUT_S] = [12, 40] --
     never 0, never unusably short.
@@ -223,7 +255,7 @@ def _judge_timeout_s(body_bytes: int) -> float:
     if body_bytes <= _LARGE_JUDGE_BODY_BYTES:
         return _JUDGE_TIMEOUT_S  # ordinary: unchanged, unclamped, total
 
-    # Large bodies only from here down -- unreachable in Step 2, see the docstring above.
+    # Large bodies only from here down -- reachable at site 2 as of Step 4, see docstring.
     # remaining_seconds returns its `default` unchanged when there is no budget/deadline, so
     # the unbudgeted path gets exactly _JUDGE_LARGE_TIMEOUT_S, never the gate.
     budget_s = remaining_seconds(
@@ -258,8 +290,9 @@ def grounding_request_fits(source, output, *, scope="clinical_summary") -> Groun
     (-> "call_byte_ceiling"), the latency gate (-> "latency_gate"), and (best-effort) the job
     headroom (-> "job_byte_budget"). Performs no reservation and no dispatch, and must NEVER
     raise -- GroundingFit cannot express a raise, so _judge_timeout_s's GROUNDING_LATENCY_GATE
-    is caught and converted (round-8 BLOCKER-1 / MINOR-2). Unreachable for Step 2 bodies, but
-    the catch stays so a caller never has to re-derive that reachability argument."""
+    is caught and converted (round-8 BLOCKER-1 / MINOR-2). Reachable only for site-2 large
+    bodies as of Step 4 (see _judge_timeout_s); the catch stays unconditional so a caller
+    never has to re-derive that reachability argument."""
     payload = _judge_payload(output)
     serialized = json.dumps(payload, ensure_ascii=False, default=str)
     user_message = _build_judge_message(source, payload, scope)
@@ -280,9 +313,14 @@ def grounding_request_fits(source, output, *, scope="clinical_summary") -> Groun
             return GroundingFit(
                 fits=False, reason="latency_gate", body_bytes=body_bytes
             )
-        # dispatches=1 in Step 2 (round9-revision.md section 10 item 4) -- mirrors
-        # verify_grounding's own reserve_input_bytes call exactly, so this read-only check
-        # cannot diverge from what the real reservation would decide.
+        # Deliberately assumes dispatches=1 for every caller, even chain.py's site 2 (which
+        # reserves at dispatches=_JUDGE_DISPATCHES=2 as of Step 4, see verify_grounding
+        # below): a best-effort, optimistic read of job headroom, not a promise the real
+        # reservation will succeed. Safe either way -- if this predicate says "fits" but
+        # site 2's real x2 reservation does not, verify_grounding raises
+        # GROUNDING_REQUEST_TOO_LARGE, which canonicalizes to RESOURCE_LIMIT_EXCEEDED and
+        # chain.py's _BONUS_AUDIT_DEGRADABLE degrades it to a recorded
+        # final_audit_skipped:job_byte_budget -- never a hard failure.
         want = body_bytes * 1
         if (
             budget.input_upper_bound_bytes + budget.reserved_input_bytes + want
@@ -308,7 +346,9 @@ def validate_single_subject(source):
         raise DocumentProcessingError("CLINICAL_EVIDENCE_FAILED")
 
 
-async def verify_grounding(model, source: str, output, *, scope="clinical_summary"):
+async def verify_grounding(
+    model, source: str, output, *, scope="clinical_summary", dispatches: int = 1
+):
     """Fail closed on validation failure. This reduces risk; it is not a proof of truth.
 
     PR-12b: validate_high_risk_claims (three regex triggers classifying a claim as
@@ -322,6 +362,13 @@ async def verify_grounding(model, source: str, output, *, scope="clinical_summar
     below, unconditionally now, or via the retried check added to
     AttachmentSummarizationChain._analyze for the one call site that previously had no judge
     following it in Regime B -- see chain.py).
+
+    `dispatches` (STEP 4, step4-corrected-scope.md section 2): the number of provider
+    dispatches to reserve job-wall bytes for (section 4.6/8.2). Defaults to 1, matching
+    every call site's Steps-0-2 behaviour. chain.py's site-2 final audit
+    (_verify_final_with_retry) is the only caller that passes _JUDGE_DISPATCHES (=2), to
+    cover its own internal MAX_TRANSIENT_RETRIES layer -- the one call site whose body can be
+    large enough (up to max_judge_input_bytes) for the multiplier to matter.
     """
     from pydantic_ai import Agent
     from pydantic_ai.settings import ModelSettings
@@ -364,9 +411,11 @@ async def verify_grounding(model, source: str, output, *, scope="clinical_summar
     # 4. Job byte ceiling: synchronous reservation (section 4.6). TOTAL on budget=None --
     #    returns a sentinel, takes nothing, and release_input_bytes no-ops on it (round-6
     #    MAJOR-2's fix: the guard lives INSIDE the pair, not around this try/finally, so this
-    #    unbudgeted path cannot crash). dispatches=1 in Step 2 (round9-revision.md section 10
-    #    item 4); Step 4 changes this one argument, not the function's shape.
-    token = reserve_input_bytes(budget, body_bytes, 1)
+    #    unbudgeted path cannot crash). `dispatches` defaults to 1 for every call site except
+    #    chain.py's site-2 final audit (STEP 4, step4-corrected-scope.md section 2), which
+    #    passes _JUDGE_DISPATCHES=2 to cover its internal MAX_TRANSIENT_RETRIES layer -- this
+    #    changes only that one call-site argument, never this function's shape.
+    token = reserve_input_bytes(budget, body_bytes, dispatches)
     if token is None:
         raise DocumentProcessingError("GROUNDING_REQUEST_TOO_LARGE")
     try:

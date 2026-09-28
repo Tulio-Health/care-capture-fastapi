@@ -34,6 +34,19 @@ class WorkBudget:
     reserved_input_bytes: int = 0
     max_call_input_bytes: int = 160_000
     max_input_bytes_per_job: int = 4_000_000
+    # STEP 4 (.research/fastapi-grounding-check-token-and-model/step4-corrected-scope.md
+    # sections 2 and 4, round9-revision.md section 8.2): the per-call byte ceiling for the
+    # large-input judge mode at chain.py site 2, picked up automatically by
+    # clinical_grounding._judge_call_limit's existing getattr(budget, "max_judge_input_bytes",
+    # ...) fallback -- that function did not need to change. 700_000 = the worst-measured-shape
+    # judge body at the corrected GROUNDING_SANITY_MAX_CHARACTERS=600_000 cap
+    # (1.055883 * 600_000 + 3_384 = 636,914 B, ~9.96% margin), also clearing Gate B's real
+    # measured body at that cap (637,765 B) by ~9.8%. This was never 2_000_000 in shipped
+    # code -- that round-9 figure was withdrawn before implementation once Gate B's real
+    # corpus measurement (max 317,343 chars) replaced the 1,581,083-char estimate it was sized
+    # for. Must stay > clinical_grounding._LARGE_JUDGE_BODY_BYTES (500_000) so the
+    # large-input timeout band never collapses to empty.
+    max_judge_input_bytes: int = 700_000
     max_output_tokens: int = 4096
     max_images_per_call: int = 1
     clients: list = field(default_factory=list)

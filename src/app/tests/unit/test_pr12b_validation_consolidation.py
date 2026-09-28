@@ -479,7 +479,9 @@ async def test_verify_final_oversized_single_audit_emits_single_audit_skipped_re
     output_a = NS(source_document_id="doc-a")
     audits = [("extraction", "evidence-a", output_a)]
     candidate = NS(model_dump=lambda: {"clinical_summary": "irrelevant"})
-    oversized_source = "x" * 200_000
+    # STEP 4: must exceed the raised GROUNDING_SANITY_MAX_CHARACTERS (600_000), not the old
+    # Step-2 value (160_000).
+    oversized_source = "x" * 650_000
 
     token = chain._deferred_grounding.set(audits)
     try:

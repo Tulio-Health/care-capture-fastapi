@@ -1,10 +1,16 @@
-"""Step 2 (round9-revision.md section 10): the measured size check. Pins section 11's minimum
-test plan for this step -- the byte-measurement sizer (Fix 1, section 4), the four call-site
-semantics (Fix 2, section 5), and the constant-30 `_judge_timeout_s` scoping (section 8.4(a),
-Step-2 item 10). Steps 3 (empirical gates) and 4 (large-input judge mode,
-`max_judge_input_bytes`, the x2 dispatch reservation, the 40s timeout scaling) are explicitly
-OUT of scope and are not exercised here -- every large-body assertion below proves the
-function is *correct if reached*, not that it is reached, because in Steps 0-2 it never is.
+"""Steps 0-2 (round9-revision.md section 10): the measured size check. Pins section 11's
+minimum test plan for those steps -- the byte-measurement sizer (Fix 1, section 4), the four
+call-site semantics (Fix 2, section 5), and the constant-30 `_judge_timeout_s` scoping
+(section 8.4(a), Step-2 item 10).
+
+STEP 4 (.research/fastapi-grounding-check-token-and-model/step4-corrected-scope.md): the
+large-input judge mode -- GROUNDING_SANITY_MAX_CHARACTERS raised to 600_000,
+WorkBudget.max_judge_input_bytes = 700_000, and the x2 dispatch reservation at chain.py's
+site-2 final audit -- is now IN SCOPE and exercised for real by TestStep4CorrectedConstants,
+TestStep4LargeInputJudgeMode and TestStep4DispatchScoping below: they construct real bodies
+in the 500,000-700,000 B band and drive them end to end through grounding_request_fits /
+_judge_timeout_s / reserve_input_bytes, so the large-body assertions in
+TestJudgeTimeoutScoping are no longer merely correct-if-reached -- they are reached, here.
 
 Section 11 items covered by file location:
   - test 1 (envelope pin): TestEnvelopePin
@@ -20,7 +26,16 @@ Section 11 items covered by file location:
   - test 7 (unbudgeted path untouched): TestUnbudgetedPath
   - test 8 (:891 routing): TestSite4AccessorRouting
   - test 9 (bonus-audit degradation): TestBonusAuditDegradation
+  - test 10 (byte reservation under concurrency): TestBudgetedReservationPath
+  - test 11 (dispatch multiplier, STEP 4): TestStep4DispatchScoping
   - test 12(c)/(d)/(e) (deadline clamp confinement, required by Step-2 item 10):
+    TestJudgeTimeoutScoping
+  - step4-corrected-scope.md section 12 acceptance items 1-3 (corrected constants, margin,
+    non-empty band) and direct clamp-reachability evidence: TestStep4CorrectedConstants,
+    TestStep4LargeInputJudgeMode
+  - step4-corrected-scope.md section 12 acceptance item 4 (site 3/site 4 confinement at the
+    new ceiling; MAJOR-1, step4-implementation-redteam.md): site 4 by test_12d above, site 3
+    by test_largest_site3_synthesis_replay_snapshot_is_below_the_large_body_threshold, both in
     TestJudgeTimeoutScoping
 """
 
@@ -276,7 +291,9 @@ class TestBreakEvenBehaviour:
         budget = WorkBudget(deadline=0)
         token = _current_budget.set(budget)
         try:
-            lo, hi = 1, 300_000
+            # STEP 4: hi must clear both GROUNDING_SANITY_MAX_CHARACTERS (600_000) and
+            # WorkBudget's default max_judge_input_bytes (700_000) with margin.
+            lo, hi = 1, 900_000
             assert clinical_grounding.grounding_request_fits(
                 filler_char * lo, candidate
             ).fits
@@ -412,8 +429,9 @@ class TestFourSemantics:
         section 7.2), so the byte arithmetic and the raise are identical regardless of caller.
         """
         budget = WorkBudget(
-            deadline=0, max_call_input_bytes=1
-        )  # any real body exceeds this
+            deadline=0, max_call_input_bytes=1, max_judge_input_bytes=1
+        )  # any real body exceeds this -- STEP 4: _judge_call_limit prefers
+        # max_judge_input_bytes over max_call_input_bytes, so both must be constrained
         token = _current_budget.set(budget)
         run = _passing_run()
         p1, p2, p3 = _settings_patches(run)
@@ -623,7 +641,7 @@ class TestUnbudgetedPath:
         max_call_input_bytes must still fit when no budget is active -- only the sanity bound
         applies on the unbudgeted path (round-4 MAJOR-4)."""
         assert _current_budget.get() is None
-        source = '"' * 150_000  # comfortably under the 160,000-char sanity bound
+        source = '"' * 150_000  # comfortably under the 600,000-char sanity bound
         candidate = {"clinical_summary": "x"}
         fit = clinical_grounding.grounding_request_fits(source, candidate)
         assert fit.fits
@@ -832,7 +850,7 @@ class TestBonusAuditDegradation:
         )
         calls = []
 
-        async def fake_verify_grounding(model, source, output):
+        async def fake_verify_grounding(model, source, output, **kwargs):
             calls.append(1)
             raise DocumentProcessingError("MODEL_TIMEOUT")
 
@@ -874,7 +892,7 @@ class TestBonusAuditDegradation:
         )
         calls = []
 
-        async def fake_verify_grounding(model, source, output):
+        async def fake_verify_grounding(model, source, output, **kwargs):
             calls.append(1)
             raise DocumentProcessingError("MODEL_RATE_LIMITED")
 
@@ -942,7 +960,7 @@ class TestBonusAuditDegradation:
             ),
         )
 
-        async def fake_verify_grounding(model, source, output):
+        async def fake_verify_grounding(model, source, output, **kwargs):
             raise DocumentProcessingError("GROUNDING_LATENCY_GATE")
 
         monkeypatch.setattr(chain, "verify_grounding", fake_verify_grounding)
@@ -962,6 +980,139 @@ class TestBonusAuditDegradation:
         ]
         assert len(skip_records) == 1
         assert skip_records[0].startswith("final_audit_skipped:latency_gate")
+
+
+# ---------------------------------------------------------------------------
+# MAJOR-2 (step4-implementation-redteam.md): Step 4's size-gate raise means every one of the
+# 10 newly-audited encounters now reaches the site-2 retry below at the unclamped
+# _JUDGE_TIMEOUT_S=30 -- one retry dispatch can burn _JUDGE_TIMEOUT_S * _JUDGE_DISPATCHES =
+# 60s on a provider stall, which the pooled p95 job wall-clock (Gate B: 84.4s of a 120s
+# budget) cannot always absorb, and SUMMARY_DEADLINE_EXCEEDED is structurally uncatchable
+# from inside the chain. These pin the ~4-line clock guard that refuses the retry (never the
+# first dispatch) when the job clock cannot plausibly fund it plus a publish tail.
+# ---------------------------------------------------------------------------
+
+
+class TestStep4RetryClockGuard:
+    @pytest.mark.asyncio
+    async def test_retry_skipped_when_remaining_clock_cannot_fund_it(
+        self, monkeypatch, caplog
+    ):
+        """Real scenario: a job with only 10s of clock left (well under the 70s = 30 *
+        _JUDGE_DISPATCHES + _JUDGE_PUBLISH_TAIL_S the retry needs) hits a spurious rejection
+        on the first dispatch. The retry must be genuinely skipped -- not attempted -- and the
+        appointment must still publish (no raise)."""
+        chain_instance = chain.AttachmentSummarizationChain()
+        chain_instance._model = object()
+        monkeypatch.setattr(
+            chain,
+            "grounding_request_fits",
+            lambda source, output, **kw: GroundingFit(
+                fits=True, reason=None, body_bytes=1
+            ),
+        )
+        failure = DocumentProcessingError("GROUNDING_VALIDATION_FAILED")
+        calls = AsyncMock(side_effect=[failure])  # only the first dispatch may be awaited
+        monkeypatch.setattr(chain, "verify_grounding", calls)
+        response = AttachmentSummarizationResponse(
+            clinical_summary="x", documents_analyzed=1
+        )
+        budget = WorkBudget(deadline=time.monotonic() + 10)
+        budget_token = _current_budget.set(budget)
+        regime_token = chain._deferred_grounding.set(None)
+        try:
+            with caplog.at_level("WARNING"):
+                await chain_instance._verify_final_with_retry("source", response)
+        finally:
+            chain._deferred_grounding.reset(regime_token)
+            _current_budget.reset(budget_token)
+        assert calls.await_count == 1  # the retry was never attempted
+        skip_records = [
+            r.message
+            for r in caplog.records
+            if r.message.startswith("final_audit_skipped:")
+        ]
+        assert len(skip_records) == 1
+        assert skip_records[0].startswith(
+            "final_audit_skipped:retry_skipped:insufficient_clock"
+        )
+
+    @pytest.mark.asyncio
+    async def test_retry_proceeds_when_remaining_clock_is_sufficient(
+        self, monkeypatch, caplog
+    ):
+        """Control for the test above: with ample clock (200s, well over the 70s the retry
+        needs) the exact same spurious rejection still runs the retry, unaffected by the new
+        guard."""
+        chain_instance = chain.AttachmentSummarizationChain()
+        chain_instance._model = object()
+        monkeypatch.setattr(
+            chain,
+            "grounding_request_fits",
+            lambda source, output, **kw: GroundingFit(
+                fits=True, reason=None, body_bytes=1
+            ),
+        )
+        failure = DocumentProcessingError("GROUNDING_VALIDATION_FAILED")
+        passing_result = NS(output=GroundingVerdict(supported=True, issues=[]))
+        calls = AsyncMock(side_effect=[failure, None])
+        monkeypatch.setattr(chain, "verify_grounding", calls)
+        response = AttachmentSummarizationResponse(
+            clinical_summary="x", documents_analyzed=1
+        )
+        budget = WorkBudget(deadline=time.monotonic() + 200)
+        budget_token = _current_budget.set(budget)
+        regime_token = chain._deferred_grounding.set(None)
+        try:
+            with caplog.at_level("WARNING"):
+                await chain_instance._verify_final_with_retry("source", response)
+        finally:
+            chain._deferred_grounding.reset(regime_token)
+            _current_budget.reset(budget_token)
+        assert calls.await_count == 2  # the retry DID run
+        skip_records = [
+            r.message
+            for r in caplog.records
+            if r.message.startswith("final_audit_skipped:")
+        ]
+        assert not any("insufficient_clock" in r for r in skip_records)
+
+    @pytest.mark.asyncio
+    async def test_first_dispatch_unaffected_by_insufficient_clock(
+        self, monkeypatch, caplog
+    ):
+        """The guard must be confined to the retry. Even with almost no clock left (1s), the
+        FIRST dispatch still attempts unconditionally -- no new clock check on it."""
+        chain_instance = chain.AttachmentSummarizationChain()
+        chain_instance._model = object()
+        monkeypatch.setattr(
+            chain,
+            "grounding_request_fits",
+            lambda source, output, **kw: GroundingFit(
+                fits=True, reason=None, body_bytes=1
+            ),
+        )
+        calls = AsyncMock(return_value=None)  # first dispatch succeeds outright
+        monkeypatch.setattr(chain, "verify_grounding", calls)
+        response = AttachmentSummarizationResponse(
+            clinical_summary="x", documents_analyzed=1
+        )
+        budget = WorkBudget(deadline=time.monotonic() + 1)
+        budget_token = _current_budget.set(budget)
+        regime_token = chain._deferred_grounding.set(None)
+        try:
+            with caplog.at_level("WARNING"):
+                await chain_instance._verify_final_with_retry("source", response)
+        finally:
+            chain._deferred_grounding.reset(regime_token)
+            _current_budget.reset(budget_token)
+        assert calls.await_count == 1  # first dispatch ran despite the near-zero clock
+        skip_records = [
+            r.message
+            for r in caplog.records
+            if r.message.startswith("final_audit_skipped:")
+        ]
+        assert skip_records == []  # no skip of any kind -- it simply succeeded
 
 
 # ---------------------------------------------------------------------------
@@ -1001,6 +1152,32 @@ class TestJudgeTimeoutScoping:
         body_bytes = clinical_grounding.judge_request_bytes(user_message)
         assert body_bytes < clinical_grounding._LARGE_JUDGE_BODY_BYTES
 
+    def test_largest_site3_synthesis_replay_snapshot_is_below_the_large_body_threshold(
+        self,
+    ):
+        """MAJOR-1 (step4-implementation-redteam.md), completing step4-corrected-scope.md
+        section 12 acceptance item 4 -- test_12d above only ever pinned site 4's half of that
+        item. Site 3 (chain.py._audit_once_retried) replays the synthesis-stage snapshot
+        appended unconditionally at chain.py:782/890 (round9-revision.md section 5.4.3(iv)):
+        evidence is the synthesis prompt (appointment_context wrapper + validated_source_records,
+        gated at 100,000 serialized chars by chain.py:713-714) and candidate is the resulting
+        response, whose accumulated lab_results/recommendations/key_insights fields are drawn
+        from -- and so bounded by -- that same 100,000-char records gate (round9-revision.md
+        section 5.4.3(iv): ~205,000 gate chars total -> ~215,000-220,000 B). Built from
+        realistic-shaped maxima at both ends through the same shared
+        _judge_payload/_build_judge_message/judge_request_bytes functions verify_grounding
+        itself uses, so this fails if REGIME_SPLIT_CHARS, the 100,000-char records gate, or
+        _LARGE_JUDGE_BODY_BYTES ever drift and this confinement (chain.py:1057's comment,
+        round-8 BLOCKER-1) silently stops holding."""
+        evidence = "x" * 105_000  # ~100,000-char records gate + appointment_context wrapper
+        candidate = {"clinical_summary": "y" * 100_000}  # same records-gate bound as test_12d
+        payload = clinical_grounding._judge_payload(candidate)
+        user_message = clinical_grounding._build_judge_message(
+            evidence, payload, "clinical_summary"
+        )
+        body_bytes = clinical_grounding.judge_request_bytes(user_message)
+        assert body_bytes < clinical_grounding._LARGE_JUDGE_BODY_BYTES
+
     @pytest.mark.parametrize(
         "body_bytes", [0, 100_000, 500_000, 500_001, 600_000, 2_000_000]
     )
@@ -1017,3 +1194,198 @@ class TestJudgeTimeoutScoping:
                 assert result >= clinical_grounding._JUDGE_MIN_LARGE_TIMEOUT_S
         finally:
             _current_budget.reset(token)
+
+
+# ---------------------------------------------------------------------------
+# STEP 4 (.research/fastapi-grounding-check-token-and-model/step4-corrected-scope.md):
+# the two corrected constants, pinned with their derivation (section 12 acceptance items
+# 1-3).
+# ---------------------------------------------------------------------------
+
+
+class TestStep4CorrectedConstants:
+    def test_grounding_sanity_max_characters_is_600_000(self):
+        """step4-corrected-scope.md sections 2-3: 600,000 is the largest judge-content size
+        (len(source) + len(serialized candidate)) at which Gate B's real measured judge
+        latency satisfies the design's own byte criterion (max <= 0.5 x the 40s large-input
+        timeout). 953,500 and 1,581,083 chars were measured and both FAILED it (max 25.66s /
+        32.47s); 600,000 PASSED with a 3.2x margin (max 6.32s). The measured 560-encounter
+        dev corpus tops out at 317,343 chars -- 1.89x under this cap."""
+        assert clinical_grounding.GROUNDING_SANITY_MAX_CHARACTERS == 600_000
+
+    def test_max_judge_input_bytes_default_is_700_000(self):
+        """step4-corrected-scope.md section 4: 700,000 = 1.055883 * 600,000 + 3,384
+        (636,914 B, the worst-ever-measured escape shape at the corrected cap) plus ~9.96%
+        margin, and clears Gate B's real measured body at that cap (637,765 B) by ~9.8%. Was
+        never shipped as 2,000,000 -- that round-9 figure was withdrawn before implementation
+        once Gate B's real corpus measurement (max 317,343 chars) replaced the 1,581,083-char
+        estimate it was sized for."""
+        assert WorkBudget().max_judge_input_bytes == 700_000
+
+    def test_max_judge_input_bytes_clears_the_worst_measured_escape_shape_with_margin(
+        self,
+    ):
+        """step4-corrected-scope.md section 12 acceptance item 2 -- the exact test it
+        prescribes: pin 700_000 >= 1.055883 * 600_000 + 3_384 (636,914) so a future cap change
+        that outgrows the byte margin fails a test rather than producing
+        GROUNDING_REQUEST_TOO_LARGE in production."""
+        worst_shape_body_at_cap = (
+            1.055883 * clinical_grounding.GROUNDING_SANITY_MAX_CHARACTERS + 3_384
+        )
+        assert worst_shape_body_at_cap == pytest.approx(636_914, abs=1)
+        assert WorkBudget().max_judge_input_bytes >= worst_shape_body_at_cap
+
+    def test_large_judge_body_threshold_stays_below_the_ceiling(self):
+        """step4-corrected-scope.md section 12 acceptance item 3: _LARGE_JUDGE_BODY_BYTES must
+        stay below max_judge_input_bytes, or the large-input timeout band (500,000-700,000 B)
+        collapses to empty and Step 4's timeout machinery becomes unreachable by construction
+        -- not merely by corpus (round9-revision.md section 8.4.3(a) draws exactly this
+        distinction). Also confirms _LARGE_JUDGE_BODY_BYTES itself was NOT lowered, which
+        step4-corrected-scope.md section 2 explicitly forbids."""
+        assert clinical_grounding._LARGE_JUDGE_BODY_BYTES == 500_000
+        assert (
+            clinical_grounding._LARGE_JUDGE_BODY_BYTES
+            < WorkBudget().max_judge_input_bytes
+        )
+
+
+# ---------------------------------------------------------------------------
+# STEP 4: direct evidence that the large-input judge mode is now genuinely reachable end to
+# end, not merely correct-if-reached (which this file's module docstring explicitly
+# disclaimed for Steps 0-2 -- no call site there could ever build a body over
+# _LARGE_JUDGE_BODY_BYTES).
+# ---------------------------------------------------------------------------
+
+
+class TestStep4LargeInputJudgeMode:
+    def test_real_body_between_500k_and_700k_bytes_is_admitted_and_takes_the_clamp_path(
+        self,
+    ):
+        # 560,000 plain ASCII chars -> a real ~563,926 B wire body (empirically verified
+        # against the shipped sizer): safely under the 600,000-char sanity bound (sanity_len
+        # ~= 560,025) yet over the 500,000-byte large-body threshold -- landing it in the
+        # exact 500,000-700,000 B band step4-corrected-scope.md section 8 says stays empty on
+        # today's real corpus but must be live-if-reached.
+        source = "x" * 560_000
+        candidate = {"clinical_summary": "y"}
+        payload = clinical_grounding._judge_payload(candidate)
+        user_message = clinical_grounding._build_judge_message(
+            source, payload, "clinical_summary"
+        )
+        body_bytes = clinical_grounding.judge_request_bytes(user_message)
+
+        # 1. The body really is in the large-input band Step 4 opens up.
+        assert clinical_grounding._LARGE_JUDGE_BODY_BYTES < body_bytes <= 700_000
+
+        # 2. It is admitted END TO END by grounding_request_fits under the production-default
+        #    WorkBudget (max_judge_input_bytes=700_000) -- not just accepted by the sizer in
+        #    isolation.
+        budget = WorkBudget(deadline=time.monotonic() + 200)
+        token = _current_budget.set(budget)
+        try:
+            fit = clinical_grounding.grounding_request_fits(source, candidate)
+            assert fit.fits, fit.reason
+            assert fit.body_bytes == body_bytes
+        finally:
+            _current_budget.reset(token)
+
+        def timeout_with_remaining(remaining_s):
+            budget = WorkBudget(deadline=time.monotonic() + remaining_s)
+            token = _current_budget.set(budget)
+            try:
+                return clinical_grounding._judge_timeout_s(body_bytes)
+            finally:
+                _current_budget.reset(token)
+
+        # 3. Genuinely takes the CLAMP path, not the constant-30s ordinary path. The ordinary
+        #    path (TestJudgeTimeoutScoping.test_12c) returns EXACTLY 30 regardless of the
+        #    remaining clock; this body's timeout instead VARIES with the remaining clock,
+        #    which is only possible if the early `if body_bytes <= _LARGE_JUDGE_BODY_BYTES:
+        #    return _JUDGE_TIMEOUT_S` return was NOT taken for it -- i.e. the clamp arithmetic
+        #    below it ran for real, for the first time this body size has ever been able to.
+        ample = timeout_with_remaining(200)  # clock not the binding constraint
+        assert ample == clinical_grounding._JUDGE_LARGE_TIMEOUT_S == 40
+        assert ample != clinical_grounding._JUDGE_TIMEOUT_S  # NOT the ordinary 30s path
+
+        moderate = timeout_with_remaining(50)  # (min(90, ~49) - 10) / 2 ~= 19.5
+        assert moderate == pytest.approx(19.5, abs=0.1)
+        assert moderate not in (
+            clinical_grounding._JUDGE_TIMEOUT_S,
+            clinical_grounding._JUDGE_LARGE_TIMEOUT_S,
+        )
+
+        with pytest.raises(DocumentProcessingError) as excinfo:
+            timeout_with_remaining(15)  # (min(90, ~14) - 10) / 2 ~= 2 < _JUDGE_MIN_LARGE_TIMEOUT_S
+        assert excinfo.value.reason_code == "GROUNDING_LATENCY_GATE"
+
+
+# ---------------------------------------------------------------------------
+# Test 11 (round9-revision.md section 11): dispatch multiplier, STEP 4. Direct evidence that
+# the x2 reservation is wired ONLY at chain.py's site-2 final audit (_verify_final_with_retry)
+# and that sites 1 (_verify_stage's standalone branch), 3 (_audit_once_retried) and 4
+# (_verify_final's single whole-candidate audit) all still reserve at the Step 0-2 default of
+# dispatches=1.
+# ---------------------------------------------------------------------------
+
+
+class TestStep4DispatchScoping:
+    @pytest.mark.asyncio
+    async def test_dispatch_count_is_scoped_to_site_2_only(self, monkeypatch):
+        assert clinical_grounding._JUDGE_DISPATCHES == 2
+
+        real_reserve = clinical_grounding.reserve_input_bytes
+        recorded = []
+
+        def spy_reserve(budget, body_bytes, dispatches):
+            recorded.append(dispatches)
+            return real_reserve(budget, body_bytes, dispatches)
+
+        monkeypatch.setattr(clinical_grounding, "reserve_input_bytes", spy_reserve)
+        run = _passing_run()
+        p1, p2, p3 = _settings_patches(run)
+
+        chain_instance = chain.AttachmentSummarizationChain()
+        chain_instance._model = object()
+        candidate = NS(model_dump=lambda: {"clinical_summary": "irrelevant"})
+
+        with p1, p2, p3:
+            # Site 2: chain.py's _verify_final_with_retry (Regime B final audit) -- the ONLY
+            # call site that should reserve at dispatches=_JUDGE_DISPATCHES=2.
+            token = chain._deferred_grounding.set(None)
+            try:
+                await chain_instance._verify_final_with_retry("source", candidate)
+            finally:
+                chain._deferred_grounding.reset(token)
+            assert recorded[-1] == clinical_grounding._JUDGE_DISPATCHES == 2
+
+            # Site 1: _verify_stage's standalone branch (audits is None) -- default
+            # dispatches=1, unchanged from Step 2.
+            token = chain._deferred_grounding.set(None)
+            try:
+                await chain_instance._verify_stage(
+                    "evidence", candidate, stage="synthesis"
+                )
+            finally:
+                chain._deferred_grounding.reset(token)
+            assert recorded[-1] == 1
+
+            # Site 3: _audit_once_retried (Regime A staged replay) -- default dispatches=1.
+            await chain_instance._audit_once_retried("evidence", candidate)
+            assert recorded[-1] == 1
+
+            # Site 4: _verify_final's single whole-candidate audit -- default dispatches=1.
+            output_a = NS(source_document_id="doc-a")
+            audits = [("synthesis", "evidence-a", output_a)]
+            token = chain._deferred_grounding.set(audits)
+            try:
+                await chain_instance._verify_final(
+                    "source", candidate, accepted_ids={"doc-a"}
+                )
+            finally:
+                chain._deferred_grounding.reset(token)
+            assert recorded[-1] == 1
+
+        # Exactly one x2 reservation across all four call sites exercised above.
+        assert recorded.count(2) == 1
+        assert recorded.count(1) == 3
+
