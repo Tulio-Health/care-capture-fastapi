@@ -33,6 +33,10 @@ Section 11 items covered by file location:
   - step4-corrected-scope.md section 12 acceptance items 1-3 (corrected constants, margin,
     non-empty band) and direct clamp-reachability evidence: TestStep4CorrectedConstants,
     TestStep4LargeInputJudgeMode
+  - step4-corrected-scope.md section 12 acceptance item 4 (site 3/site 4 confinement at the
+    new ceiling; MAJOR-1, step4-implementation-redteam.md): site 4 by test_12d above, site 3
+    by test_largest_site3_synthesis_replay_snapshot_is_below_the_large_body_threshold, both in
+    TestJudgeTimeoutScoping
 """
 
 import time
@@ -979,6 +983,139 @@ class TestBonusAuditDegradation:
 
 
 # ---------------------------------------------------------------------------
+# MAJOR-2 (step4-implementation-redteam.md): Step 4's size-gate raise means every one of the
+# 10 newly-audited encounters now reaches the site-2 retry below at the unclamped
+# _JUDGE_TIMEOUT_S=30 -- one retry dispatch can burn _JUDGE_TIMEOUT_S * _JUDGE_DISPATCHES =
+# 60s on a provider stall, which the pooled p95 job wall-clock (Gate B: 84.4s of a 120s
+# budget) cannot always absorb, and SUMMARY_DEADLINE_EXCEEDED is structurally uncatchable
+# from inside the chain. These pin the ~4-line clock guard that refuses the retry (never the
+# first dispatch) when the job clock cannot plausibly fund it plus a publish tail.
+# ---------------------------------------------------------------------------
+
+
+class TestStep4RetryClockGuard:
+    @pytest.mark.asyncio
+    async def test_retry_skipped_when_remaining_clock_cannot_fund_it(
+        self, monkeypatch, caplog
+    ):
+        """Real scenario: a job with only 10s of clock left (well under the 70s = 30 *
+        _JUDGE_DISPATCHES + _JUDGE_PUBLISH_TAIL_S the retry needs) hits a spurious rejection
+        on the first dispatch. The retry must be genuinely skipped -- not attempted -- and the
+        appointment must still publish (no raise)."""
+        chain_instance = chain.AttachmentSummarizationChain()
+        chain_instance._model = object()
+        monkeypatch.setattr(
+            chain,
+            "grounding_request_fits",
+            lambda source, output, **kw: GroundingFit(
+                fits=True, reason=None, body_bytes=1
+            ),
+        )
+        failure = DocumentProcessingError("GROUNDING_VALIDATION_FAILED")
+        calls = AsyncMock(side_effect=[failure])  # only the first dispatch may be awaited
+        monkeypatch.setattr(chain, "verify_grounding", calls)
+        response = AttachmentSummarizationResponse(
+            clinical_summary="x", documents_analyzed=1
+        )
+        budget = WorkBudget(deadline=time.monotonic() + 10)
+        budget_token = _current_budget.set(budget)
+        regime_token = chain._deferred_grounding.set(None)
+        try:
+            with caplog.at_level("WARNING"):
+                await chain_instance._verify_final_with_retry("source", response)
+        finally:
+            chain._deferred_grounding.reset(regime_token)
+            _current_budget.reset(budget_token)
+        assert calls.await_count == 1  # the retry was never attempted
+        skip_records = [
+            r.message
+            for r in caplog.records
+            if r.message.startswith("final_audit_skipped:")
+        ]
+        assert len(skip_records) == 1
+        assert skip_records[0].startswith(
+            "final_audit_skipped:retry_skipped:insufficient_clock"
+        )
+
+    @pytest.mark.asyncio
+    async def test_retry_proceeds_when_remaining_clock_is_sufficient(
+        self, monkeypatch, caplog
+    ):
+        """Control for the test above: with ample clock (200s, well over the 70s the retry
+        needs) the exact same spurious rejection still runs the retry, unaffected by the new
+        guard."""
+        chain_instance = chain.AttachmentSummarizationChain()
+        chain_instance._model = object()
+        monkeypatch.setattr(
+            chain,
+            "grounding_request_fits",
+            lambda source, output, **kw: GroundingFit(
+                fits=True, reason=None, body_bytes=1
+            ),
+        )
+        failure = DocumentProcessingError("GROUNDING_VALIDATION_FAILED")
+        passing_result = NS(output=GroundingVerdict(supported=True, issues=[]))
+        calls = AsyncMock(side_effect=[failure, None])
+        monkeypatch.setattr(chain, "verify_grounding", calls)
+        response = AttachmentSummarizationResponse(
+            clinical_summary="x", documents_analyzed=1
+        )
+        budget = WorkBudget(deadline=time.monotonic() + 200)
+        budget_token = _current_budget.set(budget)
+        regime_token = chain._deferred_grounding.set(None)
+        try:
+            with caplog.at_level("WARNING"):
+                await chain_instance._verify_final_with_retry("source", response)
+        finally:
+            chain._deferred_grounding.reset(regime_token)
+            _current_budget.reset(budget_token)
+        assert calls.await_count == 2  # the retry DID run
+        skip_records = [
+            r.message
+            for r in caplog.records
+            if r.message.startswith("final_audit_skipped:")
+        ]
+        assert not any("insufficient_clock" in r for r in skip_records)
+
+    @pytest.mark.asyncio
+    async def test_first_dispatch_unaffected_by_insufficient_clock(
+        self, monkeypatch, caplog
+    ):
+        """The guard must be confined to the retry. Even with almost no clock left (1s), the
+        FIRST dispatch still attempts unconditionally -- no new clock check on it."""
+        chain_instance = chain.AttachmentSummarizationChain()
+        chain_instance._model = object()
+        monkeypatch.setattr(
+            chain,
+            "grounding_request_fits",
+            lambda source, output, **kw: GroundingFit(
+                fits=True, reason=None, body_bytes=1
+            ),
+        )
+        calls = AsyncMock(return_value=None)  # first dispatch succeeds outright
+        monkeypatch.setattr(chain, "verify_grounding", calls)
+        response = AttachmentSummarizationResponse(
+            clinical_summary="x", documents_analyzed=1
+        )
+        budget = WorkBudget(deadline=time.monotonic() + 1)
+        budget_token = _current_budget.set(budget)
+        regime_token = chain._deferred_grounding.set(None)
+        try:
+            with caplog.at_level("WARNING"):
+                await chain_instance._verify_final_with_retry("source", response)
+        finally:
+            chain._deferred_grounding.reset(regime_token)
+            _current_budget.reset(budget_token)
+        assert calls.await_count == 1  # first dispatch ran despite the near-zero clock
+        skip_records = [
+            r.message
+            for r in caplog.records
+            if r.message.startswith("final_audit_skipped:")
+        ]
+        assert skip_records == []  # no skip of any kind -- it simply succeeded
+
+
+# ---------------------------------------------------------------------------
 # Test 12(c)/(d)/(e): _judge_timeout_s scoping (Step-2 item 10's explicit requirement)
 # ---------------------------------------------------------------------------
 
@@ -1011,6 +1148,32 @@ class TestJudgeTimeoutScoping:
         payload = clinical_grounding._judge_payload(candidate)
         user_message = clinical_grounding._build_judge_message(
             source, payload, "clinical_summary"
+        )
+        body_bytes = clinical_grounding.judge_request_bytes(user_message)
+        assert body_bytes < clinical_grounding._LARGE_JUDGE_BODY_BYTES
+
+    def test_largest_site3_synthesis_replay_snapshot_is_below_the_large_body_threshold(
+        self,
+    ):
+        """MAJOR-1 (step4-implementation-redteam.md), completing step4-corrected-scope.md
+        section 12 acceptance item 4 -- test_12d above only ever pinned site 4's half of that
+        item. Site 3 (chain.py._audit_once_retried) replays the synthesis-stage snapshot
+        appended unconditionally at chain.py:782/890 (round9-revision.md section 5.4.3(iv)):
+        evidence is the synthesis prompt (appointment_context wrapper + validated_source_records,
+        gated at 100,000 serialized chars by chain.py:713-714) and candidate is the resulting
+        response, whose accumulated lab_results/recommendations/key_insights fields are drawn
+        from -- and so bounded by -- that same 100,000-char records gate (round9-revision.md
+        section 5.4.3(iv): ~205,000 gate chars total -> ~215,000-220,000 B). Built from
+        realistic-shaped maxima at both ends through the same shared
+        _judge_payload/_build_judge_message/judge_request_bytes functions verify_grounding
+        itself uses, so this fails if REGIME_SPLIT_CHARS, the 100,000-char records gate, or
+        _LARGE_JUDGE_BODY_BYTES ever drift and this confinement (chain.py:1057's comment,
+        round-8 BLOCKER-1) silently stops holding."""
+        evidence = "x" * 105_000  # ~100,000-char records gate + appointment_context wrapper
+        candidate = {"clinical_summary": "y" * 100_000}  # same records-gate bound as test_12d
+        payload = clinical_grounding._judge_payload(candidate)
+        user_message = clinical_grounding._build_judge_message(
+            evidence, payload, "clinical_summary"
         )
         body_bytes = clinical_grounding.judge_request_bytes(user_message)
         assert body_bytes < clinical_grounding._LARGE_JUDGE_BODY_BYTES

@@ -27,6 +27,8 @@ from src.app.services.document_extraction import DocumentProcessingError
 from src.app.services.clinical_grounding import (
     GROUNDING_POLICY,
     _JUDGE_DISPATCHES,
+    _JUDGE_PUBLISH_TAIL_S,
+    _JUDGE_TIMEOUT_S,
     _LARGE_JUDGE_RETRY_CUTOFF_BYTES,
     grounding_request_fits,
     validate_quotes,
@@ -947,6 +949,15 @@ class AttachmentSummarizationChain:
         4 keep the default), covering the internal MAX_TRANSIENT_RETRIES layer at the one
         site whose body can be large enough to matter (step4-corrected-scope.md section 2,
         round9-revision.md section 8.2).
+
+        MAJOR-2 (step4-implementation-redteam.md): every body reaching the retry below is
+        <= _LARGE_JUDGE_BODY_BYTES (see the cutoff just above), so it runs at the unclamped
+        _JUDGE_TIMEOUT_S -- one retry dispatch can burn _JUDGE_TIMEOUT_S * _JUDGE_DISPATCHES
+        = 60s on a provider stall, which the pooled p95 job wall-clock (Gate B: 84.4s of a
+        120s budget) cannot always absorb, and SUMMARY_DEADLINE_EXCEEDED cannot be caught --
+        so this must be prevented. The clock guard just below refuses the retry (not the
+        FIRST dispatch above, which stays unconditional) when the job clock cannot plausibly
+        fund it plus a publish tail.
         """
         # Step 0 (grounding-check size-gate design, round9-revision.md section 10, round-6
         # MAJOR-3): the single number that decides how much of the design's byte-coverage is
@@ -978,6 +989,17 @@ class AttachmentSummarizationChain:
                 raise
         if fit.body_bytes > _LARGE_JUDGE_RETRY_CUTOFF_BYTES:
             _record_final_audit_skip("retry_skipped:body_too_large", fit.body_bytes, encounter_id)
+            return
+        # MAJOR-2 (step4-implementation-redteam.md): refuse the retry, not the first dispatch
+        # above, when the job clock cannot fund _JUDGE_DISPATCHES worst-case attempts plus a
+        # publish tail -- prevention, since SUMMARY_DEADLINE_EXCEEDED cannot be caught.
+        if (
+            remaining_seconds(float("inf"))
+            < _JUDGE_TIMEOUT_S * _JUDGE_DISPATCHES + _JUDGE_PUBLISH_TAIL_S
+        ):
+            _record_final_audit_skip(
+                "retry_skipped:insufficient_clock", fit.body_bytes, encounter_id
+            )
             return
         try:
             # spurious-rejection retry
