@@ -50,6 +50,34 @@ class RoutingSafety(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(text.count('ordered; not performed'), 3)
         self.assertLess(text.index('[Page 3]'), text.index('[OCR page 4]'))
 
+    async def test_ocr_disabled_by_default_fails_closed_without_a_vision_call(self):
+        # No settings mock: exercises the real code-level default (see settings.py), which is
+        # False pending a fix to the verification-gate bug (.claude/debug-reports/
+        # 2026-09-28-disable-broken-document-ocr.md). No env var/SSM override exists anywhere,
+        # so this is genuinely what every real environment runs today.
+        from src.app.services.document_ocr import extract_scanned_document
+        transcribe = AsyncMock()
+        with patch('src.app.services.document_ocr.transcribe_verified_image', transcribe):
+            with self.assertRaises(DocumentProcessingError) as error:
+                await extract_scanned_document((DATA / 'mixed_scan.pdf').read_bytes(), 'application/pdf', client=object(), model='mock')
+        self.assertEqual(error.exception.code, 'OCR_REQUIRED')
+        self.assertEqual(error.exception.reason_code, 'OCR_DISABLED')
+        transcribe.assert_not_awaited()
+
+    async def test_ocr_disabled_full_pipeline_fails_closed_not_crashes(self):
+        # Same document, but through the real extract_text_async entry point (render worker ->
+        # OCR_REQUIRED routing -> extract_scanned_document), proving the disabled flag surfaces
+        # as the same DocumentProcessingError contract every other extraction failure uses --
+        # document_ingestion.py already catches this by code and records extraction_error
+        # without raising further, so this is a clean, non-crashing fallback, not a new failure
+        # mode.
+        transcribe = AsyncMock()
+        with patch('src.app.services.document_ocr.transcribe_verified_image', transcribe):
+            with self.assertRaises(DocumentProcessingError) as error:
+                await DocumentTextExtractor().extract_text_async((DATA / 'mixed_scan.pdf').read_bytes(), 'application/pdf')
+        self.assertEqual(error.exception.code, 'OCR_REQUIRED')
+        transcribe.assert_not_awaited()
+
     async def test_region_tiling_skips_full_page_call_and_joins_tiles(self):
         from src.app.services.document_ocr import extract_scanned_document
         transcribe = AsyncMock(side_effect=['Tile-1-text', 'Tile-2-text'])
