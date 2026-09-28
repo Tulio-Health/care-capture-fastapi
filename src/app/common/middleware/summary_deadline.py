@@ -6,7 +6,12 @@ from src.app.services.summary_runtime import request_started
 
 
 class SummaryDeadlineMiddleware:
-    def __init__(self, app, timeout_seconds=305):
+    # 305 was above App Runner's hard 120s request cap and could never fire in
+    # production (see .research/fastapi-deadline-and-retry-architecture/findings.md).
+    # 115 is a real backstop: above bounded_summary's ~110s job deadline (so the
+    # legible SUMMARY_DEADLINE_EXCEEDED path wins first) but still inside the
+    # platform's 120s window.
+    def __init__(self, app, timeout_seconds=115):
         self.app = app
         self.timeout_seconds = timeout_seconds
 
