@@ -116,3 +116,12 @@ class ProcedureSummarizationRequest(BaseModel):
         ge=10,
         le=300,
     )
+    async_token: Optional[str] = Field(
+        default=None,
+        description=(
+            "Caller-supplied attempt token, used only by the /procedure-summary/async route. "
+            "Echoed in the 202 response and stamped into each persisted row's summary_metadata "
+            "so Node API's completion poll/rescue can identify writes from this attempt. Absent "
+            "on the sync route."
+        ),
+    )

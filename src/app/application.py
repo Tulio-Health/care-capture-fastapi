@@ -89,7 +89,7 @@ def get_application(*, initialize_environment=True, lifespan_handler=None) -> Fa
         from .config.environment import initialize_environment_sync
         initialize_environment_sync()
     # Now import routes after SSM parameters are loaded
-    from .routes import health_router, root_router, care_capture_router, ai_chat_router, users_router, schedule_visit_router, translation_router, auth_test_router, document_type_inference_router, enterprise_router
+    from .routes import health_router, root_router, care_capture_router, summary_probe_router, ai_chat_router, users_router, schedule_visit_router, translation_router, auth_test_router, document_type_inference_router, enterprise_router
     from .routes.version import router as version_router
     from .common.exception import (
         HealthCheckError,
@@ -144,6 +144,7 @@ def get_application(*, initialize_environment=True, lifespan_handler=None) -> Fa
     app.include_router(health_router)
     app.include_router(version_router)
     app.include_router(care_capture_router)
+    app.include_router(summary_probe_router)
     app.include_router(users_router)
     app.include_router(ai_chat_router)
     app.include_router(schedule_visit_router)

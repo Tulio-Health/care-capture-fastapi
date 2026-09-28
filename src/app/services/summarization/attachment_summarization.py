@@ -52,6 +52,7 @@ def _static_fallback_summary_data(
         "summary_metadata": {
             "source": "attachment_summary",
             "analysis_version": "1.0",
+            "async_token": request.async_token,
             **outcome_metadata("no_documents"),
             "total_documents": 0,
             "successful_documents": 0,
@@ -469,6 +470,7 @@ class AttachmentSummarizationService:
             "summary_metadata": {
                 "source": "attachment_summary",
                 "analysis_version": "3.0",
+                "async_token": request.async_token,
                 **outcome_metadata(state, extraction_errors),
                 "total_documents": len(extracted_documents),
                 "successful_documents": max(0, len(extracted_documents) - len(failed_ids)) if successful_docs else 0,

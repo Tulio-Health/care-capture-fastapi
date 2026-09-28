@@ -1,6 +1,9 @@
-from typing import List
+import asyncio
+import time
+import uuid
+from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +32,7 @@ from ..services.summarization import (
 from ..services.summarization.attachment_summarization import AttachmentSummarizationService
 from ..services.summarization.procedure_summarization import ProcedureSummarizationService
 
+from src.app.services.async_dispatch import _bg_slots, dispatch
 from src.app.services.document_extraction import DocumentProcessingError
 from src.app.services.summary_authorization import authorize_summary_scope
 
@@ -687,3 +691,164 @@ async def comprehensive_summary(
             exc_info=False,
         )
         raise HTTPException(status_code=500, detail="Unable to create the summaries. Please try again later.")
+
+
+# ---------------------------------------------------------------------------------------
+# Async variants (.research/fastapi-async-summary-quickfix/round5-final.md section 5,
+# care-capture-nodeapi sibling repo). Mechanism: asyncio.create_task, NOT Starlette
+# BackgroundTasks -- BackgroundTasks runs inside SummaryDeadlineMiddleware's
+# asyncio.timeout(115) scope and would get cancelled at 115s, which is exactly the wall
+# this design exists to get outside of. Sync endpoints above are untouched.
+# ---------------------------------------------------------------------------------------
+
+
+@router.post(
+    "/attachment-summary/async",
+    status_code=202,
+    summary="Document Attachment Summarization (async)",
+    description=(
+        "Authorizes and 202-accepts immediately; the actual summarization runs in an "
+        "independent background task so it is not bound by SummaryDeadlineMiddleware's "
+        "115s per-request timeout. Completion is signalled via a token-scoped Redis key "
+        "the caller polls (see async_dispatch.py); the 202 body echoes async_token as a "
+        "consistency check."
+    ),
+)
+async def attachment_summary_async(
+    http_request: Request,
+    request: AttachmentSummarizationRequest,
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    await authorize_summary_scope(
+        http_request, request.user_id, db, request.appointment_id
+    )
+
+    if not request.async_token:
+        raise HTTPException(
+            status_code=400, detail="async_token is required for async summarization"
+        )
+
+    # Advisory pre-check only: a genuine race with a concurrent dispatch is fine -- the
+    # loser's own task fails fast on the same check (async_dispatch._run) and signals
+    # SUMMARY_BUSY, so nodeapi's retry-with-backoff path is exercised either way.
+    if _bg_slots.locked():
+        raise HTTPException(status_code=503, detail="SUMMARY_BUSY")
+
+    async def _coro_factory() -> None:
+        # Own DB session -- the request-scoped `db` above closes when this request's
+        # response finishes sending, which happens well before this background task is
+        # done. Precedent: src/app/core/scheduler.py's generate_health_insight.
+        async for session in get_db():
+            service = AttachmentSummarizationService(session)
+            await service.analyze_attachments(request)
+            break
+
+    dispatch(
+        _coro_factory, request.appointment_id, "attachment_summary", request.async_token
+    )
+
+    return {
+        "accepted": True,
+        "appointment_id": str(request.appointment_id),
+        "async_token": request.async_token,
+    }
+
+
+@router.post(
+    "/procedure-summary/async",
+    status_code=202,
+    summary="Procedure Document Summarization (async)",
+    description=(
+        "Authorizes and 202-accepts immediately; the actual extraction runs in an "
+        "independent background task so it is not bound by SummaryDeadlineMiddleware's "
+        "115s per-request timeout. Completion is signalled via a token-scoped Redis key "
+        "the caller polls (see async_dispatch.py); the 202 body echoes async_token as a "
+        "consistency check."
+    ),
+)
+async def procedure_summary_async(
+    http_request: Request,
+    request: ProcedureSummarizationRequest,
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    await authorize_summary_scope(
+        http_request, request.user_id, db, request.appointment_id
+    )
+
+    if not request.async_token:
+        raise HTTPException(
+            status_code=400, detail="async_token is required for async summarization"
+        )
+
+    if _bg_slots.locked():
+        raise HTTPException(status_code=503, detail="SUMMARY_BUSY")
+
+    async def _coro_factory() -> None:
+        async for session in get_db():
+            service = ProcedureSummarizationService(session)
+            await service.analyze_procedures(request)
+            break
+
+    dispatch(
+        _coro_factory, request.appointment_id, "procedure_summary", request.async_token
+    )
+
+    return {
+        "accepted": True,
+        "appointment_id": str(request.appointment_id),
+        "async_token": request.async_token,
+    }
+
+
+# ---------------------------------------------------------------------------------------
+# G0 measurement probe (round5-final.md section 1.3). Deliberately on its own router with
+# NO "/care-capture" prefix -- the spec's exact path is "/_probe/burn" at root, which is
+# what keeps it outside EXCLUDED_PATHS/EXCLUDED_PATH_PREFIXES and therefore
+# internal-service-key-authed like any other non-excluded path (ClerkAuthMiddleware checks
+# x-internal-service-key before requiring x-clerk-jwt, regardless of path).
+# TEMPORARY: this is a measurement tool for the pre-deploy gate, not part of the
+# permanent design. Removal after G0 passes is a tracked follow-up, not done here.
+# ---------------------------------------------------------------------------------------
+
+probe_router = APIRouter(tags=["internal-probe"])
+
+_probe_tasks: set = set()
+
+
+async def _run_burn_probe(seconds: int, token: str) -> None:
+    start = time.monotonic()
+
+    def _cpu_loop() -> None:
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            pass
+
+    task = asyncio.ensure_future(asyncio.to_thread(_cpu_loop))
+    checkpoint = 0
+    while True:
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=15)
+            break
+        except TimeoutError:
+            checkpoint += 1
+            logger.info(
+                "burn_probe token=%s checkpoint=%d wall_elapsed_s=%.3f",
+                token,
+                checkpoint,
+                time.monotonic() - start,
+            )
+    logger.info(
+        "burn_probe_done token=%s requested_s=%d wall_elapsed_s=%.3f",
+        token,
+        seconds,
+        time.monotonic() - start,
+    )
+
+
+@probe_router.get("/_probe/burn", include_in_schema=False)
+async def burn_probe(seconds: int = Query(..., ge=1, le=300)) -> Dict[str, Any]:
+    token = str(uuid.uuid4())
+    probe_task = asyncio.create_task(_run_burn_probe(seconds, token))
+    _probe_tasks.add(probe_task)
+    probe_task.add_done_callback(_probe_tasks.discard)
+    return {"accepted": True, "token": token, "seconds": seconds}
