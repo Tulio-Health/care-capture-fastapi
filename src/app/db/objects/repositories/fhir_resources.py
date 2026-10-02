@@ -14,15 +14,34 @@ from src.app.services.document_type_rules_client import (
 
 logger = get_logger(__name__)
 
-# ponytail: provisional cap pending the round9-revision3.md S10 step-4b live dev runtime
-# measurement (headroom against whichever summary job deadline regime -- 300s async /
-# 110s sync -- is actually live when that measurement runs; see that doc for the full
-# decision rule). 100 is carried forward from the pre-redesign DOCUMENT_LIMIT_EXCEEDED
-# raise threshold as a placeholder, NOT a tuned value. A follow-up commit must replace
-# it once the measurement lands. Must move together with document_ingestion.MAX_DOCUMENTS
-# (F7c) -- that constant is the real binding cap (attachment-counted); this one only has
-# to supply enough DocumentReferences that the binding cap can actually trip.
-DOCUMENT_SELECTION_CAP = 100
+# Sized by the round9-revision3.md S10 step-4b live-dev runtime measurement, 2026-10-02
+# (fastapi-app-v2-dev @ 943f66c, nodejs-app-v2-dev @ ced25e47).
+#
+# Regime that actually governed the measurement: SYNC / 110 s -- NOT the 300 s async path
+# round9-revision3.md expected. fix/async-summary-quickfix is not an ancestor of either
+# deployed branch, the deployed fastapi tree has no async dispatch path, and the deployed
+# nodeapi sends timeout_seconds: 110 (conversation-summary.service.ts:271,:455), so SSM
+# /tuliohealth/dev/summary/async_mode="async" is inert. Headroom target was therefore the
+# sync one: >=30% of 110 s, i.e. <=77 s.
+#
+# Measurement (encounter 97954819, appointment f5b7474f-2088-4bda-af66-4a47838c4654):
+# 69 documents / 5.04 MB ingested end-to-end in 58.3 s of in-process budget wall clock
+# (budget.job_end wall_seconds=58.311, 60.27 s client wall), outcome `partial`,
+# validation passed, model_call_headroom=48 of 64 -- extraction time, not the model-call
+# budget, is what the cap actually buys back. That is 47% headroom at 69 documents.
+# Extrapolating the same per-document cost to 100 documents gives ~84.5 s = 23% headroom,
+# which FAILS the >=30% rule, so 100 could not be left in place.
+#
+# 50 is set below the largest workload measured to fit (69) to keep ~2x the required
+# margin: ~42 s projected at the measured per-document rate (~62% headroom). The extra
+# margin is deliberate -- dev's Cerner-sandbox corpus is smaller per document than real
+# production documents, and 20 of the 69 documents in the measured run took the slower
+# OCR_REQUIRED path.
+#
+# Must move together with document_ingestion.MAX_DOCUMENTS (F7c) -- that constant is the
+# real binding cap (attachment-counted); this one only has to supply enough
+# DocumentReferences that the binding cap can actually trip.
+DOCUMENT_SELECTION_CAP = 50
 
 
 def _build_exclude_predicates(rules: list) -> list:
