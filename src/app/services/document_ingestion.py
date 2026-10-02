@@ -10,17 +10,28 @@ from src.app.services.document_extraction import DocumentTextExtractor, Document
 
 logger = get_logger(__name__)
 
-# ponytail: provisional cap pending the round9-revision3.md S10 step-4b live dev runtime
-# measurement (headroom against whichever summary job deadline regime -- 300s async /
-# 110s sync -- is actually live when that measurement runs; see that doc for the full
-# decision rule). This is the REAL BINDING cap (attachment-counted, after format-dedup
-# collapses each DocumentReference's multi-format representations down to one -- see
-# _select_format_duplicate_skips below). fhir_resources.py's repository LIMIT is NOT the
-# cap; it moves together with this constant as DOCUMENT_SELECTION_CAP + 1 (a truncation
-# detector, not a second cap -- F7c). 100 is carried forward from the pre-redesign
-# DOCUMENT_LIMIT_EXCEEDED threshold as a placeholder, NOT a tuned value. A follow-up
-# commit must replace it once the measurement lands.
-MAX_DOCUMENTS = 100
+# Sized by the round9-revision3.md S10 step-4b live-dev runtime measurement, 2026-10-02
+# (fastapi-app-v2-dev @ 943f66c, nodejs-app-v2-dev @ ced25e47). This is the REAL BINDING
+# cap (attachment-counted, after format-dedup collapses each DocumentReference's
+# multi-format representations down to one -- see _select_format_duplicate_skips below).
+# fhir_resources.py's repository LIMIT is NOT the cap; it moves together with this
+# constant as DOCUMENT_SELECTION_CAP + 1 (a truncation detector, not a second cap -- F7c).
+#
+# The measurement ran under the SYNC / 110 s regime, not the 300 s async path
+# round9-revision3.md expected (fix/async-summary-quickfix is unmerged and not deployed;
+# deployed nodeapi sends timeout_seconds: 110), so the >=30% headroom target was <=77 s.
+#
+# Encounter 97954819 (appointment f5b7474f-2088-4bda-af66-4a47838c4654): 69 documents /
+# 5.04 MB ingested in 58.3 s of budget wall clock (budget.job_end wall_seconds=58.311),
+# outcome `partial`, validation passed, model_call_headroom=48/64 -- the cap buys back
+# extraction time, not model calls. 47% headroom at 69 documents; the same per-document
+# cost extrapolated to 100 documents is ~84.5 s = 23% headroom, which FAILS the rule.
+# 100 was therefore NOT measured to fit and could not be left in place.
+#
+# 50 sits below the largest workload measured to fit (69), projecting ~42 s / ~62%
+# headroom, deliberately keeping ~2x margin for production documents (larger than dev's
+# Cerner-sandbox corpus) and for the slower OCR path (20 of the 69 measured documents).
+MAX_DOCUMENTS = 50
 
 # Format preference for attachments that live on the SAME DocumentReference. FHIR's own data
 # model already asserts same-DocumentReference attachments are representations of one logical
