@@ -13,6 +13,7 @@ from src.app.db.objects.repositories.conversation_summaries import (
     ConversationSummariesRepository,
 )
 from src.app.db.objects.repositories.fhir_resources import FhirResourcesRepository
+from src.app.services.document_type_rules_client import get_document_type_rules_client
 from src.app.models.attachment_summarization import (
     AttachmentSummarizationRequest,
     DocumentAttachment,
@@ -100,6 +101,12 @@ class AttachmentSummarizationService:
         self.s3_client = S3DocumentClient()
         self.text_extractor = DocumentTextExtractor()
         self.logger = logger
+        # Pinned once per summarization attempt (round9-revision3.md S3.3 step 4 / R7b):
+        # resolved at the top of analyze_attachments() and threaded into every
+        # _fetch_document_references() call in that attempt (initial fetch + both
+        # manifest re-check fetches), so a rule-tier flip between calls cannot change
+        # the ordered document set and spuriously raise SOURCE_MANIFEST_CHANGED.
+        self._rule_snapshot = None
 
     @bounded_summary
     async def analyze_attachments(self, request: AttachmentSummarizationRequest) -> ConversationSummary:
@@ -126,6 +133,12 @@ class AttachmentSummarizationService:
         self.logger.info(
             f"Starting attachment summarization - appointment_id: {request.appointment_id}, user_id: {request.user_id}"
         )
+
+        # Resolve the document-type-rules snapshot ONCE for this attempt (S3.3 step 4 /
+        # R7b) -- every _fetch_document_references() call below reuses it instead of
+        # re-resolving, which is what makes a stale<->live rule-tier flip between the
+        # initial fetch and the manifest re-check structurally impossible.
+        self._rule_snapshot = await get_document_type_rules_client().resolve_rules()
 
         # Fetch appointment and provider details
         appointment, provider_name = await self._fetch_appointment_details(request)
@@ -327,22 +340,21 @@ class AttachmentSummarizationService:
         doc_references = await self.fhir_repo.get_document_references_with_attachments(
             user_id=str(request.user_id),
             encounter_id=appointment.ehr_entity_id,
+            selection_profile="visit_summary_preferred",
+            rule_snapshot=self._rule_snapshot,
         )
 
-        # Soft preference (not a hard filter): prefer documents the AI type-inference
-        # classifier flagged `includeForSummary=True` (clinically substantive — visit/
-        # progress/consult/discharge notes, lab/imaging/pathology/operative reports)
-        # when at least one exists for this encounter. Fall back to the full unfiltered
-        # set when none are flagged true (field absent/null/false for every doc) — ~15%
-        # of visits (telephone/imaging-only encounters) have no flagged document at all,
-        # so a hard restrict would leave them with nothing. See care-capture-nodeapi's
-        # 2026-09-17 document-scope-question research report, recommendation #2.
-        flagged = [
-            doc for doc in doc_references
-            if isinstance(doc.data, dict) and doc.data.get("includeForSummary") is True
-        ]
-        if flagged:
-            doc_references = flagged
+        # The Python-side includeForSummary soft-preference narrowing that used to live
+        # here has been DELETED and SUBSUMED into the repository's SQL ORDER BY
+        # (include_for_summary_rank, round9-revision3.md S3.1.2A/F4): the AI classifier
+        # flag is now a secondary ordering key inside each preference_rank band rather
+        # than a second, independently-narrowing selection point. Flagged documents fill
+        # the cap before unflagged ones (within each band) as an emergent property of
+        # ORDER BY + LIMIT; no document is ever removed from the set, only reordered --
+        # which also means the original comment's ~15%-of-visits fallback concern is now
+        # structurally eliminated rather than merely re-implemented. See
+        # care-capture-nodeapi's 2026-09-17 document-scope-question research report,
+        # recommendation #2, for the governing rationale this subsumption still honors.
 
         self.logger.debug(
             f"Fetched {len(doc_references)} DocumentReferences with attachments - "
