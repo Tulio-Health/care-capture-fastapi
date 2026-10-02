@@ -457,7 +457,10 @@ class AttachmentSummarizationService:
             document_metadata.append(metadata)
 
             if doc.extraction_error:
-                extraction_errors.append({"source_id": doc.resource_id or "unknown", "error": doc.extraction_error})
+                entry = {"source_id": doc.resource_id or "unknown", "error": doc.extraction_error}
+                if doc.extraction_error_reason:
+                    entry["reason"] = doc.extraction_error_reason
+                extraction_errors.append(entry)
 
         extraction_errors.extend(analysis_result.extraction_errors)
         # A failed source can be reported by both ingestion and the chain. Keep one record

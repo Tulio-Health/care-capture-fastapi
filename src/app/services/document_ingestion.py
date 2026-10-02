@@ -102,8 +102,10 @@ async def process_attachments(references, storage, extractor):
             mark_parsed(document)
         except DocumentProcessingError as exc:
             document.extraction_error = exc.code
+            document.extraction_error_reason = exc.reason_code  # additive; .code stays canonical
         except Exception:
             document.extraction_error = "INTERNAL_PROCESSING_ERROR"
+            document.extraction_error_reason = "INTERNAL_PROCESSING_ERROR"
 
     for reference in references:
         data = reference.data if isinstance(reference.data, dict) else {}
@@ -201,8 +203,10 @@ async def process_attachments(references, storage, extractor):
                 mark_parsed(document)
             except DocumentProcessingError as exc:
                 document.extraction_error = exc.code
+                document.extraction_error_reason = exc.reason_code  # additive; .code stays canonical
             except Exception:
                 document.extraction_error = "INTERNAL_PROCESSING_ERROR"
+                document.extraction_error_reason = "INTERNAL_PROCESSING_ERROR"
             result.append(document)
     if pending:
         await asyncio.gather(*(_load(document, path) for document, path in pending))
