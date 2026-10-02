@@ -257,7 +257,26 @@ class AttachmentSummarizationService:
         )
 
         summary_data["summary_metadata"].update(eligibility_snapshot)
-        if fingerprint and summary_data["summary_metadata"]["processing_outcome"] == "complete":
+        # F8 (round9-revision3.md S3.3 step 5d / risk R13): truncation is deterministic
+        # given the same manifest AND the same total ordering -- the ehr_resource_id
+        # final tiebreak in fhir_resources.py's SELECTION query (F3 step 2) is what makes
+        # the ordering total -- so a `partial` outcome whose ONLY error class is the
+        # order-then-cap truncation sentinel (F7's canonical RESOURCE_LIMIT_EXCEEDED /
+        # DOCUMENT_LIMIT_EXCEEDED) is just as safe to fingerprint as `complete`. Without
+        # this widening, the heaviest truncated encounters would re-run the entire
+        # ingestion + map/reduce + grounding pipeline on every refresh, forever, uncached
+        # (R13) -- on exactly the encounters that are the most expensive to re-run.
+        truncation_errors = summary_data["summary_metadata"]["extraction_errors"]
+        only_truncation_sentinel = bool(truncation_errors) and all(
+            error.get("error") == "RESOURCE_LIMIT_EXCEEDED"
+            and error.get("reason") == "DOCUMENT_LIMIT_EXCEEDED"
+            for error in truncation_errors
+        )
+        processing_outcome = summary_data["summary_metadata"]["processing_outcome"]
+        if fingerprint and (
+            processing_outcome == "complete"
+            or (processing_outcome == "partial" and only_truncation_sentinel)
+        ):
             summary_data["summary_metadata"]["source_fingerprint"] = fingerprint
         db_summary = await self.summaries_repo.upsert(appointment_id=request.appointment_id, summary_data=summary_data)
 

@@ -220,9 +220,46 @@ async def test_max_documents_cap_counts_unique_documents():
     result = await process_attachments(references, storage, extractor)
 
     # dup-a (kept) + 100 unique documents fill every real slot; the 101st attachment then hits
-    # the cap and becomes the DOCUMENT_LIMIT_EXCEEDED sentinel appended on top - so the returned
-    # list is MAX_DOCUMENTS unique real documents + 1 sentinel, and the deduped dup-b never even
-    # reaches (and therefore never occupies) a slot.
+    # the cap and becomes the truncation sentinel appended on top - so the returned list is
+    # MAX_DOCUMENTS unique real documents + 1 sentinel, and the deduped dup-b never even reaches
+    # (and therefore never occupies) a slot.
+    # F7 (round9-revision3.md S3.3 step 5b / risk R14): the sentinel's .extraction_error is now
+    # the CANONICAL RESOURCE_LIMIT_EXCEEDED code (DOCUMENT_LIMIT_EXCEEDED is a group MEMBER, not
+    # a processing_errors.STAGES key -- the pre-F7 raw string here coerced to
+    # INTERNAL_PROCESSING_ERROR in describe_error, recreating the exact defect Fix 4 removed).
+    # The specific code now rides on the additive .extraction_error_reason sibling instead.
     assert len(result) == MAX_DOCUMENTS + 1
-    assert result[-1].extraction_error == "DOCUMENT_LIMIT_EXCEEDED"
+    assert result[-1].extraction_error == "RESOURCE_LIMIT_EXCEEDED"
+    assert result[-1].extraction_error_reason == "DOCUMENT_LIMIT_EXCEEDED"
     assert "dup-b.html" not in storage.calls
+
+
+@pytest.mark.asyncio
+async def test_max_documents_sentinel_never_describes_as_internal_processing_error():
+    """resolves rt2-truncation-sentinel-coerces-to-internal (round9-revision3.md S3.3 step 5b /
+    risk R14) -- the specific regression F7 exists to prevent. Before F7, document_ingestion.py:128
+    wrote the raw group-member string "DOCUMENT_LIMIT_EXCEEDED" directly (bypassing
+    DocumentProcessingError's canonicalization), which is not a processing_errors.STAGES key, so
+    describe_error() coerced it to INTERNAL_PROCESSING_ERROR -- silently mislabeling the exact
+    truncation path Fix 5 makes live. Asserts describe_error() applied to the real sentinel this
+    module produces NEVER returns INTERNAL_PROCESSING_ERROR.
+    """
+    from src.app.services.document_ingestion import MAX_DOCUMENTS
+    from src.app.services.processing_errors import describe_error
+
+    storage = FakeStorage({})
+    extractor = FakeExtractor()
+    references = []
+    for i in range(MAX_DOCUMENTS + 1):
+        path = f"doc-{i}.html"
+        storage._content_by_path[path] = f"content-{i}".encode()
+        references.append(_reference(f"docref-{i}", [_attachment(path, checksum=f"csum-{i}")]))
+
+    result = await process_attachments(references, storage, extractor)
+    sentinel = result[-1]
+
+    described = describe_error(sentinel.extraction_error, reason=sentinel.extraction_error_reason)
+
+    assert described["error"] == "RESOURCE_LIMIT_EXCEEDED"
+    assert described["error"] != "INTERNAL_PROCESSING_ERROR"
+    assert described["reason"] == "DOCUMENT_LIMIT_EXCEEDED"

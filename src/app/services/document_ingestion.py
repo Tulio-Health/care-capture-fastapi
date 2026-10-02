@@ -10,6 +10,16 @@ from src.app.services.document_extraction import DocumentTextExtractor, Document
 
 logger = get_logger(__name__)
 
+# ponytail: provisional cap pending the round9-revision3.md S10 step-4b live dev runtime
+# measurement (headroom against whichever summary job deadline regime -- 300s async /
+# 110s sync -- is actually live when that measurement runs; see that doc for the full
+# decision rule). This is the REAL BINDING cap (attachment-counted, after format-dedup
+# collapses each DocumentReference's multi-format representations down to one -- see
+# _select_format_duplicate_skips below). fhir_resources.py's repository LIMIT is NOT the
+# cap; it moves together with this constant as DOCUMENT_SELECTION_CAP + 1 (a truncation
+# detector, not a second cap -- F7c). 100 is carried forward from the pre-redesign
+# DOCUMENT_LIMIT_EXCEEDED threshold as a placeholder, NOT a tuned value. A follow-up
+# commit must replace it once the measurement lands.
 MAX_DOCUMENTS = 100
 
 # Format preference for attachments that live on the SAME DocumentReference. FHIR's own data
@@ -127,7 +137,23 @@ async def process_attachments(references, storage, extractor):
                 )
                 continue
             if len(result) >= MAX_DOCUMENTS:
-                result.append(DocumentAttachment(file_path="unprocessed", content_type="application/octet-stream", extracted_text="", extraction_error="DOCUMENT_LIMIT_EXCEEDED"))
+                # F7 (round9-revision3.md S3.3 step 5b / risk R14): construct through
+                # DocumentProcessingError so .code is canonicalized the same way every
+                # other extraction_error in this module is -- DOCUMENT_LIMIT_EXCEEDED is
+                # a RESOURCE_LIMIT_EXCEEDED group MEMBER (document_extraction.py's
+                # _ERROR_CODE_GROUPS), not a processing_errors.STAGES key, so writing it
+                # as a bare string here (the pre-F7 code) bypassed canonicalization and
+                # got coerced to INTERNAL_PROCESSING_ERROR by describe_error -- silently
+                # recreating, on the exact path Fix 5 widens, the defect Fix 4 exists to
+                # remove. .code is the canonical RESOURCE_LIMIT_EXCEEDED (STAGES key);
+                # .reason_code carries the specific DOCUMENT_LIMIT_EXCEEDED on the
+                # additive extraction_error_reason sibling, same convention as every
+                # other per-document catch site in this function.
+                limit_sentinel = DocumentProcessingError("DOCUMENT_LIMIT_EXCEEDED")
+                result.append(DocumentAttachment(
+                    file_path="unprocessed", content_type="application/octet-stream", extracted_text="",
+                    extraction_error=limit_sentinel.code, extraction_error_reason=limit_sentinel.reason_code,
+                ))
                 # Every already-appended document up to the cap may still have a deferred
                 # S3 load pending (Pass B runs at the very end) -- flush it before returning so
                 # the cap's own guarantee (everything returned is fully resolved) still holds.
