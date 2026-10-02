@@ -14,6 +14,16 @@ from src.app.services.document_type_rules_client import (
 
 logger = get_logger(__name__)
 
+# ponytail: provisional cap pending the round9-revision3.md S10 step-4b live dev runtime
+# measurement (headroom against whichever summary job deadline regime -- 300s async /
+# 110s sync -- is actually live when that measurement runs; see that doc for the full
+# decision rule). 100 is carried forward from the pre-redesign DOCUMENT_LIMIT_EXCEEDED
+# raise threshold as a placeholder, NOT a tuned value. A follow-up commit must replace
+# it once the measurement lands. Must move together with document_ingestion.MAX_DOCUMENTS
+# (F7c) -- that constant is the real binding cap (attachment-counted); this one only has
+# to supply enough DocumentReferences that the binding cap can actually trip.
+DOCUMENT_SELECTION_CAP = 100
+
 
 def _build_exclude_predicates(rules: list) -> list:
     """
@@ -72,6 +82,76 @@ def _build_exclude_predicates(rules: list) -> list:
             except re.error as exc:
                 logger.warning(
                     f"[_build_exclude_predicates] skipping invalid regex rule value: {exc}"
+                )
+                continue
+            clauses.append(type_col.op("~")(value))
+        if len(clauses) > count_before and rule.get("sourceEmr") not in (None, "", "all", "ALL", "*"):
+            source = str(rule["sourceEmr"]).upper()
+            clauses[-1] = and_(clauses[-1], cast(FhirResource.ehr_provider, String) == source)
+        # unknown strategy: skip silently (defensive)
+
+    return clauses
+
+
+def _build_prefer_predicates(rules: list) -> list:
+    """
+    Build a list of SQLAlchemy WHERE predicates from document-type prefer rules.
+
+    Mirrors `_build_exclude_predicates`'s matching logic (D-09 loinc skip, ilike/exact/
+    regex strategies with the same ReDoS guard, sourceEmr narrowing) but selects a
+    different rule subset (round9-revision3.md F2): a rule counts as "prefer" when
+    action == 'prefer' (curated seed), OR when action == 'resolve' and the AI-learned
+    documentClass == 'visit_summary' (the Stage-B extension of the jy4 resolve
+    mechanism -- round9-revision3.md S3.1.2B). Unlike excludes, these clauses are OR'd
+    together to RANK documents (preference_rank in the SELECT below); they never remove
+    a row from the result set.
+
+    Args:
+        rules: List of document-type rule dicts (matchValue, matchStrategy,
+               matchTarget, action, documentClass, sourceEmr).
+
+    Returns:
+        List of SQLAlchemy column expressions, one per applicable prefer/resolve rule.
+    """
+    clauses = []
+    type_col = FhirResource.data["type"].astext
+
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        count_before = len(clauses)
+
+        is_prefer = rule.get("action") == "prefer"
+        is_learned_visit_summary = (
+            rule.get("action") == "resolve" and rule.get("documentClass") == "visit_summary"
+        )
+        if not (is_prefer or is_learned_visit_summary):
+            continue
+
+        # D-09: skip loinc_code rules -- no LOINC field path established in FastAPI
+        if rule.get("matchTarget") == "loinc_code":
+            continue
+
+        value = rule.get("matchValue", "")
+        strategy = rule.get("matchStrategy", "ilike")
+
+        if strategy == "ilike":
+            clauses.append(type_col.ilike(f"%{value}%"))
+        elif strategy == "exact":
+            clauses.append(type_col == value)
+        elif strategy == "regex":
+            # CR-03: guard against ReDoS and invalid POSIX regex values (same as excludes).
+            if not value or len(value) > 200:
+                logger.warning(
+                    "[_build_prefer_predicates] skipping regex rule -- "
+                    "value absent or exceeds 200 chars"
+                )
+                continue
+            try:
+                re.compile(value)  # POSIX-compatible syntax pre-check
+            except re.error as exc:
+                logger.warning(
+                    f"[_build_prefer_predicates] skipping invalid regex rule value: {exc}"
                 )
                 continue
             clauses.append(type_col.op("~")(value))
@@ -338,70 +418,205 @@ class FhirResourcesRepository:
             raise e
 
     async def get_document_references_with_attachments(
-        self, user_id: str, encounter_id: str
+        self,
+        user_id: str,
+        encounter_id: str,
+        *,
+        selection_profile: str = "legacy",
+        rule_snapshot: tuple | None = None,
     ) -> list[FhirResource]:
         """
         Fetch DocumentReference resources that have attachments for a specific encounter.
 
-        Filters for:
+        Two queries run (round9-revision3.md Fix 5, S3.3 steps 1/3): an INVENTORY query,
+        UNCHANGED in shape from the pre-redesign version, that drives `document_inventory`
+        telemetry over the full pre-exclusion row set -- its shape is a hard requirement,
+        not an implementation detail, because it is compared for EQUALITY downstream by
+        the SOURCE_MANIFEST_CHANGED guard (attachment_summarization.py); and a SELECTION
+        query that is the actual document feed, with exclude rules AND the
+        missing-attachments predicate pushed into WHERE as real filter terms (not just a
+        SELECT label), so the LIMIT below operates on real candidates instead of being
+        starved by rows that get discarded after the fact -- this is the actual fix for
+        RESOURCE_LIMIT_EXCEEDED (a raw LIMIT upstream of exclude filtering previously
+        starved the cap of real candidates on heavily-excluded encounters).
+
+        Filters (SELECTION query only -- the INVENTORY query keeps the pre-redesign
+        user_id/resource_type/encounterReference-only WHERE):
         - resource_type = 'DocumentReference'
-        - data->'attachments' exists and is not empty
         - encounterReference matches the encounter_id
+        - data->'attachments' exists and is a non-empty JSON array (type-guarded:
+          jsonb_array_length() raises on non-array jsonb, so this is NOT the naive
+          one-line jsonb_array_length(...) > 0 -- see the CASE below)
         - document type is not excluded by active document-type rules (PIPE-05)
+
+        Ordering (SELECTION query):
+        - selection_profile='legacy' (default; procedure/comprehensive callers):
+          document date descending, unchanged from the pre-redesign behavior.
+        - selection_profile='visit_summary_preferred' (attachment_summarization only):
+          preference_rank ASC, include_for_summary_rank ASC, document date DESC,
+          ehr_resource_id ASC (final tiebreak -- makes the order total/deterministic,
+          which the cap below requires: a non-total order would make the cap itself
+          non-deterministic across identical re-fetches and destabilize the manifest).
+          preference_rank is 0 for documents matching a curated 'prefer' rule or a
+          learned 'resolve' rule with documentClass='visit_summary' (_build_prefer_
+          predicates), else 1. include_for_summary_rank is 0 when the AI classifier
+          flagged includeForSummary=true, else 1 -- this SUBSUMES the soft preference
+          that used to live as a second, Python-side narrowing step in
+          attachment_summarization.py (round9-revision3.md S3.1.2A). Because it is the
+          ORDER BY's second key within each preference_rank band, a plain LIMIT over
+          this order is already cap-filling (flagged documents fill the cap before
+          unflagged ones, within each band) -- no extra code is required for that
+          property, it is emergent from ORDER BY + LIMIT.
+
+        Cap: LIMIT is DOCUMENT_SELECTION_CAP + 1, not DOCUMENT_SELECTION_CAP -- the +1
+        is a truncation DETECTOR, not slack (round9-revision3.md F7c). document_ingestion.
+        MAX_DOCUMENTS (attachment-counted, not DocumentReference-counted -- a format-dedup
+        pass sits between the two units) is the real binding cap; this repository's LIMIT
+        only has to supply enough rows that ingestion's own cap can actually trip when
+        truncation is real, instead of silently running out of DocumentReferences first
+        and never noticing (which would make the existing partial/truncation-disclosure
+        machinery never fire even though real truncation occurred). The pre-redesign
+        `len(inventory) > 100` raise is REMOVED here (S3.3 step 5) for every caller and
+        every selection_profile -- not just the preferred one.
 
         Args:
             user_id: The user's ID (Clerk ID)
             encounter_id: The EHR encounter ID
+            selection_profile: 'legacy' (default) or 'visit_summary_preferred'.
+            rule_snapshot: optional pre-resolved (rules, provenance) tuple, exactly as
+                returned by DocumentTypeRulesClient.resolve_rules(). When provided, rule
+                resolution is skipped here. Callers that fetch twice per summarization
+                attempt (the manifest re-check in attachment_summarization.py) MUST
+                resolve once and pass the SAME snapshot to both calls, or a rule-tier
+                flip between calls changes the ordered set, changes the manifest hash,
+                and raises a retryable SOURCE_MANIFEST_CHANGED (round9-revision3.md
+                S3.3 step 4 / risk R7b). Callers that fetch once (procedure,
+                comprehensive) can omit this and resolve fresh as before.
 
         Returns:
-            List of FhirResource objects (DocumentReferences) with attachments,
-            ordered by document date (most recent first)
+            List of FhirResource objects (DocumentReferences) with attachments, ordered
+            per selection_profile above.
         """
         try:
             # Normalize encounter ID - remove "Encounter/" prefix if present
             normalized_id = encounter_id.replace("Encounter/", "")
             encounter_reference = f"Encounter/{normalized_id}"
 
-            # Fetch active exclude rules from DocumentTypeRulesClient (PIPE-05).
+            # Fetch active rules from DocumentTypeRulesClient (PIPE-05), or use the
+            # caller's pre-resolved snapshot (S3.3 step 4 / R7b).
             # Uses three-tier fallback: live → stale → HARDCODED_DOCREF_EXCLUDES floor.
             # D-04: if exclude_clauses is empty, ~or_() is not applied (qualify-all).
-            rules_client = get_document_type_rules_client()
-            exclude_rules, provenance = await rules_client.resolve_rules()
+            if rule_snapshot is not None:
+                rules, provenance = rule_snapshot
+            else:
+                rules_client = get_document_type_rules_client()
+                rules, provenance = await rules_client.resolve_rules()
             self.eligibility_provenance = provenance
-            exclude_clauses = _build_exclude_predicates(exclude_rules)
+            exclude_clauses = _build_exclude_predicates(rules)
+            prefer_clauses = _build_prefer_predicates(rules)
 
-            # Query for DocumentReferences with attachments
-            # data ? 'attachments' checks if the key exists
-            # jsonb_array_length > 0 ensures the array is not empty
+            base_predicates = (
+                FhirResource.user_id == user_id,
+                cast(FhirResource.resource_type, String) == "DocumentReference",
+                func.jsonb_extract_path_text(FhirResource.data, "encounterReference")
+                == encounter_reference,
+            )
+
+            # --- INVENTORY query: UNCHANGED from the pre-redesign shape (S3.3 step 3,
+            # hard requirement). Drives document_inventory telemetry over the FULL
+            # pre-exclusion row set. Do not add the attachments predicate or push
+            # excludes into WHERE here -- either would change total_references/
+            # excluded_documents/manifest and raise a retryable SOURCE_MANIFEST_CHANGED
+            # on the first cache-hit path after deploy (risk R7c).
             from sqlalchemy import case as sql_case, literal
-            decision = sql_case(*[(func.coalesce(clause, False), literal(f"document_type_rule:{index}")) for index, clause in enumerate(exclude_clauses)], else_=None) if exclude_clauses else literal(None)
-            query = select(FhirResource, decision.label("exclusion_reason")).where(
-                and_(
-                    FhirResource.user_id == user_id,
-                    cast(FhirResource.resource_type, String) == "DocumentReference",
-                    func.jsonb_extract_path_text(
-                        FhirResource.data, "encounterReference"
-                    )
-                    == encounter_reference,
-                ),
+            exclusion_decision = (
+                sql_case(
+                    *[
+                        (func.coalesce(clause, False), literal(f"document_type_rule:{index}"))
+                        for index, clause in enumerate(exclude_clauses)
+                    ],
+                    else_=None,
+                )
+                if exclude_clauses
+                else literal(None)
             )
-
-            # Order by document date (most recent first)
-            query = query.order_by(
-                func.jsonb_extract_path_text(FhirResource.data, "date").desc()
+            inventory_query = (
+                select(FhirResource, exclusion_decision.label("exclusion_reason"))
+                .where(and_(*base_predicates))
+                .order_by(func.jsonb_extract_path_text(FhirResource.data, "date").desc())
+                .limit(101)
             )
-
-            result = await self.session.execute(query.limit(101).execution_options(populate_existing=True))
-            inventory = result.all()
-            if len(inventory) > 100:
-                from src.app.services.document_extraction import DocumentProcessingError
-                raise DocumentProcessingError("DOCUMENT_LIMIT_EXCEEDED")
-            resources = [resource for resource, reason in inventory if reason is None]
-            excluded = [{"source_id": str(resource.ehr_resource_id), "reason": reason} for resource, reason in inventory if reason is not None]
+            inventory_result = await self.session.execute(
+                inventory_query.execution_options(populate_existing=True)
+            )
+            inventory = inventory_result.all()
+            # The pre-redesign raise ("if len(inventory) > 100: raise DOCUMENT_LIMIT_EXCEEDED")
+            # is REMOVED here (S3.3 step 5) -- order-then-cap on the SELECTION query below
+            # replaces it, for every caller and every selection_profile.
+            excluded = [
+                {"source_id": str(resource.ehr_resource_id), "reason": reason}
+                for resource, reason in inventory
+                if reason is not None
+            ]
             from src.app.services.summary_outcomes import source_manifest
-            self.document_inventory = {"total_references": len(inventory), "excluded_documents": len(excluded),
-                "exclusions": excluded[:20], "exclusions_omitted": max(0, len(excluded)-20),
-                "manifest": source_manifest([resource for resource, reason in inventory])}
+            self.document_inventory = {
+                "total_references": len(inventory),
+                "excluded_documents": len(excluded),
+                "exclusions": excluded[:20],
+                "exclusions_omitted": max(0, len(excluded) - 20),
+                "manifest": source_manifest([resource for resource, _ in inventory]),
+            }
+
+            # --- SELECTION query: the actual document feed (S3.3 steps 1-2, 5, 6).
+            # Excludes and the missing-attachments predicate are real WHERE terms here
+            # (not SELECT labels), so LIMIT operates on candidates that will actually be
+            # used.
+            attachments_ok = sql_case(
+                (
+                    func.jsonb_typeof(FhirResource.data["attachments"]) == "array",
+                    func.jsonb_array_length(FhirResource.data["attachments"]) > 0,
+                ),
+                else_=False,
+            )
+            selection_where = list(base_predicates) + [attachments_ok]
+            if exclude_clauses:
+                selection_where.append(~or_(*exclude_clauses))
+
+            selection_query = select(FhirResource).where(and_(*selection_where))
+
+            if selection_profile == "visit_summary_preferred":
+                preference_rank = (
+                    sql_case((or_(*prefer_clauses), literal(0)), else_=literal(1))
+                    if prefer_clauses
+                    else literal(1)
+                )
+                include_for_summary_rank = sql_case(
+                    (
+                        func.jsonb_extract_path_text(FhirResource.data, "includeForSummary")
+                        == "true",
+                        literal(0),
+                    ),
+                    else_=literal(1),
+                )
+                selection_query = selection_query.order_by(
+                    preference_rank.asc(),
+                    include_for_summary_rank.asc(),
+                    func.jsonb_extract_path_text(FhirResource.data, "date").desc(),
+                    FhirResource.ehr_resource_id.asc(),
+                )
+            else:
+                selection_query = selection_query.order_by(
+                    func.jsonb_extract_path_text(FhirResource.data, "date").desc()
+                )
+
+            # DOCUMENT_SELECTION_CAP + 1, not just the cap -- see docstring ("truncation
+            # DETECTOR, not slack"). document_ingestion.MAX_DOCUMENTS owns the binding cap.
+            selection_result = await self.session.execute(
+                selection_query.limit(DOCUMENT_SELECTION_CAP + 1).execution_options(
+                    populate_existing=True
+                )
+            )
+            resources = selection_result.scalars().all()
 
             logger.info(
                 f"Found {len(resources)} DocumentReferences with attachments for "
