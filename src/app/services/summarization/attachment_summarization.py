@@ -204,6 +204,29 @@ class AttachmentSummarizationService:
                 raise DocumentProcessingError("SOURCE_MANIFEST_CHANGED")
             await self.s3_client.validate_download_versions()
         except Exception as exc:
+            if getattr(exc, "reason_code", None) == "NO_DOCUMENTS":
+                # Every document already failed extraction individually (already counted
+                # under EXTRACTION_QUALITY_FAILED/OCR_*); route to the existing no_documents
+                # terminal state as ONE batch-level outcome instead of layering a second,
+                # mislabeled INTERNAL_PROCESSING_ERROR row on top (round9-revision3.md Fix 4).
+                # Reuses _static_fallback_summary_data's shape verbatim so outcome_metadata
+                # carries zero error rows and describe_error is never called with this code.
+                summary_data = _static_fallback_summary_data(request, appointment, provider_name)
+                summary_data["summary_metadata"].update(eligibility_snapshot)
+                summary_data["summary_metadata"].update(
+                    total_documents=len(extracted_documents),
+                    successful_documents=0,
+                    failed_documents=len(extracted_documents),
+                )
+                db_summary = await self.summaries_repo.upsert(
+                    appointment_id=request.appointment_id, summary_data=summary_data
+                )
+                self.logger.info(
+                    f"Attachment summarization found no analyzable documents (all failed "
+                    f"extraction) - appointment_id: {request.appointment_id}, "
+                    f"summary_id: {db_summary.id}"
+                )
+                return ConversationSummary.model_validate(db_summary)
             failure = {"error": getattr(exc, "code", "SUMMARY_GENERATION_FAILED")}
             if isinstance(getattr(exc, "reason_code", None), str):
                 failure["reason"] = exc.reason_code  # additive; `error` stays canonical

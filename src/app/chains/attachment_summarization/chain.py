@@ -1187,9 +1187,12 @@ class AttachmentSummarizationChain:
         truncations: list = []
         batches = _create_batches(documents, truncations)
         if not batches:
-            raise ValueError(
-                "No valid documents to analyze after filtering extraction errors."
-            )
+            # Every document already failed extraction individually (already counted under
+            # EXTRACTION_QUALITY_FAILED/OCR_*); NO_DOCUMENTS is the existing producer-side
+            # name for this exact concept (fhir_analysis.py:94/:136) -- reuse it rather than
+            # minting a second string, and let the caller route to the no_documents terminal
+            # state instead of a mislabeled INTERNAL_PROCESSING_ERROR (round9-revision3.md Fix 4).
+            raise DocumentProcessingError("NO_DOCUMENTS")
 
         logger.info(
             f"Map phase: {len(batches)} batch(es) from {len(documents)} document(s)"
