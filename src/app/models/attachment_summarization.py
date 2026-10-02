@@ -46,6 +46,16 @@ class DocumentAttachment(BaseModel):
         None,
         description="Error message if extraction failed (for partial success scenarios)",
     )
+    extraction_error_reason: Optional[str] = Field(
+        None,
+        description=(
+            "Specific internal reason code (DocumentProcessingError.reason_code) behind "
+            "extraction_error. Strictly additive, triage-only -- extraction_error (.code) stays "
+            "canonical everywhere. round9-revision3.md Sec 3.2 step 1: converts the "
+            "EXTRACTION_QUALITY_FAILED trigger from inference into a measurement. Truncated to "
+            "64 chars by describe_error() when it reaches persisted processing_errors metadata."
+        ),
+    )
     resource_id: Optional[str] = Field(
         None,
         description=(

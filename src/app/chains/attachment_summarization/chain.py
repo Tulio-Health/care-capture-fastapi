@@ -1207,8 +1207,11 @@ class AttachmentSummarizationChain:
 
         # Collect successful extractions
         all_summaries: List[DocumentSummary] = []
-        failures = [{"source_id": doc.resource_id or "unknown", "error": doc.extraction_error}
-                    for doc in documents if doc.extraction_error]
+        failures = [
+            {"source_id": doc.resource_id or "unknown", "error": doc.extraction_error,
+             **({"reason": doc.extraction_error_reason} if doc.extraction_error_reason else {})}
+            for doc in documents if doc.extraction_error
+        ]
         # Per-document chunk-cap truncations (CHUNK_LIMIT_TRUNCATED) surface exactly
         # like any other partial failure: the document's emitted chunks still publish,
         # the uncovered tail is reported in response.extraction_errors.

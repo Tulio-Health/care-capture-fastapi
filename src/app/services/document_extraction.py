@@ -113,8 +113,13 @@ class DocumentTextExtractor:
     MAX_ZIP_ENTRIES = 2000
     MAX_ARCHIVE_EXPANDED_BYTES = 50 * 1024 * 1024
     RTF_MAGIC = b"{\\rtf"
-    VERSION = "strict-5"
+    VERSION = "strict-6"
     MAX_ARCHIVE_DEPTH = 2
+    # Sanitize-and-revalidate gate (round9-revision3.md Sec 3.2 step 2): fraction of a
+    # document's characters that may be control-chars/U+FFFD and still be stripped rather
+    # than rejecting the whole document. ~1% starting point, NOT a measured constant --
+    # tune against the real corpus (same fix's step 3 verification pass).
+    MAX_REMOVED_CHAR_DENSITY = 0.01
 
     def __init__(self, *, disabled_adapters=(), transport_enabled=True, allow_containers=True):
         self.disabled_adapters = frozenset(disabled_adapters)
@@ -195,12 +200,36 @@ class DocumentTextExtractor:
             raise DocumentProcessingError("EMPTY_TEXT")
         if len(text) > cls.MAX_TEXT_CHARS:
             raise DocumentProcessingError("TEXT_LIMIT_EXCEEDED")
-        if "\ufffd" in text or any(ord(c) < 32 and c not in "\n\r\t" for c in text):
-            raise DocumentProcessingError("INVALID_TEXT")
+        # Raw-markup checks run against the ORIGINAL text, before any sanitization below --
+        # moved ahead of the control-char/U+FFFD gate intentionally (round9-revision3.md
+        # Sec 3.2 step 2's ordering constraint). A sanitized copy must never be able to mask
+        # genuine raw-binary-format leakage (e.g. a PDF/RTF/HTML/XML file wrongly routed
+        # through the text-document path) -- these checks exist specifically to catch that.
         if text.lstrip("\ufeff \t\r\n").startswith(("{\\rtf", "%PDF-")):
             raise DocumentProcessingError("UNPARSED_CONTENT")
         if re.search(r"</?(?:html|body|head|script|ClinicalDocument|DocumentReference|Binary)\b|<\?xml", text, re.I):
             raise DocumentProcessingError("UNPARSED_CONTENT")
+        # Sanitize-and-revalidate (round9-revision3.md Sec 3.2 step 2, root cause: all 27
+        # EXTRACTION_QUALITY_FAILED dev failures are text/plain x Admission Note Physician
+        # rejected outright on a single stray control char or U+FFFD). Strip control chars
+        # outside \n\r\t and U+FFFD, then gate on removed-character DENSITY instead of
+        # rejecting the whole document -- this is the sanitize-and-continue path the old
+        # all-or-nothing check lacked. §5-E4 text-identity note: the sanitized text returned
+        # here becomes `document.extracted_text` at every call site (document_ingestion.py's
+        # mark_parsed/require_parsed), so the grounding judge and quote-matcher see the exact
+        # same sanitized text as everything else downstream -- there is no separate copy to
+        # diverge.
+        def _is_junk(c: str) -> bool:
+            return c == "\ufffd" or (ord(c) < 32 and c not in "\n\r\t")
+
+        removed_count = sum(1 for c in text if _is_junk(c))
+        if removed_count:
+            original_length = len(text)
+            text = "".join(c for c in text if not _is_junk(c))
+            if not text.strip():
+                raise DocumentProcessingError("INVALID_TEXT")
+            if removed_count / original_length > cls.MAX_REMOVED_CHAR_DENSITY:
+                raise DocumentProcessingError("INVALID_TEXT")
         return text.strip()
 
     def extract_text(self, content: bytes, content_type: str, file_name: Optional[str] = None) -> str:
