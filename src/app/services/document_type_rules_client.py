@@ -258,14 +258,26 @@ class DocumentTypeRulesClient:
             rules = await self.get_active_rules()
             tier = "live"
             self._consecutive_non_live_serves = 0
-        except Exception:
+        except Exception as exc:
             if self._last_known_good is not None:
                 rules = self._last_known_good
                 tier = "stale"
             else:
                 rules = list(HARDCODED_DOCREF_EXCLUDES)
                 tier = "floor"
-            logger.warning("Document rules using %s fallback", tier)
+            # Log the UNDERLYING failure, not just the fallback decision. Previously this
+            # logged only "Document rules using floor fallback", which told an operator
+            # that the ladder dropped but not why -- a 100%-floor outage was
+            # indistinguishable from a timeout, a 401, a 404 or a parse error, and the
+            # real cause (nodeapi hanging until our 10s httpx timeout) was invisible in
+            # CloudWatch. httpx exception reprs carry the URL but never request headers,
+            # so the x-internal-service-key is still never logged (T-04-01).
+            logger.warning(
+                "Document rules using %s fallback -- live fetch failed: %s: %s",
+                tier,
+                type(exc).__name__,
+                exc,
+            )
             self._consecutive_non_live_serves += 1
             if self._consecutive_non_live_serves == self._STALE_STREAK_ALERT_THRESHOLD or (
                 self._consecutive_non_live_serves > self._STALE_STREAK_ALERT_THRESHOLD
@@ -297,12 +309,16 @@ class DocumentTypeRulesClient:
             logger.info(
                 f"[DocumentTypeRulesClient] Startup warm-up: {len(rules)} rules loaded"
             )
-        except Exception:
+        except Exception as exc:
             # WR-06: accurate message — floor is not loaded here; it will be served
             # on-demand when get_active_rules_with_fallback() is first called.
+            # The cause is included for the same reason as in resolve_rules(): a
+            # bare "warm-up failed" line cannot be triaged. Key is never logged.
             logger.warning(
-                "[DocumentTypeRulesClient] Startup warm-up failed — "
-                "floor rules will be served on-demand when first request arrives (15 rules)"
+                "[DocumentTypeRulesClient] Startup warm-up failed (%s: %s) — "
+                "floor rules will be served on-demand when first request arrives (15 rules)",
+                type(exc).__name__,
+                exc,
             )
 
 
