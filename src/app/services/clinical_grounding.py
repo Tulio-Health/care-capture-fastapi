@@ -338,11 +338,48 @@ class GroundingVerdict(BaseModel):
     issues: list[str] = Field(default_factory=list)
 
 
+# Fix 3 (round9-revision3.md Sec 3.5.1): QA-observer hook for scripts/grounding_rerun.py.
+# None in every normal process (including prod) -- only the harness script calls
+# register_qa_observer, and only after asserting get_settings().APP_ENV != "production".
+# This is the already-sanctioned use of validation_issues/validation_candidate (see the
+# comment at the GROUNDING_VALIDATION_FAILED raise below): it adds no new persistence, no
+# new log sink, and no production code path -- the observer, when present, only ever runs
+# inside this dev-only re-run script's own process.
+_qa_grounding_observer = None
+
+
+def register_qa_observer(observer) -> None:
+    global _qa_grounding_observer
+    _qa_grounding_observer = observer
+
+
 def validate_single_subject(source):
-    """Reject explicit multi-patient headers before clinical model extraction."""
+    """Reject explicit multi-patient headers before clinical model extraction.
+
+    Fix 3 investigation note: this raises the SAME canonical CLINICAL_EVIDENCE_FAILED code as
+    the LLM grounding judge (verify_grounding below), with no distinguishing reason_code --
+    describe_error() only adds `reason` when reason_code != code, and this call site's
+    reason_code IS CLINICAL_EVIDENCE_FAILED. A DB query keyed on `error='CLINICAL_EVIDENCE_
+    FAILED', reason IS NULL` therefore cannot tell this multi-patient-header guard apart from
+    a judge rejection without re-running (round9-revision3.md Sec 3.5.1's whole premise).
+    Hooked into the SAME QA observer as verify_grounding, tagged event="multi_patient_subject"
+    so the harness can tell the two apart instead of conflating them.
+    """
     labels = re.findall(r"(?im)^\s*patient\s+([^:\n]+):", source)
     labels += re.findall(r"(?im)^\s*patient\s*:\s*([^\n]+)", source)
-    if len({" ".join(label.casefold().split()) for label in labels}) > 1:
+    distinct = {" ".join(label.casefold().split()) for label in labels}
+    if len(distinct) > 1:
+        if _qa_grounding_observer is not None:
+            try:
+                _qa_grounding_observer(
+                    event="multi_patient_subject",
+                    source=source,
+                    payload=None,
+                    issues=[f"{len(distinct)} distinct patient labels"],
+                    supported=False,
+                )
+            except Exception:
+                pass
         raise DocumentProcessingError("CLINICAL_EVIDENCE_FAILED")
 
 
@@ -438,6 +475,17 @@ async def verify_grounding(
         # errors use .code; never log or serialize model-provided issue text.
         failure.validation_issues = result.output.issues
         failure.validation_candidate = payload
+        if _qa_grounding_observer is not None:
+            try:
+                _qa_grounding_observer(
+                    event="grounding_validation_failed",
+                    source=source,
+                    payload=payload,
+                    issues=result.output.issues,
+                    supported=result.output.supported,
+                )
+            except Exception:
+                pass
         raise failure
 
 
