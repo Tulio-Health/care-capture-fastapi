@@ -6,9 +6,34 @@ from sqlalchemy import select, text
 from ..entities.conversation_summaries import ConversationSummaries
 from typing import Any, Optional, List
 from ....common.logging import get_logger
+from ....core.settings import get_settings
 from uuid import UUID
 
 logger = get_logger(__name__)
+
+NO_VISIT_SUMMARY_DOCUMENTS = "no_visit_summary_documents"
+
+
+def _is_existing_clinical(previous: dict) -> bool:
+    """Is the stored attachment-summary row a clinical summary that a non-clinical refresh must not clobber?
+
+    * a validated `complete` / `partial` row (the parent commit's own rule), OR
+    * (visit-summary allowlist flag ON only) a LEGACY row: written before `processing_outcome`
+      existed, source `attachment_summary`, with `successful_documents > 0`. Prod has hundreds of
+      these; they are real summaries, so a no-visit-summary result must not replace them either.
+      The extension is flag-gated so that with the flag off persistence behaves exactly as before.
+    """
+    if previous.get("processing_outcome") in {"complete", "partial"} and previous.get("validation_status") == "passed":
+        return True
+    if "processing_outcome" not in previous and get_settings().VISIT_SUMMARY_ALLOWLIST_ENABLED:
+        successful = previous.get("successful_documents")
+        return (
+            previous.get("source") == "attachment_summary"
+            and isinstance(successful, int)
+            and not isinstance(successful, bool)
+            and successful > 0
+        )
+    return False
 
 
 def _retry_transaction(operation):
@@ -455,7 +480,17 @@ class ConversationSummariesRepository:
                 if incoming.get("attempt_started_at") and _attempt_at(previous.get("attempt_started_at", "")) > _attempt_at(incoming["attempt_started_at"]):
                     await self.session.rollback()
                     return db_summary
-                if incoming.get("processing_outcome") in {"unavailable", "no_documents"} and previous.get("processing_outcome") in {"complete", "partial"} and previous.get("validation_status") == "passed":
+                if incoming.get("processing_outcome") == NO_VISIT_SUMMARY_DOCUMENTS and _is_existing_clinical(previous) and not incoming.get("regeneration_forced"):
+                    # Path (1): a non-clinical "no visit summary documents" result never replaces an
+                    # existing clinical summary unless regeneration was explicitly forced. Nothing is
+                    # written: the stored row (text, metadata, updated_at) stays byte-unchanged.
+                    await self.session.rollback()
+                    logger.info(
+                        f"allowlist_preserved_existing_summary appointment_id={appointment_id} "
+                        f"previous_outcome={previous.get('processing_outcome') or 'legacy'}"
+                    )
+                    return db_summary
+                if incoming.get("processing_outcome") in {"unavailable", "no_documents"} and _is_existing_clinical(previous):
                     # Whole-dict assignment is required for plain SQLAlchemy JSON columns.
                     db_summary.summary_metadata = {**previous, "last_refresh_outcome": incoming}
                     notice = "We couldn’t update this summary. The previous summary is shown below.\n\n"
@@ -463,7 +498,17 @@ class ConversationSummariesRepository:
                         db_summary.summary_text = notice + db_summary.summary_text
                     await self._commit_validated([db_summary])
                     return db_summary
-                summary_data["summary_metadata"] = {**previous, **incoming}
+                if incoming.get("processing_outcome") == NO_VISIT_SUMMARY_DOCUMENTS:
+                    # Replacing a non-clinical row (or a clinical one with regeneration forced): the new
+                    # state's metadata stands alone -- do not carry the old summary's source_fingerprint,
+                    # document counts or other clinical keys into a placeholder row.
+                    summary_data["summary_metadata"] = dict(incoming)
+                else:
+                    summary_data["summary_metadata"] = {**previous, **incoming}
+                    # keys that exist only on allowlist-era rows must not outlive the row that wrote them
+                    for stale_key in ("regeneration_forced", "visit_summary_selection"):
+                        if stale_key not in incoming:
+                            summary_data["summary_metadata"].pop(stale_key, None)
                 summary_data["summary_metadata"].pop("last_refresh_outcome", None)
                 # Update existing summary
                 logger.info(
