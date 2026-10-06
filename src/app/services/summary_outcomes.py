@@ -5,7 +5,11 @@ MESSAGES = {
     "service_unavailable": "We couldn’t create a summary right now because the summarization service is unavailable. Please try again later.",
     "partial": "Some documents couldn’t be processed. Important information may be missing.",
     "no_documents": "No clinical documents are available to summarize for this appointment.",
+    # Visit-summary allowlist v2: the appointment HAS candidate documents (attachments, not DB-excluded)
+    # but none of them is a visit summary / visit note. Typographic apostrophe is part of the frozen copy (O7).
+    "no_visit_summary_documents": "No visit summary or visit note is available for this appointment, so a summary wasn’t created.",
 }
+NO_VISIT_SUMMARY_DOCUMENTS = "no_visit_summary_documents"
 SERVICE_UNAVAILABLE_CODES = frozenset({
     "MODEL_UNAVAILABLE", "MODEL_TIMEOUT", "MODEL_RATE_LIMITED", "MODEL_AUTH_FAILED", "OCR_TIMEOUT",
 })
