@@ -47,5 +47,6 @@ jobs:
       - name: Allowlist SQL/Python parity (real PostgreSQL)
         env:
           PARITY_PG_DSN: postgresql://parity:parity@localhost:5432/parity
+          PARITY_PG_ALLOW_WRITES: "1"  # throwaway service container only
         run: |
           uv run pytest src/app/tests/pg_parity/ -q --no-cov -m pg_parity -rA

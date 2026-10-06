@@ -6,6 +6,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.app.common.logging import get_logger
+from src.app.core.settings import get_settings
 from src.app.db.models.fhir_resources import FhirResource
 from src.app.services import visit_summary_allowlist as allowlist
 from src.app.services.document_type_rules_client import (
@@ -158,6 +159,43 @@ def _build_allowlist_predicates(data_col=None) -> tuple:
     return include_term, loinc_term, deny_term
 
 
+ALLOWLIST_TELEMETRY_TOP_TYPES = 10
+ALLOWLIST_TELEMETRY_LABEL_MAX = 64
+
+
+def _has_attachments(data) -> bool:
+    attachments = data.get("attachments") if isinstance(data, dict) else None
+    return isinstance(attachments, list) and len(attachments) > 0
+
+
+def _allowlist_telemetry(inventory) -> dict:
+    """Capped telemetry about candidate documents the allowlist rejects.
+
+    Candidates are INVENTORY rows that the SELECTION query could otherwise return: attachments
+    present and not excluded by a DB/floor rule (``reason is None``). ``match`` is the same
+    matcher the SQL term is parity-tested against. Output is bounded (top 10 labels, labels
+    <= 64 chars, "(null)" for empty) and holds generic document-type labels only.
+    """
+    counts: dict = {}
+    dropped = 0
+    for resource, reason in inventory:
+        data = getattr(resource, "data", None) or {}
+        if reason is not None or not _has_attachments(data):
+            continue
+        eligible, _inc, _deny = allowlist.match(data.get("type"), data.get("typeCode"), data.get("typeSystem"))
+        if eligible:
+            continue
+        dropped += 1
+        key = allowlist.label_telemetry_key(data.get("type"), ALLOWLIST_TELEMETRY_LABEL_MAX)
+        counts[key] = counts.get(key, 0) + 1
+    top = sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:ALLOWLIST_TELEMETRY_TOP_TYPES]
+    return {
+        "allowlist_version": allowlist.ALLOWLIST_VERSION,
+        "not_allowlisted_documents": dropped,
+        "not_allowlisted_types": dict(top),
+    }
+
+
 def _build_prefer_predicates(rules: list) -> list:
     """
     Build a list of SQLAlchemy WHERE predicates from document-type prefer rules.
@@ -233,6 +271,11 @@ class FhirResourcesRepository:
 
     def __init__(self, session: AsyncSession):
         self.session = session
+        # Visit-summary allowlist v2 state of the LAST get_document_references_with_attachments
+        # call. Reset at the start of EVERY call (the service calls the repository up to three
+        # times per attempt), never accumulated across calls.
+        self.non_allowlisted_candidates_exist = False
+        self.visit_summary_selection = None
 
     async def get_by_user(
         self, user_id: str, resource_types: list[str] | None = None, limit: int = 1000
@@ -514,6 +557,14 @@ class FhirResourcesRepository:
           one-line jsonb_array_length(...) > 0 -- see the CASE below)
         - document type is not excluded by active document-type rules (PIPE-05)
 
+        Visit-summary allowlist v2 (flag-gated): when settings.VISIT_SUMMARY_ALLOWLIST_ENABLED and
+        selection_profile == 'visit_summary_preferred', the SELECTION WHERE additionally requires
+        (label include OR LOINC code) AND NOT deny (``_build_allowlist_predicates``), BEFORE the
+        LIMIT. The INVENTORY query is unchanged. Per-call attributes (reset at the start of every
+        call): ``non_allowlisted_candidates_exist`` (set only when the selection came back empty and
+        an EXISTS probe finds candidates the allowlist rejected) and ``visit_summary_selection``
+        (capped telemetry; None when the allowlist is off).
+
         Ordering (SELECTION query):
         - selection_profile='legacy' (default; procedure/comprehensive callers):
           document date descending, unchanged from the pre-redesign behavior.
@@ -562,6 +613,16 @@ class FhirResourcesRepository:
             List of FhirResource objects (DocumentReferences) with attachments, ordered
             per selection_profile above.
         """
+        # Reset the per-call allowlist state FIRST (the service calls this up to three times per
+        # attempt: initial fetch + two manifest re-checks); a stale discriminator or telemetry
+        # from an earlier call must never leak into this one.
+        self.non_allowlisted_candidates_exist = False
+        self.visit_summary_selection = None
+        allow_on = bool(
+            selection_profile == "visit_summary_preferred"
+            and get_settings().VISIT_SUMMARY_ALLOWLIST_ENABLED
+        )
+
         try:
             # Normalize encounter ID - remove "Encounter/" prefix if present
             normalized_id = encounter_id.replace("Encounter/", "")
@@ -631,6 +692,13 @@ class FhirResourcesRepository:
                 "exclusions_omitted": max(0, len(excluded) - 20),
                 "manifest": source_manifest([resource for resource, _ in inventory]),
             }
+            if allow_on:
+                # Telemetry is computed in Python over the (unchanged) INVENTORY rows with the
+                # same matcher the SQL twin is parity-tested against. It is deliberately NOT
+                # added to document_inventory (that object is copied into the synthesis prompt
+                # context; r7-n-01): it lives in its own attribute and the service merges it
+                # into summary_metadata.visit_summary_selection.
+                self.visit_summary_selection = _allowlist_telemetry(inventory)
 
             # --- SELECTION query: the actual document feed (S3.3 steps 1-2, 5, 6).
             # Excludes and the missing-attachments predicate are real WHERE terms here
@@ -651,6 +719,16 @@ class FhirResourcesRepository:
                 # clause to False, so selection must treat "unknown" as "not excluded"
                 # too (allowlist v2 prerequisite (b); applies to every selection profile).
                 selection_where.append(~func.coalesce(or_(*exclude_clauses), False))
+
+            # Everything a document needs EXCEPT the allowlist (used by the empty-selection
+            # discriminator below).
+            pre_allowlist_where = list(selection_where)
+            if allow_on:
+                include_term, loinc_term, deny_term = _build_allowlist_predicates()
+                # allow term BEFORE the LIMIT: (label include OR LOINC code) AND NOT deny. All
+                # three terms are coalesced to false, so this is plain two-valued logic.
+                selection_where.append(or_(include_term, loinc_term))
+                selection_where.append(~deny_term)
 
             selection_query = select(FhirResource).where(and_(*selection_where))
 
@@ -687,6 +765,16 @@ class FhirResourcesRepository:
                 )
             )
             resources = selection_result.scalars().all()
+
+            if allow_on and not resources:
+                # Empty-selection discriminator: is the selection empty because every candidate
+                # (attachments present, not DB-excluded) was rejected by the allowlist -- vs
+                # simply having no candidates at all (the existing no_documents state)?
+                candidate_query = (
+                    select(literal(1)).select_from(FhirResource).where(and_(*pre_allowlist_where)).limit(1)
+                )
+                candidate_result = await self.session.execute(candidate_query)
+                self.non_allowlisted_candidates_exist = candidate_result.first() is not None
 
             logger.info(
                 f"Found {len(resources)} DocumentReferences with attachments for "

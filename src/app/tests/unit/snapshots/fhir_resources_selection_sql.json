@@ -1,0 +1,214 @@
+{
+ "comprehensive_profile_name_with_rules": [
+  {
+   "params": {
+    "coalesce_1": false,
+    "coalesce_2": false,
+    "coalesce_3": false,
+    "data_1": "type",
+    "jsonb_extract_path_text_1": "encounterReference",
+    "jsonb_extract_path_text_2": "Encounter/enc-1",
+    "jsonb_extract_path_text_3": "date",
+    "param_1": "%Education%",
+    "param_2": "document_type_rule:0",
+    "param_3": "^Edu",
+    "param_4": "document_type_rule:1",
+    "param_5": "Billing",
+    "param_6": "CERNER",
+    "param_7": "document_type_rule:2",
+    "param_8": "DocumentReference",
+    "param_9": 101,
+    "user_id_1": "user-1"
+   },
+   "sql": "SELECT fhir_resources.id, fhir_resources.user_id, fhir_resources.resource_type, fhir_resources.ehr_resource_id, fhir_resources.ehr_connection_id, fhir_resources.data, fhir_resources.ehr_provider, fhir_resources.ehr_provider_id, fhir_resources.ehr_patient_id, fhir_resources.last_synced_at, fhir_resources.created_at, fhir_resources.updated_at, CASE WHEN coalesce(fhir_resources.data ->> %(data_1)s ILIKE %(param_1)s, %(coalesce_1)s) THEN %(param_2)s WHEN coalesce((fhir_resources.data ->> %(data_1)s) ~ %(param_3)s, %(coalesce_2)s) THEN %(param_4)s WHEN coalesce((fhir_resources.data ->> %(data_1)s) = %(param_5)s AND CAST(fhir_resources.ehr_provider AS VARCHAR) = %(param_6)s, %(coalesce_3)s) THEN %(param_7)s END AS exclusion_reason \nFROM fhir_resources \nWHERE fhir_resources.user_id = %(user_id_1)s AND CAST(fhir_resources.resource_type AS VARCHAR) = %(param_8)s AND jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_1)s) = %(jsonb_extract_path_text_2)s ORDER BY jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_3)s) DESC \n LIMIT %(param_9)s"
+  },
+  {
+   "params": {
+    "coalesce_1": false,
+    "data_1": "attachments",
+    "data_2": "attachments",
+    "data_3": "type",
+    "jsonb_array_length_1": 0,
+    "jsonb_extract_path_text_1": "encounterReference",
+    "jsonb_extract_path_text_2": "Encounter/enc-1",
+    "jsonb_extract_path_text_3": "date",
+    "jsonb_typeof_1": "array",
+    "param_1": "DocumentReference",
+    "param_2": false,
+    "param_3": "%Education%",
+    "param_4": "^Edu",
+    "param_5": "Billing",
+    "param_6": "CERNER",
+    "param_7": 51,
+    "user_id_1": "user-1"
+   },
+   "sql": "SELECT fhir_resources.id, fhir_resources.user_id, fhir_resources.resource_type, fhir_resources.ehr_resource_id, fhir_resources.ehr_connection_id, fhir_resources.data, fhir_resources.ehr_provider, fhir_resources.ehr_provider_id, fhir_resources.ehr_patient_id, fhir_resources.last_synced_at, fhir_resources.created_at, fhir_resources.updated_at \nFROM fhir_resources \nWHERE fhir_resources.user_id = %(user_id_1)s AND CAST(fhir_resources.resource_type AS VARCHAR) = %(param_1)s AND jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_1)s) = %(jsonb_extract_path_text_2)s AND CASE WHEN (jsonb_typeof(fhir_resources.data[%(data_1)s]) = %(jsonb_typeof_1)s) THEN jsonb_array_length(fhir_resources.data[%(data_2)s]) > %(jsonb_array_length_1)s ELSE %(param_2)s END AND NOT coalesce((fhir_resources.data ->> %(data_3)s) ILIKE %(param_3)s OR ((fhir_resources.data ->> %(data_3)s) ~ %(param_4)s) OR (fhir_resources.data ->> %(data_3)s) = %(param_5)s AND CAST(fhir_resources.ehr_provider AS VARCHAR) = %(param_6)s, %(coalesce_1)s) ORDER BY jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_3)s) DESC \n LIMIT %(param_7)s"
+  }
+ ],
+ "legacy_no_rules": [
+  {
+   "params": {
+    "jsonb_extract_path_text_1": "encounterReference",
+    "jsonb_extract_path_text_2": "Encounter/enc-1",
+    "jsonb_extract_path_text_3": "date",
+    "param_1": null,
+    "param_2": "DocumentReference",
+    "param_3": 101,
+    "user_id_1": "user-1"
+   },
+   "sql": "SELECT fhir_resources.id, fhir_resources.user_id, fhir_resources.resource_type, fhir_resources.ehr_resource_id, fhir_resources.ehr_connection_id, fhir_resources.data, fhir_resources.ehr_provider, fhir_resources.ehr_provider_id, fhir_resources.ehr_patient_id, fhir_resources.last_synced_at, fhir_resources.created_at, fhir_resources.updated_at, %(param_1)s AS exclusion_reason \nFROM fhir_resources \nWHERE fhir_resources.user_id = %(user_id_1)s AND CAST(fhir_resources.resource_type AS VARCHAR) = %(param_2)s AND jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_1)s) = %(jsonb_extract_path_text_2)s ORDER BY jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_3)s) DESC \n LIMIT %(param_3)s"
+  },
+  {
+   "params": {
+    "data_1": "attachments",
+    "data_2": "attachments",
+    "jsonb_array_length_1": 0,
+    "jsonb_extract_path_text_1": "encounterReference",
+    "jsonb_extract_path_text_2": "Encounter/enc-1",
+    "jsonb_extract_path_text_3": "date",
+    "jsonb_typeof_1": "array",
+    "param_1": "DocumentReference",
+    "param_2": false,
+    "param_3": 51,
+    "user_id_1": "user-1"
+   },
+   "sql": "SELECT fhir_resources.id, fhir_resources.user_id, fhir_resources.resource_type, fhir_resources.ehr_resource_id, fhir_resources.ehr_connection_id, fhir_resources.data, fhir_resources.ehr_provider, fhir_resources.ehr_provider_id, fhir_resources.ehr_patient_id, fhir_resources.last_synced_at, fhir_resources.created_at, fhir_resources.updated_at \nFROM fhir_resources \nWHERE fhir_resources.user_id = %(user_id_1)s AND CAST(fhir_resources.resource_type AS VARCHAR) = %(param_1)s AND jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_1)s) = %(jsonb_extract_path_text_2)s AND CASE WHEN (jsonb_typeof(fhir_resources.data[%(data_1)s]) = %(jsonb_typeof_1)s) THEN jsonb_array_length(fhir_resources.data[%(data_2)s]) > %(jsonb_array_length_1)s ELSE %(param_2)s END ORDER BY jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_3)s) DESC \n LIMIT %(param_3)s"
+  }
+ ],
+ "legacy_with_rules": [
+  {
+   "params": {
+    "coalesce_1": false,
+    "coalesce_2": false,
+    "coalesce_3": false,
+    "data_1": "type",
+    "jsonb_extract_path_text_1": "encounterReference",
+    "jsonb_extract_path_text_2": "Encounter/enc-1",
+    "jsonb_extract_path_text_3": "date",
+    "param_1": "%Education%",
+    "param_2": "document_type_rule:0",
+    "param_3": "^Edu",
+    "param_4": "document_type_rule:1",
+    "param_5": "Billing",
+    "param_6": "CERNER",
+    "param_7": "document_type_rule:2",
+    "param_8": "DocumentReference",
+    "param_9": 101,
+    "user_id_1": "user-1"
+   },
+   "sql": "SELECT fhir_resources.id, fhir_resources.user_id, fhir_resources.resource_type, fhir_resources.ehr_resource_id, fhir_resources.ehr_connection_id, fhir_resources.data, fhir_resources.ehr_provider, fhir_resources.ehr_provider_id, fhir_resources.ehr_patient_id, fhir_resources.last_synced_at, fhir_resources.created_at, fhir_resources.updated_at, CASE WHEN coalesce(fhir_resources.data ->> %(data_1)s ILIKE %(param_1)s, %(coalesce_1)s) THEN %(param_2)s WHEN coalesce((fhir_resources.data ->> %(data_1)s) ~ %(param_3)s, %(coalesce_2)s) THEN %(param_4)s WHEN coalesce((fhir_resources.data ->> %(data_1)s) = %(param_5)s AND CAST(fhir_resources.ehr_provider AS VARCHAR) = %(param_6)s, %(coalesce_3)s) THEN %(param_7)s END AS exclusion_reason \nFROM fhir_resources \nWHERE fhir_resources.user_id = %(user_id_1)s AND CAST(fhir_resources.resource_type AS VARCHAR) = %(param_8)s AND jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_1)s) = %(jsonb_extract_path_text_2)s ORDER BY jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_3)s) DESC \n LIMIT %(param_9)s"
+  },
+  {
+   "params": {
+    "coalesce_1": false,
+    "data_1": "attachments",
+    "data_2": "attachments",
+    "data_3": "type",
+    "jsonb_array_length_1": 0,
+    "jsonb_extract_path_text_1": "encounterReference",
+    "jsonb_extract_path_text_2": "Encounter/enc-1",
+    "jsonb_extract_path_text_3": "date",
+    "jsonb_typeof_1": "array",
+    "param_1": "DocumentReference",
+    "param_2": false,
+    "param_3": "%Education%",
+    "param_4": "^Edu",
+    "param_5": "Billing",
+    "param_6": "CERNER",
+    "param_7": 51,
+    "user_id_1": "user-1"
+   },
+   "sql": "SELECT fhir_resources.id, fhir_resources.user_id, fhir_resources.resource_type, fhir_resources.ehr_resource_id, fhir_resources.ehr_connection_id, fhir_resources.data, fhir_resources.ehr_provider, fhir_resources.ehr_provider_id, fhir_resources.ehr_patient_id, fhir_resources.last_synced_at, fhir_resources.created_at, fhir_resources.updated_at \nFROM fhir_resources \nWHERE fhir_resources.user_id = %(user_id_1)s AND CAST(fhir_resources.resource_type AS VARCHAR) = %(param_1)s AND jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_1)s) = %(jsonb_extract_path_text_2)s AND CASE WHEN (jsonb_typeof(fhir_resources.data[%(data_1)s]) = %(jsonb_typeof_1)s) THEN jsonb_array_length(fhir_resources.data[%(data_2)s]) > %(jsonb_array_length_1)s ELSE %(param_2)s END AND NOT coalesce((fhir_resources.data ->> %(data_3)s) ILIKE %(param_3)s OR ((fhir_resources.data ->> %(data_3)s) ~ %(param_4)s) OR (fhir_resources.data ->> %(data_3)s) = %(param_5)s AND CAST(fhir_resources.ehr_provider AS VARCHAR) = %(param_6)s, %(coalesce_1)s) ORDER BY jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_3)s) DESC \n LIMIT %(param_7)s"
+  }
+ ],
+ "visit_summary_preferred_no_rules": [
+  {
+   "params": {
+    "jsonb_extract_path_text_1": "encounterReference",
+    "jsonb_extract_path_text_2": "Encounter/enc-1",
+    "jsonb_extract_path_text_3": "date",
+    "param_1": null,
+    "param_2": "DocumentReference",
+    "param_3": 101,
+    "user_id_1": "user-1"
+   },
+   "sql": "SELECT fhir_resources.id, fhir_resources.user_id, fhir_resources.resource_type, fhir_resources.ehr_resource_id, fhir_resources.ehr_connection_id, fhir_resources.data, fhir_resources.ehr_provider, fhir_resources.ehr_provider_id, fhir_resources.ehr_patient_id, fhir_resources.last_synced_at, fhir_resources.created_at, fhir_resources.updated_at, %(param_1)s AS exclusion_reason \nFROM fhir_resources \nWHERE fhir_resources.user_id = %(user_id_1)s AND CAST(fhir_resources.resource_type AS VARCHAR) = %(param_2)s AND jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_1)s) = %(jsonb_extract_path_text_2)s ORDER BY jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_3)s) DESC \n LIMIT %(param_3)s"
+  },
+  {
+   "params": {
+    "data_1": "attachments",
+    "data_2": "attachments",
+    "jsonb_array_length_1": 0,
+    "jsonb_extract_path_text_1": "encounterReference",
+    "jsonb_extract_path_text_2": "Encounter/enc-1",
+    "jsonb_extract_path_text_3": "includeForSummary",
+    "jsonb_extract_path_text_4": "true",
+    "jsonb_extract_path_text_5": "date",
+    "jsonb_typeof_1": "array",
+    "param_1": "DocumentReference",
+    "param_2": false,
+    "param_3": 1,
+    "param_4": 0,
+    "param_5": 1,
+    "param_6": 51,
+    "user_id_1": "user-1"
+   },
+   "sql": "SELECT fhir_resources.id, fhir_resources.user_id, fhir_resources.resource_type, fhir_resources.ehr_resource_id, fhir_resources.ehr_connection_id, fhir_resources.data, fhir_resources.ehr_provider, fhir_resources.ehr_provider_id, fhir_resources.ehr_patient_id, fhir_resources.last_synced_at, fhir_resources.created_at, fhir_resources.updated_at \nFROM fhir_resources \nWHERE fhir_resources.user_id = %(user_id_1)s AND CAST(fhir_resources.resource_type AS VARCHAR) = %(param_1)s AND jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_1)s) = %(jsonb_extract_path_text_2)s AND CASE WHEN (jsonb_typeof(fhir_resources.data[%(data_1)s]) = %(jsonb_typeof_1)s) THEN jsonb_array_length(fhir_resources.data[%(data_2)s]) > %(jsonb_array_length_1)s ELSE %(param_2)s END ORDER BY %(param_3)s ASC, CASE WHEN (jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_3)s) = %(jsonb_extract_path_text_4)s) THEN %(param_4)s ELSE %(param_5)s END ASC, jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_5)s) DESC, fhir_resources.ehr_resource_id ASC \n LIMIT %(param_6)s"
+  }
+ ],
+ "visit_summary_preferred_with_rules": [
+  {
+   "params": {
+    "coalesce_1": false,
+    "coalesce_2": false,
+    "coalesce_3": false,
+    "data_1": "type",
+    "jsonb_extract_path_text_1": "encounterReference",
+    "jsonb_extract_path_text_2": "Encounter/enc-1",
+    "jsonb_extract_path_text_3": "date",
+    "param_1": "%Education%",
+    "param_2": "document_type_rule:0",
+    "param_3": "^Edu",
+    "param_4": "document_type_rule:1",
+    "param_5": "Billing",
+    "param_6": "CERNER",
+    "param_7": "document_type_rule:2",
+    "param_8": "DocumentReference",
+    "param_9": 101,
+    "user_id_1": "user-1"
+   },
+   "sql": "SELECT fhir_resources.id, fhir_resources.user_id, fhir_resources.resource_type, fhir_resources.ehr_resource_id, fhir_resources.ehr_connection_id, fhir_resources.data, fhir_resources.ehr_provider, fhir_resources.ehr_provider_id, fhir_resources.ehr_patient_id, fhir_resources.last_synced_at, fhir_resources.created_at, fhir_resources.updated_at, CASE WHEN coalesce(fhir_resources.data ->> %(data_1)s ILIKE %(param_1)s, %(coalesce_1)s) THEN %(param_2)s WHEN coalesce((fhir_resources.data ->> %(data_1)s) ~ %(param_3)s, %(coalesce_2)s) THEN %(param_4)s WHEN coalesce((fhir_resources.data ->> %(data_1)s) = %(param_5)s AND CAST(fhir_resources.ehr_provider AS VARCHAR) = %(param_6)s, %(coalesce_3)s) THEN %(param_7)s END AS exclusion_reason \nFROM fhir_resources \nWHERE fhir_resources.user_id = %(user_id_1)s AND CAST(fhir_resources.resource_type AS VARCHAR) = %(param_8)s AND jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_1)s) = %(jsonb_extract_path_text_2)s ORDER BY jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_3)s) DESC \n LIMIT %(param_9)s"
+  },
+  {
+   "params": {
+    "coalesce_1": false,
+    "data_1": "attachments",
+    "data_2": "attachments",
+    "data_3": "type",
+    "data_4": "type",
+    "jsonb_array_length_1": 0,
+    "jsonb_extract_path_text_1": "encounterReference",
+    "jsonb_extract_path_text_2": "Encounter/enc-1",
+    "jsonb_extract_path_text_3": "includeForSummary",
+    "jsonb_extract_path_text_4": "true",
+    "jsonb_extract_path_text_5": "date",
+    "jsonb_typeof_1": "array",
+    "param_1": "DocumentReference",
+    "param_10": 1,
+    "param_11": 0,
+    "param_12": 1,
+    "param_13": 51,
+    "param_2": false,
+    "param_3": "%Education%",
+    "param_4": "^Edu",
+    "param_5": "Billing",
+    "param_6": "CERNER",
+    "param_7": "%Depart Summary%",
+    "param_8": "%AVS%",
+    "param_9": 0,
+    "user_id_1": "user-1"
+   },
+   "sql": "SELECT fhir_resources.id, fhir_resources.user_id, fhir_resources.resource_type, fhir_resources.ehr_resource_id, fhir_resources.ehr_connection_id, fhir_resources.data, fhir_resources.ehr_provider, fhir_resources.ehr_provider_id, fhir_resources.ehr_patient_id, fhir_resources.last_synced_at, fhir_resources.created_at, fhir_resources.updated_at \nFROM fhir_resources \nWHERE fhir_resources.user_id = %(user_id_1)s AND CAST(fhir_resources.resource_type AS VARCHAR) = %(param_1)s AND jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_1)s) = %(jsonb_extract_path_text_2)s AND CASE WHEN (jsonb_typeof(fhir_resources.data[%(data_1)s]) = %(jsonb_typeof_1)s) THEN jsonb_array_length(fhir_resources.data[%(data_2)s]) > %(jsonb_array_length_1)s ELSE %(param_2)s END AND NOT coalesce((fhir_resources.data ->> %(data_3)s) ILIKE %(param_3)s OR ((fhir_resources.data ->> %(data_3)s) ~ %(param_4)s) OR (fhir_resources.data ->> %(data_3)s) = %(param_5)s AND CAST(fhir_resources.ehr_provider AS VARCHAR) = %(param_6)s, %(coalesce_1)s) ORDER BY CASE WHEN ((fhir_resources.data ->> %(data_4)s) ILIKE %(param_7)s OR (fhir_resources.data ->> %(data_4)s) ILIKE %(param_8)s) THEN %(param_9)s ELSE %(param_10)s END ASC, CASE WHEN (jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_3)s) = %(jsonb_extract_path_text_4)s) THEN %(param_11)s ELSE %(param_12)s END ASC, jsonb_extract_path_text(fhir_resources.data, %(jsonb_extract_path_text_5)s) DESC, fhir_resources.ehr_resource_id ASC \n LIMIT %(param_13)s"
+  }
+ ]
+}
