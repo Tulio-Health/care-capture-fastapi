@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.app.common.logging import get_logger
 from src.app.db.models.fhir_resources import FhirResource
+from src.app.services import visit_summary_allowlist as allowlist
 from src.app.services.document_type_rules_client import (
     HARDCODED_DOCREF_EXCLUDES,
     get_document_type_rules_client,
@@ -110,6 +111,51 @@ def _build_exclude_predicates(rules: list) -> list:
         # unknown strategy: skip silently (defensive)
 
     return clauses
+
+
+def _build_allowlist_predicates(data_col=None) -> tuple:
+    """
+    SQL twin of ``visit_summary_allowlist.match`` over a ``fhir_resources.data`` JSONB column.
+
+    Returns ``(include_term, loinc_term, deny_term)``, each a boolean expression that is NEVER
+    NULL (coalesced to false), so ``(include OR loinc) AND NOT deny`` is a plain two-valued
+    filter and a document with a NULL/missing type simply fails the label terms:
+
+    * include_term: ``lbl ~ <alternation of the 25 include patterns>``
+    * loinc_term:   ``typeCode IN (<LOINC_ALLOW_CODES>) AND (typeSystem ILIKE '%loinc%' OR
+                    btrim(typeSystem) = <LOINC OID>)``
+    * deny_term:    ``lbl ~ <alternation of the 13 deny patterns>``
+
+    where ``lbl = lower(btrim(regexp_replace(data->>'type', <WS class incl. NBSP>, ' ', 'g')))``.
+    Patterns are bound as parameters (never inlined). The real-PostgreSQL parity test
+    (``src/app/tests/pg_parity``) pins these expressions against ``match()``.
+    """
+    data = FhirResource.data if data_col is None else data_col
+    label = func.lower(
+        func.btrim(
+            func.regexp_replace(
+                func.jsonb_extract_path_text(data, "type"),
+                allowlist.WS_CLASS_SQL,
+                " ",
+                "g",
+            )
+        )
+    )
+    code = func.jsonb_extract_path_text(data, "typeCode")
+    system = func.jsonb_extract_path_text(data, "typeSystem")
+    include_term = func.coalesce(label.op("~")(allowlist.include_regex()), False)
+    loinc_term = func.coalesce(
+        and_(
+            code.in_(allowlist.LOINC_ALLOW_CODES),
+            or_(
+                system.ilike("%" + allowlist.LOINC_SYSTEM_PATTERN + "%"),
+                func.btrim(system) == allowlist.LOINC_OID,
+            ),
+        ),
+        False,
+    )
+    deny_term = func.coalesce(label.op("~")(allowlist.deny_regex()), False)
+    return include_term, loinc_term, deny_term
 
 
 def _build_prefer_predicates(rules: list) -> list:
