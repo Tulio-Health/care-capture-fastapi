@@ -97,6 +97,11 @@ class SSMParameterLoader:
             SSMParameterMapping("urls/node_api_url", "NODE_API_URL"),
             # Document Storage (S3 download scope allowlist)
             SSMParameterMapping("care-capture-emr/s3/bucket_name", "DOCUMENT_S3_BUCKET"),
+            # Visit-summary document allowlist v2 feature flag (default False in settings)
+            SSMParameterMapping(
+                "summary/visit_summary_allowlist_enabled",
+                "VISIT_SUMMARY_ALLOWLIST_ENABLED",
+            ),
             # Playground (dev-only)
             SSMParameterMapping(
                 "playground/api_key", "PLAYGROUND_API_KEY", is_secure=True

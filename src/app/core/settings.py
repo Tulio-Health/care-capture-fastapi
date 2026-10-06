@@ -76,6 +76,13 @@ class Settings(BaseSettings):
         "If False, only attachment summaries will be generated.",
     )
 
+    # Visit-summary document allowlist v2 (services/visit_summary_allowlist.py). Default OFF:
+    # with the flag off the visit-summary selection, outcomes and persistence are identical to
+    # the parent commit. SSM: summary/visit_summary_allowlist_enabled (read at startup; toggling
+    # needs a restart). Gates the selection allow term, the no_visit_summary_documents outcome,
+    # the v2 telemetry and the legacy-row persistence protection.
+    VISIT_SUMMARY_ALLOWLIST_ENABLED: bool = False
+
     # Clerk Authentication
     CLERK_PUBLIC_JWT_KEY: str = ""
     CLERK_SECRET_KEY: str = ""
