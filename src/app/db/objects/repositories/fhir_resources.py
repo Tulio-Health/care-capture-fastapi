@@ -599,7 +599,12 @@ class FhirResourcesRepository:
             )
             selection_where = list(base_predicates) + [attachments_ok]
             if exclude_clauses:
-                selection_where.append(~or_(*exclude_clauses))
+                # NULL-safe NOT: a document whose type is NULL makes every ILIKE/regex
+                # rule evaluate to NULL, and `NOT (NULL)` is NULL -> the row would be
+                # silently dropped. The INVENTORY query above already coalesces each
+                # clause to False, so selection must treat "unknown" as "not excluded"
+                # too (allowlist v2 prerequisite (b); applies to every selection profile).
+                selection_where.append(~func.coalesce(or_(*exclude_clauses), False))
 
             selection_query = select(FhirResource).where(and_(*selection_where))
 
