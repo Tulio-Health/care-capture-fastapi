@@ -14,11 +14,22 @@ throwaway ``postgres:15`` service).
 Runs through both the sync psycopg2 driver and asyncpg (the application's runtime driver, which
 binds parameters server-side), because the two bind regex parameters differently.
 """
+
 import os
 import re
 
 import pytest
-from sqlalchemy import Integer, and_, column, create_engine, not_, or_, select, text, values
+from sqlalchemy import (
+    Integer,
+    and_,
+    column,
+    create_engine,
+    not_,
+    or_,
+    select,
+    text,
+    values,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -35,17 +46,38 @@ if not DSN:
 
 LOINC = "http://loinc.org"
 VARIANTS = [
-    "Progress\u00a0Note", "  PROGRESS   NOTE ", "progress\tnote", "Progress\r\nNote", "H\u00a0&\u00a0P",
-    "Patient\u00a0Instructions", "Nursing\u00a0Note", "Ed\u00a0Note", "Height Weight Allergy Rule \u2013 Text",
-    "Progress Note \u2014 Text", "Progress Note-Text",
+    "Progress\u00a0Note",
+    "  PROGRESS   NOTE ",
+    "progress\tnote",
+    "Progress\r\nNote",
+    "H\u00a0&\u00a0P",
+    "Patient\u00a0Instructions",
+    "Nursing\u00a0Note",
+    "Ed\u00a0Note",
+    "Height Weight Allergy Rule \u2013 Text",
+    "Progress Note \u2014 Text",
+    "Progress Note-Text",
 ]
 CODE_CASES = [  # (label, typeCode, typeSystem)
-    (None, "11506-3", LOINC), (None, "11506-3", "http://LOINC.org"), (None, "11506-3", " http://loinc.org "),
-    (None, "34133-9", al.LOINC_OID), (None, "34133-9", " " + al.LOINC_OID + " "), (None, "34133-9", al.LOINC_OID + ".1"),
-    (None, "11506-3", "urn:oid:1.2.840.114350.1.13.0.1.7.2.688879"), (None, "11502-2", LOINC), (None, "18748-4", LOINC),
-    (None, "34139-6", LOINC), (None, "99999-9", LOINC), (None, "11506-3", None), (None, None, LOINC), ("", "11488-4", LOINC),
-    ("Patient Instructions", "11506-3", LOINC), ("Diagnostic Imaging Study", "34111-5", LOINC),
-    ("Progress Note", "11506-3", LOINC), ("Other", "28570-0", LOINC), ("Nursing Note", "11504-8", LOINC),
+    (None, "11506-3", LOINC),
+    (None, "11506-3", "http://LOINC.org"),
+    (None, "11506-3", " http://loinc.org "),
+    (None, "34133-9", al.LOINC_OID),
+    (None, "34133-9", " " + al.LOINC_OID + " "),
+    (None, "34133-9", al.LOINC_OID + ".1"),
+    (None, "11506-3", "urn:oid:1.2.840.114350.1.13.0.1.7.2.688879"),
+    (None, "11502-2", LOINC),
+    (None, "18748-4", LOINC),
+    (None, "34139-6", LOINC),
+    (None, "99999-9", LOINC),
+    (None, "11506-3", None),
+    (None, None, LOINC),
+    ("", "11488-4", LOINC),
+    ("Patient Instructions", "11506-3", LOINC),
+    ("Diagnostic Imaging Study", "34111-5", LOINC),
+    ("Progress Note", "11506-3", LOINC),
+    ("Other", "28570-0", LOINC),
+    ("Nursing Note", "11504-8", LOINC),
 ] + [(None, code, LOINC) for code in al.LOINC_ALLOW_CODES]
 
 
@@ -73,7 +105,11 @@ CASES = _cases()
 
 
 def _data(label, code, system):
-    return {"type": label, "typeCode": code, "typeSystem": system}  # JSON null when None
+    return {
+        "type": label,
+        "typeCode": code,
+        "typeSystem": system,
+    }  # JSON null when None
 
 
 def _python_expected(label, code, system):
@@ -92,7 +128,13 @@ def _query():
     v = values(column("rid", Integer), column("data", JSONB), name="v").data(rows)
     inc, loinc, den = _build_allowlist_predicates(v.c.data)
     eligible = and_(or_(inc, loinc), not_(den))
-    return select(v.c.rid, inc.label("inc"), loinc.label("loinc"), den.label("den"), eligible.label("eligible")).order_by(v.c.rid)
+    return select(
+        v.c.rid,
+        inc.label("inc"),
+        loinc.label("loinc"),
+        den.label("den"),
+        eligible.label("eligible"),
+    ).order_by(v.c.rid)
 
 
 def _check(result_rows):
@@ -103,11 +145,15 @@ def _check(result_rows):
         expected = _python_expected(*case)
         if (inc, loinc, den, eligible) != expected:
             mismatches.append((case, (inc, loinc, den, eligible), expected))
-    assert not mismatches, f"{len(mismatches)}/{len(CASES)} PG != Python mismatches: {mismatches[:5]}"
+    assert (
+        not mismatches
+    ), f"{len(mismatches)}/{len(CASES)} PG != Python mismatches: {mismatches[:5]}"
 
 
 def test_case_corpus_covers_every_t0_row_probe_and_code_case():
-    assert len(CASES) >= len(LABEL_TABLE) // 2 + 113  # de-duplicated, but nothing is dropped silently
+    assert (
+        len(CASES) >= len(LABEL_TABLE) // 2 + 113
+    )  # de-duplicated, but nothing is dropped silently
     assert len(CASES) >= 250
     for _env, label, *_rest in LABEL_TABLE:
         assert (label, None, None) in CASES
@@ -144,15 +190,24 @@ def test_server_regex_semantics_match_python_on_boundaries():
     url = re.sub(r"^postgres(ql)?(\+\w+)?://", "postgresql+psycopg2://", DSN)
     engine = create_engine(url)
     cases = [
-        ("avs", al._B + "avs" + al._E, True), ("xavsx", al._B + "avs" + al._E, False),
-        ("c-cda", al._B + "(ccd|c-?cda)" + al._E, True), ("progress  note", "progress notes?", False),
-        ("a \u2013 text", "[-\u2013\u2014] ?text$", True), ("a\u2014text", "[-\u2013\u2014] ?text$", True),
+        ("avs", al._B + "avs" + al._E, True),
+        ("xavsx", al._B + "avs" + al._E, False),
+        ("c-cda", al._B + "(ccd|c-?cda)" + al._E, True),
+        ("progress  note", "progress notes?", False),
+        ("a \u2013 text", "[-\u2013\u2014] ?text$", True),
+        ("a\u2014text", "[-\u2013\u2014] ?text$", True),
     ]
     try:
         with engine.connect() as conn:
             conn.execute(text("SET TRANSACTION READ ONLY"))
             for literal, pattern, expected in cases:
-                got = conn.execute(text("SELECT CAST(:s AS text) ~ CAST(:p AS text)"), {"s": literal, "p": pattern}).scalar()
-                assert got is expected is bool(re.search(pattern, literal)), (literal, pattern)
+                got = conn.execute(
+                    text("SELECT CAST(:s AS text) ~ CAST(:p AS text)"),
+                    {"s": literal, "p": pattern},
+                ).scalar()
+                assert got is expected is bool(re.search(pattern, literal)), (
+                    literal,
+                    pattern,
+                )
     finally:
         engine.dispose()

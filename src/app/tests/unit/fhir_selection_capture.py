@@ -4,6 +4,7 @@ recording fake session and return the compiled SQL text + bound parameters of ev
 Used by T1 (flag-off / other-profile SQL must equal the snapshot taken at the parent commit) and
 by the allowlist selection tests.
 """
+
 from types import SimpleNamespace
 
 from sqlalchemy.dialects import postgresql
@@ -11,13 +12,50 @@ from sqlalchemy.dialects import postgresql
 from src.app.db.objects.repositories.fhir_resources import FhirResourcesRepository
 
 RULES = [
-    {"action": "exclude", "matchStrategy": "ilike", "matchTarget": "type_text", "matchValue": "Education"},
-    {"action": "exclude", "matchStrategy": "regex", "matchTarget": "type_text", "matchValue": "^Edu"},
-    {"action": "exclude", "matchStrategy": "exact", "matchTarget": "type_text", "matchValue": "Billing", "sourceEmr": "cerner"},
-    {"action": "exclude", "matchStrategy": "exact", "matchTarget": "loinc_code", "matchValue": "12345-6"},
-    {"action": "include", "matchStrategy": "ilike", "matchTarget": "type_text", "matchValue": "Note"},
-    {"action": "prefer", "matchStrategy": "ilike", "matchTarget": "type_text", "matchValue": "Depart Summary"},
-    {"action": "resolve", "documentClass": "visit_summary", "matchStrategy": "ilike", "matchTarget": "type_text", "matchValue": "AVS"},
+    {
+        "action": "exclude",
+        "matchStrategy": "ilike",
+        "matchTarget": "type_text",
+        "matchValue": "Education",
+    },
+    {
+        "action": "exclude",
+        "matchStrategy": "regex",
+        "matchTarget": "type_text",
+        "matchValue": "^Edu",
+    },
+    {
+        "action": "exclude",
+        "matchStrategy": "exact",
+        "matchTarget": "type_text",
+        "matchValue": "Billing",
+        "sourceEmr": "cerner",
+    },
+    {
+        "action": "exclude",
+        "matchStrategy": "exact",
+        "matchTarget": "loinc_code",
+        "matchValue": "12345-6",
+    },
+    {
+        "action": "include",
+        "matchStrategy": "ilike",
+        "matchTarget": "type_text",
+        "matchValue": "Note",
+    },
+    {
+        "action": "prefer",
+        "matchStrategy": "ilike",
+        "matchTarget": "type_text",
+        "matchValue": "Depart Summary",
+    },
+    {
+        "action": "resolve",
+        "documentClass": "visit_summary",
+        "matchStrategy": "ilike",
+        "matchTarget": "type_text",
+        "matchValue": "AVS",
+    },
 ]
 PROVENANCE = {"tier": "live", "digest": "snapshot-test"}
 
@@ -59,11 +97,23 @@ class FakeExistsResult:
 
 def compile_statement(statement):
     compiled = statement.compile(dialect=postgresql.dialect())
-    params = {k: (v if isinstance(v, (str, int, float, bool, type(None))) else repr(v)) for k, v in compiled.params.items()}
+    params = {
+        k: (v if isinstance(v, (str, int, float, bool, type(None))) else repr(v))
+        for k, v in compiled.params.items()
+    }
     return {"sql": str(compiled), "params": dict(sorted(params.items()))}
 
 
-async def run_repo(profile, rules, *, inventory=(), selection=(), exists=None, repo=None, rule_snapshot=True):
+async def run_repo(
+    profile,
+    rules,
+    *,
+    inventory=(),
+    selection=(),
+    exists=None,
+    repo=None,
+    rule_snapshot=True,
+):
     """Execute one repo call; returns (repo, [compiled statements]). `exists` is the value the
     discriminator EXISTS query returns when it is issued (third statement)."""
     statements = []

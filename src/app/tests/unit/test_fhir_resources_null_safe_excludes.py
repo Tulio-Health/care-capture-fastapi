@@ -4,6 +4,7 @@
 and `NOT (NULL)` is NULL, so such rows were silently dropped by the WHERE (the INVENTORY query
 already coalesced). The fix wraps the OR in `coalesce(..., false)` for EVERY selection profile.
 """
+
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -13,8 +14,18 @@ from sqlalchemy.dialects import postgresql
 from src.app.db.objects.repositories.fhir_resources import FhirResourcesRepository
 
 RULES = [
-    {"action": "exclude", "matchStrategy": "ilike", "matchTarget": "type_text", "matchValue": "Education"},
-    {"action": "exclude", "matchStrategy": "exact", "matchTarget": "type_text", "matchValue": "Billing"},
+    {
+        "action": "exclude",
+        "matchStrategy": "ilike",
+        "matchTarget": "type_text",
+        "matchValue": "Education",
+    },
+    {
+        "action": "exclude",
+        "matchStrategy": "exact",
+        "matchTarget": "type_text",
+        "matchValue": "Billing",
+    },
 ]
 SNAPSHOT = (RULES, {"tier": "floor", "digest": "test"})
 
@@ -43,7 +54,10 @@ async def _run(profile, rule_snapshot=SNAPSHOT):
     repo = FhirResourcesRepository.__new__(FhirResourcesRepository)
     repo.session = SimpleNamespace(execute=AsyncMock(side_effect=_execute))
     await repo.get_document_references_with_attachments(
-        user_id="u", encounter_id="e", selection_profile=profile, rule_snapshot=rule_snapshot
+        user_id="u",
+        encounter_id="e",
+        selection_profile=profile,
+        rule_snapshot=rule_snapshot,
     )
     return captured
 

@@ -46,8 +46,12 @@ def render_file() -> bytes:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--write", action="store_true", help="rewrite the checked-in census SQL")
-    group.add_argument("--check", action="store_true", help="exit 1 if the checked-in SQL is stale")
+    group.add_argument(
+        "--write", action="store_true", help="rewrite the checked-in census SQL"
+    )
+    group.add_argument(
+        "--check", action="store_true", help="exit 1 if the checked-in SQL is stale"
+    )
     args = parser.parse_args(argv)
 
     rendered = render_file()

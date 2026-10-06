@@ -1,4 +1,5 @@
 """pg_parity conftest: no application database; only the throwaway/parity PostgreSQL in PARITY_PG_DSN."""
+
 import pytest
 
 

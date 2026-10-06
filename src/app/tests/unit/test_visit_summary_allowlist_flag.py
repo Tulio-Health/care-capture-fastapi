@@ -1,4 +1,5 @@
 """T10 -- VISIT_SUMMARY_ALLOWLIST_ENABLED flag: default OFF, SSM-mapped, env-parsed."""
+
 import pytest
 
 from src.app.config.ssm_loader import SSMParameterLoader
@@ -10,7 +11,10 @@ def test_flag_defaults_to_false(monkeypatch):
     assert Settings().VISIT_SUMMARY_ALLOWLIST_ENABLED is False
 
 
-@pytest.mark.parametrize("raw,expected", [("true", True), ("True", True), ("1", True), ("false", False), ("0", False)])
+@pytest.mark.parametrize(
+    "raw,expected",
+    [("true", True), ("True", True), ("1", True), ("false", False), ("0", False)],
+)
 def test_flag_parses_ssm_style_string_values(monkeypatch, raw, expected):
     monkeypatch.setenv("VISIT_SUMMARY_ALLOWLIST_ENABLED", raw)
     assert Settings().VISIT_SUMMARY_ALLOWLIST_ENABLED is expected
