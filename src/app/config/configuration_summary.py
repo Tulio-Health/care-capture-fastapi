@@ -35,3 +35,16 @@ def log_database_configuration():
     db_port = os.getenv('DB_PORT', 'NOT_SET')
     db_name = os.getenv('DB_NAME', 'NOT_SET')
     logger.info(f"🗄️ Database Configuration: {db_host}:{db_port}/{db_name}")
+
+
+def log_visit_summary_allowlist_configuration():
+    """Log the visit-summary allowlist flag + constant version (read at startup; needs a restart
+    to change). Operators grep ``visit_summary_allowlist enabled=`` on every instance."""
+    try:
+        from src.app.core import get_settings
+        from src.app.services.visit_summary_allowlist import ALLOWLIST_VERSION
+
+        enabled = bool(get_settings().VISIT_SUMMARY_ALLOWLIST_ENABLED)
+        logger.info(f"visit_summary_allowlist enabled={enabled} version={ALLOWLIST_VERSION}")
+    except Exception as exc:  # a logging helper must never fail application startup
+        logger.warning("visit_summary_allowlist config log unavailable error_type=%s", type(exc).__name__)

@@ -15,7 +15,7 @@ async def lifespan(app: FastAPI):
     # Startup
     try:
         # Log configuration summary for debugging
-        from .config.configuration_summary import log_configuration_summary, log_redis_configuration, log_database_configuration
+        from .config.configuration_summary import log_configuration_summary, log_redis_configuration, log_database_configuration, log_visit_summary_allowlist_configuration
         log_configuration_summary()
 
         # SSM parameters already loaded synchronously during imports
@@ -32,6 +32,7 @@ async def lifespan(app: FastAPI):
         # Log service configurations
         log_database_configuration()
         log_redis_configuration()
+        log_visit_summary_allowlist_configuration()
 
         # Initialize Redis client
         redis_client = RedisClient()
