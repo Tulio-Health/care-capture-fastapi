@@ -1,9 +1,6 @@
-import asyncio
-import time
-import uuid
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -798,57 +795,3 @@ async def procedure_summary_async(
         "appointment_id": str(request.appointment_id),
         "async_token": request.async_token,
     }
-
-
-# ---------------------------------------------------------------------------------------
-# G0 measurement probe (round5-final.md section 1.3). Deliberately on its own router with
-# NO "/care-capture" prefix -- the spec's exact path is "/_probe/burn" at root, which is
-# what keeps it outside EXCLUDED_PATHS/EXCLUDED_PATH_PREFIXES and therefore
-# internal-service-key-authed like any other non-excluded path (ClerkAuthMiddleware checks
-# x-internal-service-key before requiring x-clerk-jwt, regardless of path).
-# TEMPORARY: this is a measurement tool for the pre-deploy gate, not part of the
-# permanent design. Removal after G0 passes is a tracked follow-up, not done here.
-# ---------------------------------------------------------------------------------------
-
-probe_router = APIRouter(tags=["internal-probe"])
-
-_probe_tasks: set = set()
-
-
-async def _run_burn_probe(seconds: int, token: str) -> None:
-    start = time.monotonic()
-
-    def _cpu_loop() -> None:
-        deadline = time.monotonic() + seconds
-        while time.monotonic() < deadline:
-            pass
-
-    task = asyncio.ensure_future(asyncio.to_thread(_cpu_loop))
-    checkpoint = 0
-    while True:
-        try:
-            await asyncio.wait_for(asyncio.shield(task), timeout=15)
-            break
-        except TimeoutError:
-            checkpoint += 1
-            logger.info(
-                "burn_probe token=%s checkpoint=%d wall_elapsed_s=%.3f",
-                token,
-                checkpoint,
-                time.monotonic() - start,
-            )
-    logger.info(
-        "burn_probe_done token=%s requested_s=%d wall_elapsed_s=%.3f",
-        token,
-        seconds,
-        time.monotonic() - start,
-    )
-
-
-@probe_router.get("/_probe/burn", include_in_schema=False)
-async def burn_probe(seconds: int = Query(..., ge=1, le=300)) -> Dict[str, Any]:
-    token = str(uuid.uuid4())
-    probe_task = asyncio.create_task(_run_burn_probe(seconds, token))
-    _probe_tasks.add(probe_task)
-    probe_task.add_done_callback(_probe_tasks.discard)
-    return {"accepted": True, "token": token, "seconds": seconds}

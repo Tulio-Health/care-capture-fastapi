@@ -1,7 +1,6 @@
 from .health import router as health_router
 from .root import router as root_router
 from .care_capture import router as care_capture_router
-from .care_capture import probe_router as summary_probe_router
 from .users import router as users_router
 from .ai_chat import router as ai_chat_router
 from .schedule_visit import router as schedule_visit_router
@@ -10,5 +9,5 @@ from .auth_test import router as auth_test_router
 from .document_type_inference import router as document_type_inference_router
 from .enterprise import enterprise_router
 
-__all__ = ["health_router", "root_router", "care_capture_router", "summary_probe_router", "users_router", "ai_chat_router", "schedule_visit_router", "translation_router", "auth_test_router", "document_type_inference_router", "enterprise_router"]
+__all__ = ["health_router", "root_router", "care_capture_router", "users_router", "ai_chat_router", "schedule_visit_router", "translation_router", "auth_test_router", "document_type_inference_router", "enterprise_router"]
 

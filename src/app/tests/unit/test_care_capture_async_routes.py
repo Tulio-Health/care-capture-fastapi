@@ -1,4 +1,4 @@
-"""Unit tests for the two /async route handlers and the /_probe/burn route added in
+"""Unit tests for the two /async route handlers added in
 routes/care_capture.py (round5-final.md sections 1.3 and 5, care-capture-nodeapi sibling
 repo). Route functions are called directly (this repo's own convention for routes that
 require a DB session -- see test_document_type_inference.py for the TestClient-based
@@ -204,58 +204,23 @@ async def test_attachment_summary_async_task_outlives_request(monkeypatch) -> No
 
 
 # ---------------------------------------------------------------------------
-# /_probe/burn: bounded seconds, internal-key-authed by virtue of not being excluded
-# (covered separately against the real ClerkAuthMiddleware exclusion lists below).
+# The temporary /_probe/burn measurement route was removed (allowlist v2 prerequisite
+# (a)); it must not be mounted on the real application router set.
 # ---------------------------------------------------------------------------
 
 
-def test_burn_probe_rejects_out_of_bounds_seconds() -> None:
-    """seconds must be bounded [1, 300] (round6 MINOR-3: a mistyped/malicious value must
-    not be able to pin a CPU thread on a prod instance indefinitely). Exercised through a
-    real FastAPI request pipeline (TestClient) since Query(...) bounds are enforced at
-    request-parsing time, not inside the handler body."""
+def test_probe_burn_route_is_gone() -> None:
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
+    from src.app import routes
+
+    assert not hasattr(routes, "summary_probe_router")
+    assert not hasattr(care_capture, "probe_router")
+    assert not hasattr(care_capture, "burn_probe")
+
     app = FastAPI()
-    app.include_router(care_capture.probe_router)
-    client = TestClient(app)
-
-    assert client.get("/_probe/burn", params={"seconds": 0}).status_code == 422
-    assert client.get("/_probe/burn", params={"seconds": 301}).status_code == 422
-
-
-async def test_burn_probe_spawns_task_and_returns_immediately(monkeypatch) -> None:
-    from src.app.routes import care_capture as cc
-
-    logged = []
-    monkeypatch.setattr(cc.logger, "info", lambda *a, **k: logged.append(a))
-
-    response = await cc.burn_probe(seconds=1)
-
-    assert response["accepted"] is True
-    assert response["seconds"] == 1
-    assert "token" in response
-
-    # Let the (short, 1s) probe task actually run to completion so it doesn't leak past
-    # this test.
-    probe_tasks = list(cc._probe_tasks)
-    for task in probe_tasks:
-        await task
-    assert any("burn_probe_done" in call[0] for call in logged)
-
-
-def test_probe_route_is_mounted_outside_care_capture_prefix() -> None:
-    """Section 1.3's exact path is `/_probe/burn` at root -- NOT `/care-capture/_probe/
-    burn` -- which is what keeps it outside ClerkAuthMiddleware's EXCLUDED_PATHS/
-    EXCLUDED_PATH_PREFIXES (verified against the real list in clerk_auth.py) while still
-    being reachable without the `/care-capture` router's own concerns."""
-    from src.app.common.middleware.clerk_auth import ClerkAuthMiddleware
-
-    paths = {route.path for route in care_capture.probe_router.routes}
-    assert "/_probe/burn" in paths
-    assert not any(
-        "/_probe/burn" == excluded or "/_probe/burn".startswith(prefix)
-        for excluded in ClerkAuthMiddleware.EXCLUDED_PATHS
-        for prefix in ClerkAuthMiddleware.EXCLUDED_PATH_PREFIXES
-    )
+    app.include_router(routes.care_capture_router)
+    app.include_router(routes.root_router)
+    assert not any("_probe" in getattr(r, "path", "") for r in app.routes)
+    assert TestClient(app).get("/_probe/burn", params={"seconds": 1}).status_code == 404
