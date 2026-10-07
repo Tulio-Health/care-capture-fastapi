@@ -178,7 +178,9 @@ def test_settings_defaults(monkeypatch):
     s = Settings()
     assert s.DOCTYPE_INFERENCE_PARALLEL_ENABLED is False
     assert s.DOCTYPE_INFERENCE_CONCURRENCY == 4
-    assert s.DOCTYPE_INFERENCE_DEADLINE_S == 20
+    # Default stays below the connector's 15 s HTTP timeout for this route.
+    assert s.DOCTYPE_INFERENCE_DEADLINE_S == 12
+    assert s.DOCTYPE_INFERENCE_DEADLINE_S < 15
 
 
 def test_settings_parse_ssm_style_strings(monkeypatch):

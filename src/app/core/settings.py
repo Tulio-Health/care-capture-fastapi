@@ -90,9 +90,13 @@ class Settings(BaseSettings):
     # fails or misses DEADLINE_S is omitted from the response). SSM (read at startup; restart to
     # apply): summary/doctype_inference_parallel_enabled, summary/doctype_inference_concurrency,
     # summary/doctype_inference_deadline_s.
+    # DEADLINE_S default 12 s stays BELOW the connector's 15 s HTTP timeout for this route
+    # (emr-connector document-type-inference-client.service.ts:87), so fastapi returns the resolved
+    # items and omits the rest before the connector gives up (a deadline above 15 s would let the
+    # connector discard the whole chunk). Raise it only together with that connector timeout.
     DOCTYPE_INFERENCE_PARALLEL_ENABLED: bool = False
     DOCTYPE_INFERENCE_CONCURRENCY: int = Field(default=4, ge=1, le=8)
-    DOCTYPE_INFERENCE_DEADLINE_S: float = Field(default=20.0, gt=0, le=120)
+    DOCTYPE_INFERENCE_DEADLINE_S: float = Field(default=12.0, gt=0, le=120)
 
     # Clerk Authentication
     CLERK_PUBLIC_JWT_KEY: str = ""
