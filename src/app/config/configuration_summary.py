@@ -48,3 +48,19 @@ def log_visit_summary_allowlist_configuration():
         logger.info(f"visit_summary_allowlist enabled={enabled} version={ALLOWLIST_VERSION}")
     except Exception as exc:  # a logging helper must never fail application startup
         logger.warning("visit_summary_allowlist config log unavailable error_type=%s", type(exc).__name__)
+
+
+def log_doctype_inference_parallel_configuration():
+    """Log the parallel doc-type inference settings (read at startup; needs a restart to change).
+    Operators grep ``doctype_inference_parallel enabled=``."""
+    try:
+        from src.app.core import get_settings
+
+        settings = get_settings()
+        logger.info(
+            f"doctype_inference_parallel enabled={bool(settings.DOCTYPE_INFERENCE_PARALLEL_ENABLED)} "
+            f"concurrency={settings.DOCTYPE_INFERENCE_CONCURRENCY} "
+            f"deadline_s={settings.DOCTYPE_INFERENCE_DEADLINE_S}"
+        )
+    except Exception as exc:  # a logging helper must never fail application startup
+        logger.warning("doctype_inference_parallel config log unavailable error_type=%s", type(exc).__name__)

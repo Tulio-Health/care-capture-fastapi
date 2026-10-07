@@ -83,6 +83,17 @@ class Settings(BaseSettings):
     # the v2 telemetry and the legacy-row persistence protection.
     VISIT_SUMMARY_ALLOWLIST_ENABLED: bool = False
 
+    # Parallel doc-type inference (S0 speed fix; chains/document_type_inference). Default OFF:
+    # the serial 5-item sub-batch loop and its model-call sequence are untouched. When ON,
+    # infer_batch runs 1-item calls through services/bounded_fanout.fan_out (at most CONCURRENCY
+    # in flight per request, nested inside summary_runtime's per-process model gate; an item that
+    # fails or misses DEADLINE_S is omitted from the response). SSM (read at startup; restart to
+    # apply): summary/doctype_inference_parallel_enabled, summary/doctype_inference_concurrency,
+    # summary/doctype_inference_deadline_s.
+    DOCTYPE_INFERENCE_PARALLEL_ENABLED: bool = False
+    DOCTYPE_INFERENCE_CONCURRENCY: int = Field(default=4, ge=1, le=8)
+    DOCTYPE_INFERENCE_DEADLINE_S: float = Field(default=20.0, gt=0, le=120)
+
     # Clerk Authentication
     CLERK_PUBLIC_JWT_KEY: str = ""
     CLERK_SECRET_KEY: str = ""
