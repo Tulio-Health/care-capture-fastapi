@@ -13,6 +13,8 @@ from src.app.tests.unit.visit_summary_allowlist_labels import (
     DEV_LABELS,
     LABEL_TABLE,
     PROD_LABELS,
+    PROD_NAMED_LABELS,
+    PROD_NAMED_ONLY,
 )
 from src.app.tests.unit.visit_summary_allowlist_probes import P
 
@@ -67,7 +69,16 @@ def test_probe(label, expected):
 
 def test_label_table_sizes():
     assert len(DEV_LABELS) == 108
-    assert len(PROD_LABELS) >= 50
+    assert len(PROD_LABELS) == 147 + 6 + 1  # pulled labels + named-only + the None case
+    assert sum(1 for r in PROD_LABELS if r[2]) == 34 + 3
+    from src.app.tests.unit.visit_summary_allowlist_prod_labels import PROD_LABEL_ROWS
+
+    full = {r[0]: r[1:] for r in PROD_LABEL_ROWS}
+    assert len(full) == len(PROD_LABEL_ROWS) == 147
+    assert len(PROD_NAMED_LABELS) == 56
+    for label, *rest in PROD_NAMED_LABELS:
+        assert full.get(label, tuple(rest)) == tuple(rest), label
+    assert len(PROD_NAMED_ONLY) == 6
     assert len(LABEL_TABLE) == len(DEV_LABELS) + len(PROD_LABELS)
 
 

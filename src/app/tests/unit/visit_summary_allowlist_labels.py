@@ -6,14 +6,14 @@ Each row: (env, normalized_label_or_None, expected_eligible, expected_include_ru
   per-type veto table), not derived from ``match()``.
 * the rule ids are a regression pin of the first matching include / deny rule.
 * DEV (108 rows) is the complete distinct-label list of the round-1 dev census
-  (``round1-census-data.md`` A1). PROD rows are every prod label NAMED in the research
+  (``round1-census-data.md`` A1). The 57 PROD_NAMED_LABELS are every prod label NAMED in the research
   (``round2-prod-census.md`` s2.2/s2.3/s3 and FINAL-PLAN s1.3/s1.5). The full 147-label prod
-  distinct list was pulled once into a local file that was never checked in (FINAL-PLAN s0, "kept
-  in a local file") and is not reproducible from the research files, so only the named subset is
-  pinned here; unnamed prod labels fall in the n<5 long tail.
+  list now lives in ``visit_summary_allowlist_prod_labels.py`` and is what LABEL_TABLE uses.
 """
 
-LABEL_TABLE = (
+from src.app.tests.unit.visit_summary_allowlist_prod_labels import PROD_LABEL_ROWS
+
+_DEV_AND_NAMED_PROD = (
     ('dev', 'plan of care', False, None, None),
     ('dev', 'consultation note generic', True, 'note.consult', None),
     ('dev', 'rheumatology consultation', True, 'note.consult', None),
@@ -179,6 +179,24 @@ LABEL_TABLE = (
     ('prod', 'other', False, None, None),
     ('prod', '', False, None, None),
     ('prod', None, False, None, None),
+)
+
+PROD_NAMED_LABELS = tuple(
+    (r[1], r[2], r[3], r[4]) for r in _DEV_AND_NAMED_PROD if r[0] == "prod" and r[1] is not None
+)
+_DEV_ROWS = tuple(r for r in _DEV_AND_NAMED_PROD if r[0] == "dev")
+
+# prod labels named in the research that are NOT among the 147 pulled labels (kept as extra pins)
+PROD_NAMED_ONLY = tuple(
+    r for r in PROD_NAMED_LABELS if r[0] not in {x[0] for x in PROD_LABEL_ROWS}
+)
+
+# dev 108 + the full 147 prod labels + named-only prod rows + the NULL-type case
+LABEL_TABLE = (
+    _DEV_ROWS
+    + tuple(("prod", *r) for r in PROD_LABEL_ROWS)
+    + tuple(("prod", *r) for r in PROD_NAMED_ONLY)
+    + (("prod", None, False, None, None),)
 )
 
 DEV_LABELS = tuple(r for r in LABEL_TABLE if r[0] == "dev")
