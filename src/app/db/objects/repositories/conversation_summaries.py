@@ -90,6 +90,19 @@ class ConversationSummariesRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    async def _rollback_and_reload(self, rows):
+        """End the read-only transaction WITHOUT writing, and hand back fully loaded rows.
+
+        `rollback()` expires every loaded instance (`expire_on_commit=False` only covers commit), so a
+        bare `rollback(); return row` gives the caller an empty-`__dict__` row and the service's
+        `ConversationSummary.model_validate(row)` raises (FP4: HTTP 500). Refreshing re-SELECTs the
+        committed state, which is also the right answer for a stale-attempt guard (the newer writer's row).
+        """
+        await self.session.rollback()
+        for row in rows:
+            await self.session.refresh(row)
+        return rows
+
     async def _lock_scope(self, appointment_id, source, user_id=None):
         """Serialize publication using PostgreSQL transaction locks; no schema changes."""
         import hashlib
@@ -377,8 +390,7 @@ class ConversationSummariesRepository:
                 raise ValueError("SUMMARY_SCOPE_MISMATCH")
             incoming_started = (rows[0].get("summary_metadata") or {}).get("attempt_started_at", "") if rows else attempt_started_at
             if incoming_started and any(_attempt_at((row.summary_metadata or {}).get("attempt_started_at", "")) > _attempt_at(incoming_started) for row in existing_rows):
-                await self.session.rollback()
-                return existing_rows
+                return await self._rollback_and_reload(existing_rows)
             existing_by_key = {}
             keyless_rows = []
             for row in existing_rows:
@@ -478,13 +490,13 @@ class ConversationSummariesRepository:
                 incoming = summary_data.get("summary_metadata") or {}
                 previous = db_summary.summary_metadata or {}
                 if incoming.get("attempt_started_at") and _attempt_at(previous.get("attempt_started_at", "")) > _attempt_at(incoming["attempt_started_at"]):
-                    await self.session.rollback()
+                    await self._rollback_and_reload([db_summary])
                     return db_summary
                 if incoming.get("processing_outcome") == NO_VISIT_SUMMARY_DOCUMENTS and _is_existing_clinical(previous) and not incoming.get("regeneration_forced"):
                     # Path (1): a non-clinical "no visit summary documents" result never replaces an
                     # existing clinical summary unless regeneration was explicitly forced. Nothing is
                     # written: the stored row (text, metadata, updated_at) stays byte-unchanged.
-                    await self.session.rollback()
+                    await self._rollback_and_reload([db_summary])
                     logger.info(
                         f"allowlist_preserved_existing_summary appointment_id={appointment_id} "
                         f"previous_outcome={previous.get('processing_outcome') or 'legacy'}"

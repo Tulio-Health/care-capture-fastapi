@@ -108,6 +108,7 @@ def make_repo(monkeypatch):
         )
         session = MagicMock()
         session.rollback = AsyncMock()
+        session.refresh = AsyncMock()
         session.add = MagicMock()
         repo = ConversationSummariesRepository(session)
         monkeypatch.setattr(repo, "_lock_scope", AsyncMock())
@@ -142,6 +143,7 @@ async def test_t7a_new_state_never_overwrites_a_clinical_row(
         result = await repo.upsert(uuid4(), _incoming(forced=False))
     assert result is row and _snapshot(row) == before  # byte-unchanged
     repo.session.rollback.assert_awaited_once()
+    repo.session.refresh.assert_awaited_once_with(row)  # preserved row is reloaded after the rollback (FP4)
     repo._commit_validated.assert_not_awaited()
     assert "allowlist_preserved_existing_summary" in caplog.text
 
