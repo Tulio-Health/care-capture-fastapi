@@ -10,6 +10,7 @@ JSON (minimal CodeableConcept-derived fields), not long-form document prose.
 from src.app.services.summary_runtime import model_call
 import json
 import logging
+import time
 from typing import List
 
 from pydantic_ai import Agent
@@ -20,6 +21,7 @@ from src.app.models.document_type_inference import (
     DocumentTypeInferenceRequest,
     DocumentTypeInferenceResponse,
 )
+from src.app.services.bounded_fanout import UNRESOLVED, fan_out
 
 logger = logging.getLogger(__name__)
 
@@ -77,11 +79,22 @@ class DocumentTypeInferenceChain:
     async def infer_batch(
         self, items: List[DocumentTypeInferenceRequest]
     ) -> List[DocumentTypeInferenceResponse]:
-        """Classify a batch of minimal DocumentReference metadata items in a single LLM call."""
+        """Classify a batch of minimal DocumentReference metadata items.
+
+        Default: serial 5-item model calls. With DOCTYPE_INFERENCE_PARALLEL_ENABLED the items
+        are classified by 1-item calls through a bounded fan-out (see `_infer_parallel`)."""
+        from src.app.core import get_settings
         from src.app.services.document_extraction import DocumentProcessingError
         ids = [item.id for item in items]
         if len(ids) != len(set(ids)) or len(items) > 100:
             raise DocumentProcessingError("INVALID_CLASSIFICATION_BATCH")
+        settings = get_settings()
+        if settings.DOCTYPE_INFERENCE_PARALLEL_ENABLED:
+            return await self._infer_parallel(
+                items,
+                concurrency=settings.DOCTYPE_INFERENCE_CONCURRENCY,
+                deadline_s=settings.DOCTYPE_INFERENCE_DEADLINE_S,
+            )
         responses = []
         for offset in range(0, len(items), 5):
             batch = items[offset:offset + 5]
@@ -94,3 +107,55 @@ class DocumentTypeInferenceChain:
                 raise DocumentProcessingError("CLASSIFICATION_ID_MISMATCH")
             responses.extend(result.output)
         return responses
+
+    async def _infer_parallel(
+        self,
+        items: List[DocumentTypeInferenceRequest],
+        *,
+        concurrency: int,
+        deadline_s: float,
+    ) -> List[DocumentTypeInferenceResponse]:
+        """1-item calls through `fan_out`; same prompt/payload shape as a 1-item serial batch.
+
+        Per-item failure isolation: an item whose call raised (timeout/429/unavailable/id
+        mismatch) or missed the deadline is OMITTED from the result (the route already omits ids
+        infer_batch did not return, and the connector keeps that document's pre-AI values).
+        Resolved results keep request order. If NO item resolved, the request fails with the
+        first item's error code, exactly like today's whole-request failure."""
+        from src.app.services.document_extraction import DocumentProcessingError
+        if not items:
+            return []
+        payloads = [json.dumps([item.model_dump(exclude_none=True)]) for item in items]
+        if any(len(payload) > 20_000 for payload in payloads):
+            raise DocumentProcessingError("CLASSIFICATION_INPUT_LIMIT")
+        failure_codes: dict = {}
+
+        async def classify(index: int) -> DocumentTypeInferenceResponse:
+            try:
+                result = await model_call(self.agent.run, payloads[index])
+                output = result.output
+                if len(output) != 1 or output[0].id != items[index].id:
+                    raise DocumentProcessingError("CLASSIFICATION_ID_MISMATCH")
+                return output[0]
+            except Exception as exc:
+                failure_codes[index] = getattr(exc, "reason_code", None) or type(exc).__name__
+                raise
+
+        started = time.monotonic()
+        results = await fan_out(
+            list(range(len(items))), classify, concurrency=concurrency, deadline_s=deadline_s
+        )
+        resolved = [r for r in results if r is not UNRESOLVED]
+        logger.info(
+            "doctype_inference_fanout items=%d resolved=%d unresolved=%d concurrency=%d elapsed_ms=%d",
+            len(items),
+            len(resolved),
+            len(items) - len(resolved),
+            concurrency,
+            int((time.monotonic() - started) * 1000),
+        )
+        if not resolved:
+            first_failed = next(i for i, r in enumerate(results) if r is UNRESOLVED)
+            # Items that missed the deadline never reached `except`; they have no recorded code.
+            raise DocumentProcessingError(failure_codes.get(first_failed) or "MODEL_TIMEOUT")
+        return resolved
