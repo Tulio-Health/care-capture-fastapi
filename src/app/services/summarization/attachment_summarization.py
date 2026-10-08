@@ -217,6 +217,31 @@ class AttachmentSummarizationService:
         # Download and extract text from all attachments
         extracted_documents = await self._process_attachments(doc_references)
 
+        from src.app.core.settings import get_settings as _get_settings
+        if _get_settings().SKIP_STUB_DOCUMENTS_ENABLED:
+            from src.app.services.document_ingestion import split_stub_documents
+            extracted_documents, stub_reasons = split_stub_documents(extracted_documents)
+            if stub_reasons:
+                self.logger.info(
+                    f"stub_documents_skipped appointment_id={request.appointment_id} "
+                    f"skipped={sum(stub_reasons.values())} reasons={stub_reasons} remaining={len(extracted_documents)}"
+                )
+                if not extracted_documents:
+                    # Nothing but stub/blank documents: same zero-model-call outcome as the
+                    # allowlist-excluded case (the push is suppressed downstream).
+                    summary_data = _static_fallback_summary_data(
+                        request, appointment, provider_name, state=NO_VISIT_SUMMARY_DOCUMENTS
+                    )
+                    summary_data["summary_metadata"].update(eligibility_snapshot)
+                    summary_data["summary_metadata"].update(selection_metadata)
+                    summary_data["summary_metadata"]["regeneration_forced"] = bool(
+                        getattr(request, "force_regenerate", False)
+                    )
+                    db_summary = await self.summaries_repo.upsert(
+                        appointment_id=request.appointment_id, summary_data=summary_data
+                    )
+                    return ConversationSummary.model_validate(db_summary)
+
         if not extracted_documents:
             self.logger.warning(
                 f"Failed to extract text from any attachments for appointment {request.appointment_id} - recording unavailable summary"

@@ -83,6 +83,16 @@ class Settings(BaseSettings):
     # the v2 telemetry and the legacy-row persistence protection.
     VISIT_SUMMARY_ALLOWLIST_ENABLED: bool = False
 
+    # Skip the LLM for stub / blank / header-only documents ("test note", "asdf", a blank PDF whose
+    # text is only "Page: 1 of 1", "external document could not be loaded" header-only PDFs): they are
+    # dropped before analysis, and when nothing else remains the appointment takes the same
+    # zero-model-call no_visit_summary_documents outcome as the allowlist-excluded case. Code-level
+    # default only (not in ssm_loader / env / Dockerfile); set False to restore the previous behaviour.
+    SKIP_STUB_DOCUMENTS_ENABLED: bool = True
+    # Drop documents whose normalized parsed text is identical to another kept document (after the
+    # checksum + within-DocumentReference format dedup). Code-level default only.
+    PARSED_TEXT_DEDUP_ENABLED: bool = True
+
     # Parallel doc-type inference (S0 speed fix; chains/document_type_inference). Default OFF:
     # the serial 5-item sub-batch loop and its model-call sequence are untouched. When ON,
     # infer_batch runs 1-item calls through services/bounded_fanout.fan_out (at most CONCURRENCY

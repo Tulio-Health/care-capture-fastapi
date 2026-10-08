@@ -127,7 +127,7 @@ async def test_empty_checksum_never_deduped():
     """An attachment with no checksum at all (empty string) must never be treated as a dedup
     key, even against another attachment that also happens to have an empty checksum.
     """
-    storage = FakeStorage({"a.html": b"content-A", "b.html": b"content-A"})
+    storage = FakeStorage({"a.html": b"content-A", "b.html": b"content-B"})
     extractor = FakeExtractor()
     references = [
         _reference("docref-A", [_attachment("a.html", checksum="")]),

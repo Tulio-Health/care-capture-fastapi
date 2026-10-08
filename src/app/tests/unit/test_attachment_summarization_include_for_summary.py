@@ -269,7 +269,7 @@ async def test_rank0_documents_survive_process_attachments_on_an_over_cap_encoun
         MAX_FILE_SIZE = 50 * 1024 * 1024
 
         async def extract_text_async(self, content, content_type, file_name=None):
-            return "extracted text"
+            return f"extracted text {file_name}"
 
     def _ref(resource_id):
         return SimpleNamespace(

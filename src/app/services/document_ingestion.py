@@ -97,7 +97,7 @@ def require_parsed(document: DocumentAttachment):
         raise DocumentProcessingError("UNVALIDATED_MODEL_INPUT")
 
 
-async def process_attachments(references, storage, extractor):
+async def _collect_attachments(references, storage, extractor):
     """Pass A (sequential): walk every reference/attachment making all dedup, limit, and
     metadata decisions in order, so which duplicate is kept and where MAX_DOCUMENTS trips stays
     deterministic. S3-backed attachments are appended to `result` as validated placeholders and
@@ -247,4 +247,51 @@ async def process_attachments(references, storage, extractor):
             result.append(document)
     if pending:
         await asyncio.gather(*(_load(document, path) for document, path in pending))
+    return result
+
+
+def drop_parsed_text_duplicates(documents):
+    """Drop documents whose normalized parsed text equals another kept document's. The preferred
+    one is the best format (same rank table as the within-DocumentReference dedup), ties broken by
+    the existing ranked order. Documents without parsed text are never touched."""
+    from src.app.services.stub_documents import normalize_text
+
+    groups: dict = {}
+    for index, document in enumerate(documents):
+        text = getattr(document, "extracted_text", None)
+        if getattr(document, "extraction_error", None) or not isinstance(text, str) or not text:
+            continue
+        groups.setdefault(normalize_text(text), []).append(index)
+    drop = set()
+    for indexes in groups.values():
+        if len(indexes) > 1:
+            winner = min(indexes, key=lambda i: (_FORMAT_PREFERENCE_RANK.get(getattr(documents[i], "content_type", None), _DEFAULT_FORMAT_RANK), i))
+            drop.update(i for i in indexes if i != winner)
+    if drop:
+        logger.info("document_ingestion: parsed_text_dedup dropped=%d kept=%d", len(drop), len(documents) - len(drop))
+    return [document for index, document in enumerate(documents) if index not in drop]
+
+
+def split_stub_documents(documents):
+    """Return (kept, stub_reasons) -- stub/blank/header-only parsed documents removed."""
+    from collections import Counter
+    from src.app.services.stub_documents import stub_reason
+
+    kept, reasons = [], Counter()
+    for document in documents:
+        text = getattr(document, "extracted_text", None)
+        reason = None if getattr(document, "extraction_error", None) or not isinstance(text, str) else stub_reason(text)
+        if reason:
+            reasons[reason] += 1
+        else:
+            kept.append(document)
+    return kept, dict(reasons)
+
+
+async def process_attachments(references, storage, extractor):
+    from src.app.core.settings import get_settings
+
+    result = await _collect_attachments(references, storage, extractor)
+    if get_settings().PARSED_TEXT_DEDUP_ENABLED:
+        result = drop_parsed_text_duplicates(result)
     return result
