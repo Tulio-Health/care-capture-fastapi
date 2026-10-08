@@ -335,6 +335,7 @@ Section 5: Recommendations (recommendations)
 - Preserve the source wording of plans and recommendations. Do not add "the doctor advised" or "recommended" when the source says "ordered". Keep ordered/not-performed status explicitly. Do not invent a discussion or counseling event.
 - MUST NOT include direct patient actions phrased as commands (those go to instructions)
 - Dated or interval-based follow-up (e.g., "return in 6 weeks", "follow up in 2 weeks") routes to follow_up (Section 8), not here.
+- NEVER put past/historical items here: past surgical or procedural history (e.g., "Surgical History", "Past Procedures", "History of ...", old surgeries with past dates) are records of what already happened, not recommendations or plans.
 
 Examples:
 - "The doctor recommended reevaluation in 6 weeks"
@@ -366,6 +367,7 @@ Section 7: Procedures (procedures)
 - CDA/C-CDA documents often flatten a referral into a bare table row with no verb, e.g. a line reading only
   "Procedures  Ultrasound Neck Thyroid" inside a Referral/Reason for Referral block. This is an ORDER, not
   something performed — tag it "ordered" even though the word "performed" or "ordered" never appears.
+- Procedures listed under past surgical/procedural history (Surgical History, Past Procedures, Past Medical History, "history of ...") are HISTORICAL: tag them "not_stated" with source_section set to that heading. NEVER tag a historical procedure "ordered" — it is not an order, recommendation or follow-up action.
 - When in doubt, use "ordered" or "not_stated" — NEVER default to "performed". Guessing "performed" for
   something only ordered, recommended, or referred is a critical error.
 - This status distinction also governs clinical_summary and key_insights: never narrate an ordered, scheduled or referred procedure as something that happened at this visit.
@@ -449,7 +451,7 @@ medications_mentioned:
 lab_results: Deduplicated list of all lab values with units and reference ranges
 instructions: Deduplicated list of all direct patient instructions from the provider
 follow_up: Deduplicated list of dated/interval follow-up, return, or re-evaluation instructions across all documents (from each document's follow_up list). Do not restate items already in instructions. Empty when none documented.
-recommendations: Deduplicated list of documented clinical recommendations and unperformed orders (preserving ordered/not-performed status), including lifestyle counseling (diet, exercise, activity) and in-progress medication adjustments discussed by the provider
+recommendations: Deduplicated list of documented clinical recommendations and unperformed orders (preserving ordered/not-performed status); never past surgical/procedural history or other historical items, including lifestyle counseling (diet, exercise, activity) and in-progress medication adjustments discussed by the provider
 risk_factors: Deduplicated list of all risk factors identified
 document_metadata: Build from source_document_title, source_document_date, source_document_type in each DocumentSummary
 
@@ -666,6 +668,13 @@ def _fuzzy_set_equal(a: set, b: set) -> bool:
         all(any(_procedures_correspond(x, y) for y in a) for x in b)
 
 
+_HISTORICAL_SECTION_RE = re.compile(
+    r"\b(surgical|procedure|procedural|medical|past|prior|previous|historical)\b.*\bhistory\b|\bhistory of\b|\bpast (surgeries|procedures)\b",
+    re.IGNORECASE,
+)
+_HISTORICAL_LEAD_RE = re.compile(r"\s*(history of|h/o|s/p|status post)\b", re.IGNORECASE)
+
+
 def _split_procedures(summaries: List[DocumentSummary]) -> List[dict]:
     """Split each summary's mixed `procedures` list into `procedures_performed` / `procedures_ordered`
     string lists for synthesis. Unknown status remains distinct from an order.
@@ -677,12 +686,47 @@ def _split_procedures(summaries: List[DocumentSummary]) -> List[dict]:
         data["procedures_performed"] = [
             p["description"] for p in procedures if p["status"] == "performed"
         ]
-        data["procedures_ordered"] = [
-            p["source_quote"] for p in procedures if p["status"] == "ordered"
+        # Past surgical/procedural history is never an order or recommendation: demote an
+        # "ordered" procedure found under a historical section to "not_stated".
+        def _is_ordered(p):
+            return p["status"] == "ordered" and not (
+                _HISTORICAL_SECTION_RE.search(p.get("source_section") or "")
+                or _HISTORICAL_LEAD_RE.match(p.get("description") or "")
+            )
+
+        data["procedures_ordered"] = [p["source_quote"] for p in procedures if _is_ordered(p)]
+        data["procedures_not_stated"] = [
+            p["source_quote"] for p in procedures
+            if p["status"] == "not_stated" or (p["status"] == "ordered" and not _is_ordered(p))
         ]
-        data["procedures_not_stated"] = [p["source_quote"] for p in procedures if p["status"] == "not_stated"]
         split.append(data)
     return split
+
+
+def _diagnosis_repair_issues(failing: List[str], source: str) -> List[dict]:
+    """Repair-retry issues for diagnoses whose wording is not in the source: the failing
+    string plus the closest source line(s). The gate itself is unchanged."""
+    import difflib
+
+    lines = [line.strip() for line in source.splitlines() if line.strip()]
+    issues = []
+    for wording in failing[:10]:
+        closest = difflib.get_close_matches(wording, lines, n=2, cutoff=0.0) if lines else []
+        # Prefer lines sharing a token with the failing wording (difflib favors whole-line ratio).
+        tokens = {t for t in re.findall(r"[a-z0-9]{4,}", wording.casefold())}
+        sharing = [l for l in lines if tokens & set(re.findall(r"[a-z0-9]{4,}", l.casefold()))]
+        closest = (difflib.get_close_matches(wording, sharing, n=2, cutoff=0.0) if sharing else closest)
+        issues.append({
+            "code": "DIAGNOSIS_WORDING_NOT_GROUNDED",
+            "failing_diagnosis": wording[:200],
+            "closest_source_lines": [l[:200] for l in closest],
+            "instruction": (
+                "official_diagnosis must be copied VERBATIM from the source text (exact wording, "
+                "heading or line). Do not paraphrase, normalize or shorten it. Use the closest "
+                "source line wording above, or omit the diagnosis if the source does not state it."
+            ),
+        })
+    return issues
 
 
 class AttachmentSummarizationChain:
@@ -794,7 +838,13 @@ class AttachmentSummarizationChain:
                 # had the same brittleness (e.g. source "Type 2 diabetes mellitus" followed by
                 # unrelated text vs a candidate that adds a trailing period or drops a comma).
                 if not _quote_supported(diagnosis.official_diagnosis, source):
-                    raise DocumentProcessingError("DIAGNOSIS_WORDING_NOT_GROUNDED")
+                    failing = [
+                        d.official_diagnosis for d in summary.diagnoses
+                        if not _quote_supported(d.official_diagnosis, source)
+                    ]
+                    error = DocumentProcessingError("DIAGNOSIS_WORDING_NOT_GROUNDED")
+                    error.validation_issues = _diagnosis_repair_issues(failing, source)
+                    raise error
             for procedure in summary.procedures:
                 validate_quotes([procedure.source_quote], source)
                 # PR-12b item 8: DO NOT TOUCH -- empirically tested against the LLM judge alone
@@ -1231,8 +1281,22 @@ class AttachmentSummarizationChain:
         if not all_summaries:
             errors = [result for result in batch_results if isinstance(result, Exception)]
             if errors:
+                from collections import Counter
                 from src.app.services.summary_runtime import model_error_code
-                raise DocumentProcessingError(model_error_code(errors[0])) from errors[0]
+                reasons = Counter(
+                    getattr(e, "reason_code", None) if isinstance(getattr(e, "reason_code", None), str) else model_error_code(e)
+                    for e in errors
+                )
+                logger.warning(
+                    "batch_failure_reasons all_batches_failed=%d/%d reasons=%s",
+                    len(errors), len(batches), dict(reasons),
+                )
+                final = DocumentProcessingError(model_error_code(errors[0]))
+                # Keep the persisted `error` canonical; carry the most common specific reason
+                # (surfaces as processing_errors[].reason) and the full per-batch counts.
+                final.reason_code = reasons.most_common(1)[0][0]
+                final.batch_reason_counts = dict(reasons)
+                raise final from errors[0]
             raise DocumentProcessingError("MODEL_OUTPUT_INVALID")
 
         logger.info(
