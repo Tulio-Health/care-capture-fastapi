@@ -113,7 +113,7 @@ class DocumentTextExtractor:
     MAX_ZIP_ENTRIES = 2000
     MAX_ARCHIVE_EXPANDED_BYTES = 50 * 1024 * 1024
     RTF_MAGIC = b"{\\rtf"
-    VERSION = "strict-6"
+    VERSION = "strict-7"
     MAX_ARCHIVE_DEPTH = 2
     # Sanitize-and-revalidate gate (round9-revision3.md Sec 3.2 step 2): fraction of a
     # document's characters that may be control-chars/U+FFFD and still be stripped rather
@@ -715,10 +715,22 @@ class DocumentTextExtractor:
     @staticmethod
     def _html_text(raw: str) -> str:
         class VisibleText(HTMLParser):
+            # Inline elements never start a new line: a rendered browser shows
+            # `<b>wound</b>, selective` as "wound, selective", not three lines. Every
+            # other tag (block, unknown, <br>) keeps the historical one-line-per-run break.
+            INLINE = {"a", "abbr", "b", "bdi", "bdo", "big", "cite", "code", "data", "del", "dfn", "em", "font", "i", "ins", "kbd", "label", "mark", "q", "s", "samp", "small", "span", "strike", "strong", "sub", "sup", "time", "tt", "u", "var", "wbr"}
+
             def __init__(self):
                 super().__init__(convert_charrefs=True)
-                self.parts, self.hidden = [], []
+                self.parts, self.hidden, self.cur = [], [], []
+            def flush(self):
+                line = re.sub(r"\s+", " ", "".join(self.cur)).strip()
+                self.cur = []
+                if line:
+                    self.parts.append(line)
             def handle_starttag(self, tag, attrs):
+                if tag not in self.INLINE:
+                    self.flush()
                 attributes = dict(attrs)
                 style = (attributes.get("style") or "").replace(" ", "").lower()
                 void = tag in {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
@@ -726,17 +738,20 @@ class DocumentTextExtractor:
                     self.hidden.append(tag)
                 if tag == "img" and not self.hidden:
                     from src.app.services.document_image_routing import html_image_is_decorative
-                    if not html_image_is_decorative(attributes, text_seen=bool(self.parts)):
+                    if not html_image_is_decorative(attributes, text_seen=bool(self.parts or self.cur)):
                         self.parts.append("[Embedded image not transcribed]")
             def handle_endtag(self, tag):
+                if tag not in self.INLINE:
+                    self.flush()
                 if self.hidden and tag == self.hidden[-1]:
                     self.hidden.pop()
             def handle_data(self, data):
-                if not self.hidden and data.strip():
-                    self.parts.append(data.strip())
+                if not self.hidden and data:
+                    self.cur.append(data)
         parser = VisibleText()
         parser.feed(raw)
         parser.close()
+        parser.flush()
         if parser.hidden:
             raise DocumentProcessingError("PARSE_FAILED")
         text = "\n".join(parser.parts)

@@ -60,6 +60,18 @@ def _normalize(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip().lower()
 
 
+_SPACE_BEFORE_CLOSE = re.compile(r"\s+([,.;:)%])")
+_SPACE_AFTER_OPEN = re.compile(r"([(])\s+")
+
+
+def _normalize_quote(s: str) -> str:
+    """`_normalize` plus removal of whitespace *before* , . ; : ) % and *after* ( -- applied to
+    BOTH quote and source so layout artifacts ("bid , x") never decide a verdict. Only spaces
+    adjacent to that punctuation are dropped; every character (digits, units, dates, negations)
+    is kept, so wrong-dose / wrong-date / negation quotes still mismatch."""
+    return _SPACE_AFTER_OPEN.sub(r"\1", _SPACE_BEFORE_CLOSE.sub(r"\1", _normalize(s)))
+
+
 # Fix 3 (round9-revision3.md Sec 3.5.1): QA-observer hook for scripts/grounding_rerun.py.
 # None in every normal process (including prod) -- only the harness script calls
 # register_qa_observer, and only after asserting get_settings().APP_ENV != "production"
@@ -81,7 +93,7 @@ def register_qa_observer(observer) -> None:
 def _quote_supported(quote: str, source: str, threshold: float = 0.85) -> bool:
     """Fuzzy-checks that `quote` is (close to) a verbatim substring of `source`, tolerating
     whitespace/case differences and minor transcription noise from the model."""
-    q, src = _normalize(quote), _normalize(source)
+    q, src = _normalize_quote(quote), _normalize_quote(source)
     if not q:
         supported = False
     elif q in src:
