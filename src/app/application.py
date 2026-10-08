@@ -49,6 +49,10 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.warning("Rule warm-up unavailable; using configured rule fallback")
 
+        # Parser warm-up runs in the background: never delays boot/health, never fails startup.
+        from .services.parser_warmup import warm_up_parsers
+        app.state.parser_warmup_task = asyncio.create_task(warm_up_parsers())
+
         # Initialize scheduler
         scheduler = init_scheduler()
         app.state.scheduler = scheduler
