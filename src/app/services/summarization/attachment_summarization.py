@@ -13,6 +13,7 @@ from src.app.db.objects.repositories.conversation_summaries import (
     ConversationSummariesRepository,
 )
 from src.app.db.objects.repositories.fhir_resources import FhirResourcesRepository
+from src.app.services.document_type_rules_client import get_document_type_rules_client
 from src.app.models.attachment_summarization import (
     AttachmentSummarizationRequest,
     DocumentAttachment,
@@ -22,7 +23,12 @@ from src.app.models.conversation_summaries import ConversationSummary
 from src.app.services.document_extraction import DocumentTextExtractor, DocumentProcessingError
 from src.app.utils.s3_client import S3DocumentClient
 
-from src.app.services.summary_outcomes import MESSAGES, outcome_metadata, source_manifest
+from src.app.services.summary_outcomes import (
+    MESSAGES,
+    NO_VISIT_SUMMARY_DOCUMENTS,
+    outcome_metadata,
+    source_manifest,
+)
 
 from src.app.services.summary_runtime import bounded_summary
 
@@ -33,13 +39,18 @@ def _static_fallback_summary_data(
     request: AttachmentSummarizationRequest,
     appointment: Appointment,
     provider_name: str,
+    state: str = "no_documents",
 ) -> Dict[str, Any]:
     """Build the summary payload for an appointment with no document attachments to analyze.
+
+    ``state`` is "no_documents" (no candidate documents at all) or "no_visit_summary_documents"
+    (allowlist v2: candidates exist but none is a visit summary / note). Both are non-clinical,
+    LLM-free payloads of the same shape.
 
     Pure function — no I/O — so it is directly testable without DB/network mocking.
     """
     return {
-        "summary_text": MESSAGES["no_documents"],
+        "summary_text": MESSAGES[state],
         "user_id": request.user_id,
         "created_by": request.user_id,
         "updated_by": request.user_id,
@@ -52,7 +63,8 @@ def _static_fallback_summary_data(
         "summary_metadata": {
             "source": "attachment_summary",
             "analysis_version": "1.0",
-            **outcome_metadata("no_documents"),
+            "async_token": request.async_token,
+            **outcome_metadata(state),
             "total_documents": 0,
             "successful_documents": 0,
             "failed_documents": 0,
@@ -99,6 +111,12 @@ class AttachmentSummarizationService:
         self.s3_client = S3DocumentClient()
         self.text_extractor = DocumentTextExtractor()
         self.logger = logger
+        # Pinned once per summarization attempt (round9-revision3.md S3.3 step 4 / R7b):
+        # resolved at the top of analyze_attachments() and threaded into every
+        # _fetch_document_references() call in that attempt (initial fetch + both
+        # manifest re-check fetches), so a rule-tier flip between calls cannot change
+        # the ordered document set and spuriously raise SOURCE_MANIFEST_CHANGED.
+        self._rule_snapshot = None
 
     @bounded_summary
     async def analyze_attachments(self, request: AttachmentSummarizationRequest) -> ConversationSummary:
@@ -126,6 +144,12 @@ class AttachmentSummarizationService:
             f"Starting attachment summarization - appointment_id: {request.appointment_id}, user_id: {request.user_id}"
         )
 
+        # Resolve the document-type-rules snapshot ONCE for this attempt (S3.3 step 4 /
+        # R7b) -- every _fetch_document_references() call below reuses it instead of
+        # re-resolving, which is what makes a stale<->live rule-tier flip between the
+        # initial fetch and the manifest re-check structurally impossible.
+        self._rule_snapshot = await get_document_type_rules_client().resolve_rules()
+
         # Fetch appointment and provider details
         appointment, provider_name = await self._fetch_appointment_details(request)
 
@@ -143,6 +167,38 @@ class AttachmentSummarizationService:
 
         initial_manifest = source_manifest(doc_references)
         eligibility_snapshot = self._inventory_context()
+        # Allowlist v2 telemetry lives in a SIBLING metadata block, never in `eligibility_snapshot`:
+        # that snapshot is copied into `appointment_context`, which is JSON-dumped into the synthesis
+        # prompt (chain.py `_synthesize_records_attempt`) -- labels there would become model input
+        # (r7-n-01). Captured now because the repository resets it on every fetch.
+        selection_block = self._selection_block()
+        selection_metadata = {"visit_summary_selection": selection_block} if selection_block is not None else {}
+        selection_policy = (
+            {"allowlist_version": selection_block["allowlist_version"]} if selection_block is not None else None
+        )
+        self._log_allowlist_dropped(request, selection_block)
+
+        if not doc_references and selection_block is not None and getattr(
+            self.fhir_repo, "non_allowlisted_candidates_exist", False
+        ):
+            # Candidate documents exist but the allowlist rejected every one: the visit stays, no
+            # LLM call, a dedicated non-clinical outcome (never `no_documents`).
+            self.logger.info(
+                f"No visit summary documents for appointment {request.appointment_id} - "
+                f"recording {NO_VISIT_SUMMARY_DOCUMENTS}"
+            )
+            summary_data = _static_fallback_summary_data(
+                request, appointment, provider_name, state=NO_VISIT_SUMMARY_DOCUMENTS
+            )
+            summary_data["summary_metadata"].update(eligibility_snapshot)
+            summary_data["summary_metadata"].update(selection_metadata)
+            summary_data["summary_metadata"]["regeneration_forced"] = bool(
+                getattr(request, "force_regenerate", False)
+            )
+            db_summary = await self.summaries_repo.upsert(
+                appointment_id=request.appointment_id, summary_data=summary_data
+            )
+            return ConversationSummary.model_validate(db_summary)
 
         if not doc_references:
             self.logger.info(
@@ -152,6 +208,7 @@ class AttachmentSummarizationService:
                 request, appointment, provider_name
             )
             summary_data["summary_metadata"].update(eligibility_snapshot)
+            summary_data["summary_metadata"].update(selection_metadata)
             db_summary = await self.summaries_repo.upsert(
                 appointment_id=request.appointment_id, summary_data=summary_data
             )
@@ -159,6 +216,31 @@ class AttachmentSummarizationService:
 
         # Download and extract text from all attachments
         extracted_documents = await self._process_attachments(doc_references)
+
+        from src.app.core.settings import get_settings as _get_settings
+        if _get_settings().SKIP_STUB_DOCUMENTS_ENABLED:
+            from src.app.services.document_ingestion import split_stub_documents
+            extracted_documents, stub_reasons = split_stub_documents(extracted_documents)
+            if stub_reasons:
+                self.logger.info(
+                    f"stub_documents_skipped appointment_id={request.appointment_id} "
+                    f"skipped={sum(stub_reasons.values())} reasons={stub_reasons} remaining={len(extracted_documents)}"
+                )
+                if not extracted_documents:
+                    # Nothing but stub/blank documents: same zero-model-call outcome as the
+                    # allowlist-excluded case (the push is suppressed downstream).
+                    summary_data = _static_fallback_summary_data(
+                        request, appointment, provider_name, state=NO_VISIT_SUMMARY_DOCUMENTS
+                    )
+                    summary_data["summary_metadata"].update(eligibility_snapshot)
+                    summary_data["summary_metadata"].update(selection_metadata)
+                    summary_data["summary_metadata"]["regeneration_forced"] = bool(
+                        getattr(request, "force_regenerate", False)
+                    )
+                    db_summary = await self.summaries_repo.upsert(
+                        appointment_id=request.appointment_id, summary_data=summary_data
+                    )
+                    return ConversationSummary.model_validate(db_summary)
 
         if not extracted_documents:
             self.logger.warning(
@@ -169,6 +251,7 @@ class AttachmentSummarizationService:
             payload["summary_metadata"].update(outcome_metadata("unavailable", [{"error": "TEXT_EXTRACTION_FAILED"}]))
             payload["summary_metadata"].update(total_documents=len(doc_references), successful_documents=0, failed_documents=len(doc_references))
             payload["summary_metadata"].update(eligibility_snapshot)
+            payload["summary_metadata"].update(selection_metadata)
             saved = await self.summaries_repo.upsert(request.appointment_id, payload)
             return ConversationSummary.model_validate(saved)
 
@@ -183,7 +266,9 @@ class AttachmentSummarizationService:
         from src.app.core.settings import get_settings
         # attachment_fingerprint itself returns None for any unhashed/failed document
         # (summary_cache.py's own guard); the former duplicate pre-check here was deleted (R6).
-        fingerprint = attachment_fingerprint(extracted_documents, initial_manifest, appointment_context, get_settings())
+        fingerprint = attachment_fingerprint(
+            extracted_documents, initial_manifest, appointment_context, get_settings(), selection_policy=selection_policy
+        )
         cached = await verified_attachment_cache(self.summaries_repo, request, fingerprint)
         if cached is not None:
             current_references = await self._fetch_document_references(request, appointment)
@@ -203,6 +288,30 @@ class AttachmentSummarizationService:
                 raise DocumentProcessingError("SOURCE_MANIFEST_CHANGED")
             await self.s3_client.validate_download_versions()
         except Exception as exc:
+            if getattr(exc, "reason_code", None) == "NO_DOCUMENTS":
+                # Every document already failed extraction individually (already counted
+                # under EXTRACTION_QUALITY_FAILED/OCR_*); route to the existing no_documents
+                # terminal state as ONE batch-level outcome instead of layering a second,
+                # mislabeled INTERNAL_PROCESSING_ERROR row on top (round9-revision3.md Fix 4).
+                # Reuses _static_fallback_summary_data's shape verbatim so outcome_metadata
+                # carries zero error rows and describe_error is never called with this code.
+                summary_data = _static_fallback_summary_data(request, appointment, provider_name)
+                summary_data["summary_metadata"].update(eligibility_snapshot)
+                summary_data["summary_metadata"].update(selection_metadata)
+                summary_data["summary_metadata"].update(
+                    total_documents=len(extracted_documents),
+                    successful_documents=0,
+                    failed_documents=len(extracted_documents),
+                )
+                db_summary = await self.summaries_repo.upsert(
+                    appointment_id=request.appointment_id, summary_data=summary_data
+                )
+                self.logger.info(
+                    f"Attachment summarization found no analyzable documents (all failed "
+                    f"extraction) - appointment_id: {request.appointment_id}, "
+                    f"summary_id: {db_summary.id}"
+                )
+                return ConversationSummary.model_validate(db_summary)
             failure = {"error": getattr(exc, "code", "SUMMARY_GENERATION_FAILED")}
             if isinstance(getattr(exc, "reason_code", None), str):
                 failure["reason"] = exc.reason_code  # additive; `error` stays canonical
@@ -221,7 +330,27 @@ class AttachmentSummarizationService:
         )
 
         summary_data["summary_metadata"].update(eligibility_snapshot)
-        if fingerprint and summary_data["summary_metadata"]["processing_outcome"] == "complete":
+        summary_data["summary_metadata"].update(selection_metadata)
+        # F8 (round9-revision3.md S3.3 step 5d / risk R13): truncation is deterministic
+        # given the same manifest AND the same total ordering -- the ehr_resource_id
+        # final tiebreak in fhir_resources.py's SELECTION query (F3 step 2) is what makes
+        # the ordering total -- so a `partial` outcome whose ONLY error class is the
+        # order-then-cap truncation sentinel (F7's canonical RESOURCE_LIMIT_EXCEEDED /
+        # DOCUMENT_LIMIT_EXCEEDED) is just as safe to fingerprint as `complete`. Without
+        # this widening, the heaviest truncated encounters would re-run the entire
+        # ingestion + map/reduce + grounding pipeline on every refresh, forever, uncached
+        # (R13) -- on exactly the encounters that are the most expensive to re-run.
+        truncation_errors = summary_data["summary_metadata"]["extraction_errors"]
+        only_truncation_sentinel = bool(truncation_errors) and all(
+            error.get("error") == "RESOURCE_LIMIT_EXCEEDED"
+            and error.get("reason") == "DOCUMENT_LIMIT_EXCEEDED"
+            for error in truncation_errors
+        )
+        processing_outcome = summary_data["summary_metadata"]["processing_outcome"]
+        if fingerprint and (
+            processing_outcome == "complete"
+            or (processing_outcome == "partial" and only_truncation_sentinel)
+        ):
             summary_data["summary_metadata"]["source_fingerprint"] = fingerprint
         db_summary = await self.summaries_repo.upsert(appointment_id=request.appointment_id, summary_data=summary_data)
 
@@ -242,6 +371,21 @@ class AttachmentSummarizationService:
         if getattr(repository, "document_inventory", None) is not None:
             context["document_inventory"] = deepcopy(repository.document_inventory)
         return context
+
+    def _selection_block(self):
+        """Copy of the repository's visit_summary_selection telemetry (None unless the allowlist is active)."""
+        from copy import deepcopy
+        block = getattr(getattr(self, "fhir_repo", None), "visit_summary_selection", None)
+        return deepcopy(block) if block is not None else None
+
+    def _log_allowlist_dropped(self, request: AttachmentSummarizationRequest, selection_block) -> None:
+        if not selection_block or not selection_block.get("not_allowlisted_documents"):
+            return
+        top3 = "|".join(list(selection_block.get("not_allowlisted_types", {}))[:3])
+        self.logger.info(
+            f"visit_summary_allowlist_dropped appointment_id={request.appointment_id} version=v2 "
+            f"n={selection_block['not_allowlisted_documents']} types={top3}"
+        )
 
     async def _fetch_appointment_details(self, request: AttachmentSummarizationRequest) -> tuple[Appointment, str]:
         """
@@ -303,22 +447,21 @@ class AttachmentSummarizationService:
         doc_references = await self.fhir_repo.get_document_references_with_attachments(
             user_id=str(request.user_id),
             encounter_id=appointment.ehr_entity_id,
+            selection_profile="visit_summary_preferred",
+            rule_snapshot=self._rule_snapshot,
         )
 
-        # Soft preference (not a hard filter): prefer documents the AI type-inference
-        # classifier flagged `includeForSummary=True` (clinically substantive — visit/
-        # progress/consult/discharge notes, lab/imaging/pathology/operative reports)
-        # when at least one exists for this encounter. Fall back to the full unfiltered
-        # set when none are flagged true (field absent/null/false for every doc) — ~15%
-        # of visits (telephone/imaging-only encounters) have no flagged document at all,
-        # so a hard restrict would leave them with nothing. See care-capture-nodeapi's
-        # 2026-09-17 document-scope-question research report, recommendation #2.
-        flagged = [
-            doc for doc in doc_references
-            if isinstance(doc.data, dict) and doc.data.get("includeForSummary") is True
-        ]
-        if flagged:
-            doc_references = flagged
+        # The Python-side includeForSummary soft-preference narrowing that used to live
+        # here has been DELETED and SUBSUMED into the repository's SQL ORDER BY
+        # (include_for_summary_rank, round9-revision3.md S3.1.2A/F4): the AI classifier
+        # flag is now a secondary ordering key inside each preference_rank band rather
+        # than a second, independently-narrowing selection point. Flagged documents fill
+        # the cap before unflagged ones (within each band) as an emergent property of
+        # ORDER BY + LIMIT; no document is ever removed from the set, only reordered --
+        # which also means the original comment's ~15%-of-visits fallback concern is now
+        # structurally eliminated rather than merely re-implemented. See
+        # care-capture-nodeapi's 2026-09-17 document-scope-question research report,
+        # recommendation #2, for the governing rationale this subsumption still honors.
 
         self.logger.debug(
             f"Fetched {len(doc_references)} DocumentReferences with attachments - "
@@ -433,7 +576,10 @@ class AttachmentSummarizationService:
             document_metadata.append(metadata)
 
             if doc.extraction_error:
-                extraction_errors.append({"source_id": doc.resource_id or "unknown", "error": doc.extraction_error})
+                entry = {"source_id": doc.resource_id or "unknown", "error": doc.extraction_error}
+                if doc.extraction_error_reason:
+                    entry["reason"] = doc.extraction_error_reason
+                extraction_errors.append(entry)
 
         extraction_errors.extend(analysis_result.extraction_errors)
         # A failed source can be reported by both ingestion and the chain. Keep one record
@@ -469,6 +615,7 @@ class AttachmentSummarizationService:
             "summary_metadata": {
                 "source": "attachment_summary",
                 "analysis_version": "3.0",
+                "async_token": request.async_token,
                 **outcome_metadata(state, extraction_errors),
                 "total_documents": len(extracted_documents),
                 "successful_documents": max(0, len(extracted_documents) - len(failed_ids)) if successful_docs else 0,

@@ -10,7 +10,28 @@ from src.app.services.document_extraction import DocumentTextExtractor, Document
 
 logger = get_logger(__name__)
 
-MAX_DOCUMENTS = 100
+# Sized by the round9-revision3.md S10 step-4b live-dev runtime measurement, 2026-10-02
+# (fastapi-app-v2-dev @ 943f66c, nodejs-app-v2-dev @ ced25e47). This is the REAL BINDING
+# cap (attachment-counted, after format-dedup collapses each DocumentReference's
+# multi-format representations down to one -- see _select_format_duplicate_skips below).
+# fhir_resources.py's repository LIMIT is NOT the cap; it moves together with this
+# constant as DOCUMENT_SELECTION_CAP + 1 (a truncation detector, not a second cap -- F7c).
+#
+# The measurement ran under the SYNC / 110 s regime, not the 300 s async path
+# round9-revision3.md expected (fix/async-summary-quickfix is unmerged and not deployed;
+# deployed nodeapi sends timeout_seconds: 110), so the >=30% headroom target was <=77 s.
+#
+# Encounter 97954819 (appointment f5b7474f-2088-4bda-af66-4a47838c4654): 69 documents /
+# 5.04 MB ingested in 58.3 s of budget wall clock (budget.job_end wall_seconds=58.311),
+# outcome `partial`, validation passed, model_call_headroom=48/64 -- the cap buys back
+# extraction time, not model calls. 47% headroom at 69 documents; the same per-document
+# cost extrapolated to 100 documents is ~84.5 s = 23% headroom, which FAILS the rule.
+# 100 was therefore NOT measured to fit and could not be left in place.
+#
+# 50 sits below the largest workload measured to fit (69), projecting ~42 s / ~62%
+# headroom, deliberately keeping ~2x margin for production documents (larger than dev's
+# Cerner-sandbox corpus) and for the slower OCR path (20 of the 69 measured documents).
+MAX_DOCUMENTS = 50
 
 # Format preference for attachments that live on the SAME DocumentReference. FHIR's own data
 # model already asserts same-DocumentReference attachments are representations of one logical
@@ -76,7 +97,7 @@ def require_parsed(document: DocumentAttachment):
         raise DocumentProcessingError("UNVALIDATED_MODEL_INPUT")
 
 
-async def process_attachments(references, storage, extractor):
+async def _collect_attachments(references, storage, extractor):
     """Pass A (sequential): walk every reference/attachment making all dedup, limit, and
     metadata decisions in order, so which duplicate is kept and where MAX_DOCUMENTS trips stays
     deterministic. S3-backed attachments are appended to `result` as validated placeholders and
@@ -102,8 +123,10 @@ async def process_attachments(references, storage, extractor):
             mark_parsed(document)
         except DocumentProcessingError as exc:
             document.extraction_error = exc.code
+            document.extraction_error_reason = exc.reason_code  # additive; .code stays canonical
         except Exception:
             document.extraction_error = "INTERNAL_PROCESSING_ERROR"
+            document.extraction_error_reason = "INTERNAL_PROCESSING_ERROR"
 
     for reference in references:
         data = reference.data if isinstance(reference.data, dict) else {}
@@ -125,7 +148,23 @@ async def process_attachments(references, storage, extractor):
                 )
                 continue
             if len(result) >= MAX_DOCUMENTS:
-                result.append(DocumentAttachment(file_path="unprocessed", content_type="application/octet-stream", extracted_text="", extraction_error="DOCUMENT_LIMIT_EXCEEDED"))
+                # F7 (round9-revision3.md S3.3 step 5b / risk R14): construct through
+                # DocumentProcessingError so .code is canonicalized the same way every
+                # other extraction_error in this module is -- DOCUMENT_LIMIT_EXCEEDED is
+                # a RESOURCE_LIMIT_EXCEEDED group MEMBER (document_extraction.py's
+                # _ERROR_CODE_GROUPS), not a processing_errors.STAGES key, so writing it
+                # as a bare string here (the pre-F7 code) bypassed canonicalization and
+                # got coerced to INTERNAL_PROCESSING_ERROR by describe_error -- silently
+                # recreating, on the exact path Fix 5 widens, the defect Fix 4 exists to
+                # remove. .code is the canonical RESOURCE_LIMIT_EXCEEDED (STAGES key);
+                # .reason_code carries the specific DOCUMENT_LIMIT_EXCEEDED on the
+                # additive extraction_error_reason sibling, same convention as every
+                # other per-document catch site in this function.
+                limit_sentinel = DocumentProcessingError("DOCUMENT_LIMIT_EXCEEDED")
+                result.append(DocumentAttachment(
+                    file_path="unprocessed", content_type="application/octet-stream", extracted_text="",
+                    extraction_error=limit_sentinel.code, extraction_error_reason=limit_sentinel.reason_code,
+                ))
                 # Every already-appended document up to the cap may still have a deferred
                 # S3 load pending (Pass B runs at the very end) -- flush it before returning so
                 # the cap's own guarantee (everything returned is fully resolved) still holds.
@@ -201,9 +240,58 @@ async def process_attachments(references, storage, extractor):
                 mark_parsed(document)
             except DocumentProcessingError as exc:
                 document.extraction_error = exc.code
+                document.extraction_error_reason = exc.reason_code  # additive; .code stays canonical
             except Exception:
                 document.extraction_error = "INTERNAL_PROCESSING_ERROR"
+                document.extraction_error_reason = "INTERNAL_PROCESSING_ERROR"
             result.append(document)
     if pending:
         await asyncio.gather(*(_load(document, path) for document, path in pending))
+    return result
+
+
+def drop_parsed_text_duplicates(documents):
+    """Drop documents whose normalized parsed text equals another kept document's. The preferred
+    one is the best format (same rank table as the within-DocumentReference dedup), ties broken by
+    the existing ranked order. Documents without parsed text are never touched."""
+    from src.app.services.stub_documents import normalize_text
+
+    groups: dict = {}
+    for index, document in enumerate(documents):
+        text = getattr(document, "extracted_text", None)
+        if getattr(document, "extraction_error", None) or not isinstance(text, str) or not text:
+            continue
+        groups.setdefault(normalize_text(text), []).append(index)
+    drop = set()
+    for indexes in groups.values():
+        if len(indexes) > 1:
+            winner = min(indexes, key=lambda i: (_FORMAT_PREFERENCE_RANK.get(getattr(documents[i], "content_type", None), _DEFAULT_FORMAT_RANK), i))
+            drop.update(i for i in indexes if i != winner)
+    if drop:
+        logger.info("document_ingestion: parsed_text_dedup dropped=%d kept=%d", len(drop), len(documents) - len(drop))
+    return [document for index, document in enumerate(documents) if index not in drop]
+
+
+def split_stub_documents(documents):
+    """Return (kept, stub_reasons) -- stub/blank/header-only parsed documents removed."""
+    from collections import Counter
+    from src.app.services.stub_documents import stub_reason
+
+    kept, reasons = [], Counter()
+    for document in documents:
+        text = getattr(document, "extracted_text", None)
+        reason = None if getattr(document, "extraction_error", None) or not isinstance(text, str) else stub_reason(text)
+        if reason:
+            reasons[reason] += 1
+        else:
+            kept.append(document)
+    return kept, dict(reasons)
+
+
+async def process_attachments(references, storage, extractor):
+    from src.app.core.settings import get_settings
+
+    result = await _collect_attachments(references, storage, extractor)
+    if get_settings().PARSED_TEXT_DEDUP_ENABLED:
+        result = drop_parsed_text_duplicates(result)
     return result

@@ -124,7 +124,8 @@ class ProcedureSummarizationService:
 
         valid_documents = [doc for doc in extracted_documents if not doc.extraction_error]
         extraction_errors = [
-            {"source_id": doc.resource_id or "unknown", "error": doc.extraction_error}
+            {"source_id": doc.resource_id or "unknown", "error": doc.extraction_error,
+             **({"reason": doc.extraction_error_reason} if doc.extraction_error_reason else {})}
             for doc in extracted_documents
             if doc.extraction_error
         ]
@@ -213,6 +214,7 @@ class ProcedureSummarizationService:
             p = item.summary
             summary_metadata: dict = {
                 "source": _SOURCE,
+                "async_token": request.async_token,
                 **outcome_metadata("partial" if extraction_errors else "complete", extraction_errors),
                 "processing_errors": extraction_errors,
                 "pipeline_version": "document-safety-1",

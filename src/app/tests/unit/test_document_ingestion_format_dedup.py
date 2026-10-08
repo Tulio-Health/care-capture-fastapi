@@ -236,6 +236,9 @@ async def test_max_documents_cap_counts_format_deduped_documents_as_one():
 
     result = await process_attachments(references, storage, extractor)
 
+    # F7 (round9-revision3.md S3.3 step 5b / risk R14): canonical code now, specific reason
+    # additive -- see test_document_ingestion_dedup.py's matching cap test for the full why.
     assert len(result) == MAX_DOCUMENTS + 1
-    assert result[-1].extraction_error == "DOCUMENT_LIMIT_EXCEEDED"
+    assert result[-1].extraction_error == "RESOURCE_LIMIT_EXCEEDED"
+    assert result[-1].extraction_error_reason == "DOCUMENT_LIMIT_EXCEEDED"
     assert "dup.rtf" not in storage.calls

@@ -74,6 +74,10 @@ print('tiktoken o200k_base loads OFFLINE from the baked cache')"
 
 COPY src ./src
 
+# Precompile bytecode so the first imports in a fresh container (and every parser worker
+# subprocess) skip compilation. Best-effort: never fails the build.
+RUN /app/.venv/bin/python -m compileall -q /app/src /app/.venv/lib || true
+
 EXPOSE 8000
 
 ENV PATH="/app/.venv/bin:$PATH"

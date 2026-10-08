@@ -9,6 +9,22 @@ jobs:
   pytest:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Throwaway PostgreSQL for the allowlist SQL <-> Python parity test (T0b). It only evaluates
+    # literal VALUES expressions; no application schema or data is involved.
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: parity
+          POSTGRES_PASSWORD: parity
+          POSTGRES_DB: parity
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U parity -d parity"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -27,3 +43,10 @@ jobs:
       - name: QA summary regression safety guards
         run: |
           uv run pytest qa/summary_regression/ -q --no-cov
+
+      - name: Allowlist SQL/Python parity (real PostgreSQL)
+        env:
+          PARITY_PG_DSN: postgresql://parity:parity@localhost:5432/parity
+          PARITY_PG_ALLOW_WRITES: "1"  # throwaway service container only
+        run: |
+          uv run pytest src/app/tests/pg_parity/ -q --no-cov -m pg_parity -rA

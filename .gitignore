@@ -114,3 +114,8 @@ cython_debug/
 
 .cursor
 .clerk_token
+
+# PHI: Fix 3 QA-observer re-run harness captures (source text, candidate quotes, issues) --
+# dev-only diagnostics, never commit. scripts/grounding_rerun_cases.json (appointment IDs +
+# non-PHI error codes only) is NOT covered by this and IS committed.
+.qa_output/

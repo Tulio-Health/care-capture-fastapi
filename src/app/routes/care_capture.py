@@ -1,4 +1,4 @@
-from typing import List
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import ValidationError
@@ -29,6 +29,7 @@ from ..services.summarization import (
 from ..services.summarization.attachment_summarization import AttachmentSummarizationService
 from ..services.summarization.procedure_summarization import ProcedureSummarizationService
 
+from src.app.services.async_dispatch import _bg_slots, dispatch
 from src.app.services.document_extraction import DocumentProcessingError
 from src.app.services.summary_authorization import authorize_summary_scope
 
@@ -687,3 +688,110 @@ async def comprehensive_summary(
             exc_info=False,
         )
         raise HTTPException(status_code=500, detail="Unable to create the summaries. Please try again later.")
+
+
+# ---------------------------------------------------------------------------------------
+# Async variants (.research/fastapi-async-summary-quickfix/round5-final.md section 5,
+# care-capture-nodeapi sibling repo). Mechanism: asyncio.create_task, NOT Starlette
+# BackgroundTasks -- BackgroundTasks runs inside SummaryDeadlineMiddleware's
+# asyncio.timeout(115) scope and would get cancelled at 115s, which is exactly the wall
+# this design exists to get outside of. Sync endpoints above are untouched.
+# ---------------------------------------------------------------------------------------
+
+
+@router.post(
+    "/attachment-summary/async",
+    status_code=202,
+    summary="Document Attachment Summarization (async)",
+    description=(
+        "Authorizes and 202-accepts immediately; the actual summarization runs in an "
+        "independent background task so it is not bound by SummaryDeadlineMiddleware's "
+        "115s per-request timeout. Completion is signalled via a token-scoped Redis key "
+        "the caller polls (see async_dispatch.py); the 202 body echoes async_token as a "
+        "consistency check."
+    ),
+)
+async def attachment_summary_async(
+    http_request: Request,
+    request: AttachmentSummarizationRequest,
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    await authorize_summary_scope(
+        http_request, request.user_id, db, request.appointment_id
+    )
+
+    if not request.async_token:
+        raise HTTPException(
+            status_code=400, detail="async_token is required for async summarization"
+        )
+
+    # Advisory pre-check only: a genuine race with a concurrent dispatch is fine -- the
+    # loser's own task fails fast on the same check (async_dispatch._run) and signals
+    # SUMMARY_BUSY, so nodeapi's retry-with-backoff path is exercised either way.
+    if _bg_slots.locked():
+        raise HTTPException(status_code=503, detail="SUMMARY_BUSY")
+
+    async def _coro_factory() -> None:
+        # Own DB session -- the request-scoped `db` above closes when this request's
+        # response finishes sending, which happens well before this background task is
+        # done. Precedent: src/app/core/scheduler.py's generate_health_insight.
+        async for session in get_db():
+            service = AttachmentSummarizationService(session)
+            await service.analyze_attachments(request)
+            break
+
+    dispatch(
+        _coro_factory, request.appointment_id, "attachment_summary", request.async_token
+    )
+
+    return {
+        "accepted": True,
+        "appointment_id": str(request.appointment_id),
+        "async_token": request.async_token,
+    }
+
+
+@router.post(
+    "/procedure-summary/async",
+    status_code=202,
+    summary="Procedure Document Summarization (async)",
+    description=(
+        "Authorizes and 202-accepts immediately; the actual extraction runs in an "
+        "independent background task so it is not bound by SummaryDeadlineMiddleware's "
+        "115s per-request timeout. Completion is signalled via a token-scoped Redis key "
+        "the caller polls (see async_dispatch.py); the 202 body echoes async_token as a "
+        "consistency check."
+    ),
+)
+async def procedure_summary_async(
+    http_request: Request,
+    request: ProcedureSummarizationRequest,
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    await authorize_summary_scope(
+        http_request, request.user_id, db, request.appointment_id
+    )
+
+    if not request.async_token:
+        raise HTTPException(
+            status_code=400, detail="async_token is required for async summarization"
+        )
+
+    if _bg_slots.locked():
+        raise HTTPException(status_code=503, detail="SUMMARY_BUSY")
+
+    async def _coro_factory() -> None:
+        async for session in get_db():
+            service = ProcedureSummarizationService(session)
+            await service.analyze_procedures(request)
+            break
+
+    dispatch(
+        _coro_factory, request.appointment_id, "procedure_summary", request.async_token
+    )
+
+    return {
+        "accepted": True,
+        "appointment_id": str(request.appointment_id),
+        "async_token": request.async_token,
+    }

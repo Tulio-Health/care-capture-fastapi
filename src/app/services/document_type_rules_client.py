@@ -37,6 +37,11 @@ TTL_SECONDS: int = 300  # 5-minute TTL per D-04
 # Verbatim fidelity is load-bearing — order and spelling must match the
 # TypeScript source.  matchValue holds the BARE keyword; the % wildcards are
 # wrapped by the ilike predicate builder, not baked in here.
+# F6 (round9-revision3.md F6): documentClass passthrough needs NO code change here --
+# _fetch_rules() below returns response.json() verbatim with zero field allowlisting,
+# so a documentClass key added server-side (nodeapi N1/N2, out of this fastapi-only
+# PR's scope) already reaches _build_prefer_predicates (fhir_resources.py, F2) the
+# moment nodeapi starts sending it, the same way resolvedType/action already do.
 HARDCODED_DOCREF_EXCLUDES: list = [
     {
         "matchValue": "Education",
@@ -168,6 +173,13 @@ class DocumentTypeRulesClient:
         self._cache: Optional[dict] = None
         # Last successfully-fetched rule set — survives invalidate_cache().
         self._last_known_good: Optional[list] = None
+        # F6 (round9-revision3.md S3.8 / risk R7): consecutive-stale-serve counter. Fix
+        # 1's preference ordering is a silent no-op whenever this channel serves a
+        # resolved-rule snapshot that predates the curated prefer rules, so a run of
+        # stale/floor serves needs to be LOUDER than the existing per-call
+        # "Document rules using stale fallback" warning (easy to miss in a 96-line
+        # burst, as the stress run that motivated this fix demonstrated).
+        self._consecutive_non_live_serves: int = 0
 
     async def _fetch_rules(self) -> list:
         """
@@ -234,6 +246,10 @@ class DocumentTypeRulesClient:
         """
         return (await self.resolve_rules())[0]
 
+    # F6: fires a louder warning once a run of consecutive non-live serves reaches this
+    # length, on top of the existing per-call "stale fallback" warning. Tunable.
+    _STALE_STREAK_ALERT_THRESHOLD: int = 10
+
     async def resolve_rules(self):
         """Return a rule set and the provenance of that exact resolution."""
         import hashlib
@@ -241,14 +257,42 @@ class DocumentTypeRulesClient:
         try:
             rules = await self.get_active_rules()
             tier = "live"
-        except Exception:
+            self._consecutive_non_live_serves = 0
+        except Exception as exc:
             if self._last_known_good is not None:
                 rules = self._last_known_good
                 tier = "stale"
             else:
                 rules = list(HARDCODED_DOCREF_EXCLUDES)
                 tier = "floor"
-            logger.warning("Document rules using %s fallback", tier)
+            # Log the UNDERLYING failure, not just the fallback decision. Previously this
+            # logged only "Document rules using floor fallback", which told an operator
+            # that the ladder dropped but not why -- a 100%-floor outage was
+            # indistinguishable from a timeout, a 401, a 404 or a parse error, and the
+            # real cause (nodeapi hanging until our 10s httpx timeout) was invisible in
+            # CloudWatch. httpx exception reprs carry the URL but never request headers,
+            # so the x-internal-service-key is still never logged (T-04-01).
+            logger.warning(
+                "Document rules using %s fallback -- live fetch failed: %s: %s",
+                tier,
+                type(exc).__name__,
+                exc,
+            )
+            self._consecutive_non_live_serves += 1
+            if self._consecutive_non_live_serves == self._STALE_STREAK_ALERT_THRESHOLD or (
+                self._consecutive_non_live_serves > self._STALE_STREAK_ALERT_THRESHOLD
+                and self._consecutive_non_live_serves % self._STALE_STREAK_ALERT_THRESHOLD == 0
+            ):
+                # F6 (round9-revision3.md S3.8 / risk R7): a streak this long means any
+                # curated 'prefer' rules shipped by Fix 1 are very likely invisible to
+                # fastapi right now -- Fix 1 degrades to a silent no-op, not a crash, so
+                # this is the signal an operator needs to notice that on their own.
+                logger.warning(
+                    "Document rules client has served %d consecutive non-live "
+                    "(stale/floor) resolutions -- curated prefer/exclude rule changes "
+                    "may not be reaching fastapi.",
+                    self._consecutive_non_live_serves,
+                )
         digest = hashlib.sha256(json.dumps(rules, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         return rules, {"tier": tier, "digest": digest}
 
@@ -265,12 +309,16 @@ class DocumentTypeRulesClient:
             logger.info(
                 f"[DocumentTypeRulesClient] Startup warm-up: {len(rules)} rules loaded"
             )
-        except Exception:
+        except Exception as exc:
             # WR-06: accurate message — floor is not loaded here; it will be served
             # on-demand when get_active_rules_with_fallback() is first called.
+            # The cause is included for the same reason as in resolve_rules(): a
+            # bare "warm-up failed" line cannot be triaged. Key is never logged.
             logger.warning(
-                "[DocumentTypeRulesClient] Startup warm-up failed — "
-                "floor rules will be served on-demand when first request arrives (15 rules)"
+                "[DocumentTypeRulesClient] Startup warm-up failed (%s: %s) — "
+                "floor rules will be served on-demand when first request arrives (15 rules)",
+                type(exc).__name__,
+                exc,
             )
 
 

@@ -39,6 +39,36 @@ NO_PAST_VISIT_INFORMATION_AVAILABLE = (
 
 MAX_SUMMARIES_FOR_LLM = 15
 
+# Explicit allowlist of summary fields that may reach the response prompt.
+# Mirrors the Node API chatbot cache shape (updateChatbotCache) minus
+# ``metadata``: summary metadata (selection telemetry, document eligibility,
+# fingerprints, ...) is internal bookkeeping and must never be sent to the LLM.
+# Any future cache key is excluded by default until added here deliberately.
+_PROMPT_FIELDS = (
+    "id",
+    "appointmentId",
+    "summaryText",
+    "keyPoints",
+    "medications",
+    "diagnoses",
+    "instructions",
+    "recommendations",
+    "appointmentDate",
+    "providerName",
+    "providerSpecialty",
+    "appointmentPurpose",
+    "hasSummary",
+)
+
+
+def _prompt_view(summaries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Project matched summaries to ``_PROMPT_FIELDS`` for prompt serialization.
+
+    Returns new dicts; the input (``matched``) is left untouched so filtering
+    and ``_write_conversation_context`` behave as before.
+    """
+    return [{k: s[k] for k in _PROMPT_FIELDS if k in s} for s in summaries]
+
 
 class PastVisitIntentChain:
     def __init__(self, db: AsyncSession):
@@ -370,7 +400,7 @@ class PastVisitIntentChain:
                         {
                             "text": text,
                             "conversation_history": json.dumps(chat_history, default=str),
-                            "matched_summaries": json.dumps(matched, default=str),
+                            "matched_summaries": json.dumps(_prompt_view(matched), default=str),
                             "today_date": date.today().isoformat(),
                         },
                         config={"callbacks": get_callbacks()},
@@ -416,7 +446,7 @@ class PastVisitIntentChain:
                 {
                     "text": text,
                     "conversation_history": json.dumps(chat_history, default=str),
-                    "matched_summaries": json.dumps(matched, default=str),
+                    "matched_summaries": json.dumps(_prompt_view(matched), default=str),
                     "today_date": date.today().isoformat(),
                 },
                 config={"callbacks": get_callbacks()},

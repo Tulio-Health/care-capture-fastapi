@@ -46,6 +46,16 @@ class DocumentAttachment(BaseModel):
         None,
         description="Error message if extraction failed (for partial success scenarios)",
     )
+    extraction_error_reason: Optional[str] = Field(
+        None,
+        description=(
+            "Specific internal reason code (DocumentProcessingError.reason_code) behind "
+            "extraction_error. Strictly additive, triage-only -- extraction_error (.code) stays "
+            "canonical everywhere. round9-revision3.md Sec 3.2 step 1: converts the "
+            "EXTRACTION_QUALITY_FAILED trigger from inference into a measurement. Truncated to "
+            "64 chars by describe_error() when it reaches persisted processing_errors metadata."
+        ),
+    )
     resource_id: Optional[str] = Field(
         None,
         description=(
@@ -249,6 +259,15 @@ class AttachmentSummarizationRequest(BaseModel):
         description="Maximum execution time in seconds. Default: 120 seconds.",
         ge=10,
         le=300,
+    )
+    async_token: Optional[str] = Field(
+        default=None,
+        description=(
+            "Caller-supplied attempt token, used only by the /attachment-summary/async route. "
+            "Echoed in the 202 response and stamped into the persisted row's summary_metadata "
+            "so Node API's completion poll/rescue can identify writes from this attempt. Absent "
+            "on the sync route."
+        ),
     )
 
 

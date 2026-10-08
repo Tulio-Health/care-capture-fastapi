@@ -6,7 +6,7 @@ from src.app.services.document_extraction import DocumentProcessingError, Docume
 from src.app.services.summary_outcomes import PIPELINE_VERSION
 
 
-def attachment_fingerprint(documents, manifest, context, settings):
+def attachment_fingerprint(documents, manifest, context, settings, selection_policy=None):
     if not documents or any(d.extraction_error or not d.content_sha256 for d in documents):
         return None
     from src.app.chains.attachment_summarization.chain import _EXTRACTION_SYSTEM_PROMPT, _SYNTHESIS_SYSTEM_PROMPT
@@ -23,6 +23,11 @@ def attachment_fingerprint(documents, manifest, context, settings):
              'ocr_model': settings.DOCUMENT_OCR_MODEL,
              'ocr_enabled': settings.ENABLE_DOCUMENT_OCR,
              'format_policy': 'fhir-json-xml-multipart-legacy-word-v1'}
+    if selection_policy is not None:
+        # Optional fact (visit-summary allowlist v2; r7-n-01): hashes the selection policy (e.g. the
+        # allowlist version) WITHOUT putting it into the model-visible `context`. Callers that do not
+        # pass it (flag off, other profiles) get facts -- and fingerprints -- identical to before.
+        facts['selection_policy'] = selection_policy
     return hashlib.sha256(json.dumps(facts, sort_keys=True, default=str).encode()).hexdigest()
 
 

@@ -1,4 +1,8 @@
 """Public, nonclinical error taxonomy; never serialize dependency exception messages."""
+from src.app.common.logging import get_logger
+
+logger = get_logger(__name__)
+
 STAGES = {
     'SOURCE_INVENTORY_FAILED': ('inventory', True),
     'DOCUMENT_NOT_FOUND': ('download', False),
@@ -35,6 +39,10 @@ STAGES = {
 
 
 def describe_error(code, source_id=None, reason=None):
+    if code not in STAGES:
+        # Last-resort safety net below stays; this makes the next unregistered code visible
+        # in logs instead of silently swallowed (round9-revision3.md Fix 4, step 4).
+        logger.warning("describe_error: unregistered code %r coerced to INTERNAL_PROCESSING_ERROR", code)
     code = code if code in STAGES else 'INTERNAL_PROCESSING_ERROR'
     stage, retryable = STAGES[code]
     result = {'error': code, 'stage': stage, 'transient_retryable': retryable}

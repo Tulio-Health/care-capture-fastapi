@@ -97,6 +97,24 @@ class SSMParameterLoader:
             SSMParameterMapping("urls/node_api_url", "NODE_API_URL"),
             # Document Storage (S3 download scope allowlist)
             SSMParameterMapping("care-capture-emr/s3/bucket_name", "DOCUMENT_S3_BUCKET"),
+            # Visit-summary document allowlist v2 feature flag (default False in settings)
+            SSMParameterMapping(
+                "summary/visit_summary_allowlist_enabled",
+                "VISIT_SUMMARY_ALLOWLIST_ENABLED",
+            ),
+            # Parallel doc-type inference (S0; flag default False in settings)
+            SSMParameterMapping(
+                "summary/doctype_inference_parallel_enabled",
+                "DOCTYPE_INFERENCE_PARALLEL_ENABLED",
+            ),
+            SSMParameterMapping(
+                "summary/doctype_inference_concurrency",
+                "DOCTYPE_INFERENCE_CONCURRENCY",
+            ),
+            SSMParameterMapping(
+                "summary/doctype_inference_deadline_s",
+                "DOCTYPE_INFERENCE_DEADLINE_S",
+            ),
             # Playground (dev-only)
             SSMParameterMapping(
                 "playground/api_key", "PLAYGROUND_API_KEY", is_secure=True

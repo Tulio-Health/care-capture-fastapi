@@ -60,23 +60,62 @@ def _normalize(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip().lower()
 
 
+_SPACE_BEFORE_CLOSE = re.compile(r"\s+([,.;:)%])")
+_SPACE_AFTER_OPEN = re.compile(r"([(])\s+")
+
+
+def _normalize_quote(s: str) -> str:
+    """`_normalize` plus removal of whitespace *before* , . ; : ) % and *after* ( -- applied to
+    BOTH quote and source so layout artifacts ("bid , x") never decide a verdict. Only spaces
+    adjacent to that punctuation are dropped; every character (digits, units, dates, negations)
+    is kept, so wrong-dose / wrong-date / negation quotes still mismatch."""
+    return _SPACE_AFTER_OPEN.sub(r"\1", _SPACE_BEFORE_CLOSE.sub(r"\1", _normalize(s)))
+
+
+# Fix 3 (round9-revision3.md Sec 3.5.1): QA-observer hook for scripts/grounding_rerun.py.
+# None in every normal process (including prod) -- only the harness script calls
+# register_qa_observer, and only after asserting get_settings().APP_ENV != "production"
+# (see the script). This is the single choke point for EVERY _quote_supported call
+# project-wide (clinical_grounding.validate_quotes, chain.py's _mutually_supported /
+# evidence_quotes drop-log / DIAGNOSIS_WORDING_NOT_GROUNDED / PROCEDURE_STATUS_NOT_GROUNDED,
+# and this module's own follow-up/high-risk-claim grounding) -- hooking here instead of at
+# each raise site gives the harness full H1 evidence without touching any of those call
+# sites. Never influences the returned verdict (matches _log_windowed_similarity's own
+# no-feedback discipline above); any observer failure is swallowed, same reasoning.
+_qa_quote_observer = None
+
+
+def register_qa_observer(observer) -> None:
+    global _qa_quote_observer
+    _qa_quote_observer = observer
+
+
 def _quote_supported(quote: str, source: str, threshold: float = 0.85) -> bool:
     """Fuzzy-checks that `quote` is (close to) a verbatim substring of `source`, tolerating
     whitespace/case differences and minor transcription noise from the model."""
-    q, src = _normalize(quote), _normalize(source)
+    q, src = _normalize_quote(quote), _normalize_quote(source)
     if not q:
-        return False
-    if q in src:
-        return True
-    matcher = difflib.SequenceMatcher(None, q, src)
-    match = matcher.find_longest_match(0, len(q), 0, len(src))
-    # The LIVE verdict: exactly origin/develop's scoring (longest contiguous common block /
-    # len(quote), default autojunk). Audit R9 ships as a comparison LOG only (see
-    # _log_windowed_similarity below): round-2 red-team (MAJOR-3) measured the windowed
-    # metric accepting dosage/EF/date/negation near-misses that this score fail-closes on,
-    # so it must not gate anything until the PR-12 corpus re-measurement clears it.
-    supported = match.size / max(len(q), 1) >= threshold
-    _log_windowed_similarity(q, src, threshold, supported)
+        supported = False
+    elif q in src:
+        supported = True
+    else:
+        matcher = difflib.SequenceMatcher(None, q, src)
+        match = matcher.find_longest_match(0, len(q), 0, len(src))
+        # The LIVE verdict: exactly origin/develop's scoring (longest contiguous common block /
+        # len(quote), default autojunk). Audit R9 ships as a comparison LOG only (see
+        # _log_windowed_similarity below): round-2 red-team (MAJOR-3) measured the windowed
+        # metric accepting dosage/EF/date/negation near-misses that this score fail-closes on,
+        # so it must not gate anything until the PR-12 corpus re-measurement clears it.
+        supported = match.size / max(len(q), 1) >= threshold
+        _log_windowed_similarity(q, src, threshold, supported)
+    # Every verdict path reaches here -- the QA observer (Fix 3) must see the trivial
+    # empty-quote and verbatim-substring cases too, not only the difflib path, or the
+    # harness's captured event set silently undercounts true verdicts.
+    if _qa_quote_observer is not None:
+        try:
+            _qa_quote_observer(quote, source, supported, threshold)
+        except Exception:
+            pass
     return supported
 
 
