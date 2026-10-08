@@ -70,7 +70,23 @@ class PublicationSafety(unittest.IsolatedAsyncioTestCase):
         self.repository, self.session = setup_repository()
     async def save(self, data):
         return await self.repository.upsert(self.request.appointment_id, data)
+    async def test_failed_refresh_leaves_validated_summary_untouched_by_default(self):
+        # PRESERVE_GOOD_SUMMARY_ON_DEGRADED_REGEN (default ON): nothing is written, no notice injected.
+        row = await self.save(payload(self.request))
+        before = (row.summary_text, deepcopy(row.summary_metadata), deepcopy(row.diagnoses))
+        failed = nonclinical_payload(self.request, 'attachment_summary', errors=[{'error':'PARSE_FAILED'}])
+        for _ in range(2):
+            result = await self.save(deepcopy(failed))
+            self.assertEqual(result.attempt_outcome, 'preserved_existing')
+        self.assertEqual((row.summary_text, row.summary_metadata, row.diagnoses), before)
+        self.assertNotIn('previous summary', row.summary_text)
+        self.assertEqual(len(self.session.rows), 1)
     async def test_failed_refresh_preserves_validated_summary_and_displays_notice_once(self):
+        from unittest.mock import patch
+        from src.app.db.objects.repositories import conversation_summaries as cs_mod
+        with patch.object(cs_mod, '_preserve_enabled', lambda: False):  # flag OFF = previous behaviour
+            await self._notice_once()
+    async def _notice_once(self):
         row = await self.save(payload(self.request))
         diagnosis = deepcopy(row.diagnoses)
         failed = nonclinical_payload(self.request, 'attachment_summary', errors=[{'error':'PARSE_FAILED'}])

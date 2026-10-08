@@ -25,6 +25,20 @@ class OutageSafety(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(nonclinical_payload(request,'attachment_summary',state='no_documents')['summary_text'],MESSAGES['no_documents'])
 
     async def test_outage_preserves_previous_valid_summary_and_refresh_notice(self):
+        from unittest.mock import patch
+        from src.app.db.objects.repositories import conversation_summaries as cs_mod
+        with patch.object(cs_mod, '_preserve_enabled', lambda: False):  # flag OFF = previous behaviour
+            await self._outage_notice()
+    async def test_outage_leaves_previous_valid_summary_untouched_by_default(self):
+        request=SimpleNamespace(user_id=uuid4(),appointment_id=uuid4())
+        repository,session=setup_repository()
+        row=await repository.upsert(request.appointment_id,payload(request))
+        before=(row.summary_text,dict(row.summary_metadata),row.diagnoses)
+        failed=nonclinical_payload(request,'attachment_summary',errors=[{'error':'MODEL_UNAVAILABLE'}])
+        for _ in range(2):await repository.upsert(request.appointment_id,failed)
+        self.assertEqual((row.summary_text,row.summary_metadata,row.diagnoses),before)
+        self.assertNotIn('previous summary',row.summary_text)
+    async def _outage_notice(self):
         request=SimpleNamespace(user_id=uuid4(),appointment_id=uuid4())
         repository,session=setup_repository()
         row=await repository.upsert(request.appointment_id,payload(request))
