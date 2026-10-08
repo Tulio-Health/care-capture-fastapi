@@ -38,6 +38,14 @@ class ConversationSummary(BaseModel):
     updated_at: datetime = Field(..., alias="updatedAt", description="Timestamp when the summary was last updated")
     created_by: UUID = Field(..., alias="createdBy", description="ID of the user who created the summary")
     updated_by: Optional[UUID] = Field(None, alias="updatedBy", description="ID of the user who last updated the summary")
+    attempt_outcome: Optional[str] = Field(
+        None,
+        description=(
+            "Transient (never persisted) result of THIS regeneration attempt. 'preserved_existing' = the attempt "
+            "was degraded / not better and the stored row was returned unchanged. Absent/None = the returned row "
+            "is what the attempt produced."
+        ),
+    )
 
     @model_validator(mode='before')
     @classmethod

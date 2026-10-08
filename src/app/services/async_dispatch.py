@@ -64,8 +64,15 @@ def _key(appointment_id: Any, source: str, token: str) -> str:
     return f"{CACHE_KEY_PREFIX}:summary:async:done:{appointment_id}:{source}:{token}"
 
 
-def _payload(status: str, reason_code: Optional[str], token: str) -> str:
-    return json.dumps({"status": status, "reason_code": reason_code, "token": token})
+def _payload(
+    status: str, reason_code: Optional[str], token: str, outcome: Optional[str] = None
+) -> str:
+    body = {"status": status, "reason_code": reason_code, "token": token}
+    if outcome:
+        # Additive, optional: e.g. "preserved_existing" = the attempt did not produce a new summary
+        # (the stored row was kept). Old Node API readers only look at status/reason_code.
+        body["outcome"] = outcome
+    return json.dumps(body)
 
 
 async def _signal(
@@ -74,13 +81,14 @@ async def _signal(
     token: str,
     status: str,
     reason_code: Optional[str] = None,
+    outcome: Optional[str] = None,
 ) -> None:
     """Terminal succeeded/failed signal. Loop is live here, so the write is `to_thread`'d
     (round2 MINOR-1) rather than inline. Swallows its own Redis failures so a signal-write
     error is never miscategorized as a `coro_factory` failure by the caller's except block --
     "both outcomes always write" (section 6.2) is best-effort, not a hard guarantee."""
     key = _key(appointment_id, source, token)
-    value = _payload(status, reason_code, token)
+    value = _payload(status, reason_code, token, outcome)
     try:
         await asyncio.to_thread(
             _get_signal_redis().set, key, value, ex=_SIGNAL_TTL_SECONDS
@@ -94,12 +102,13 @@ async def _signal(
             status,
         )
     logger.info(
-        "summary_async_signal appointment_id=%s source=%s status=%s reason_code=%s token=%s",
+        "summary_async_signal appointment_id=%s source=%s status=%s reason_code=%s token=%s outcome=%s",
         appointment_id,
         source,
         status,
         reason_code,
         token,
+        outcome,
     )
 
 
@@ -127,8 +136,16 @@ async def _run(
             return
         async with _bg_slots:
             try:
-                await coro_factory()
-                await _signal(appointment_id, source, token, "succeeded")
+                result = await coro_factory()
+                # coro_factory may return the attempt outcome string (see routes/care_capture.py);
+                # anything else (None from older factories) keeps the plain `succeeded` signal.
+                await _signal(
+                    appointment_id,
+                    source,
+                    token,
+                    "succeeded",
+                    outcome=result if isinstance(result, str) else None,
+                )
             except Exception as exc:
                 await _signal(
                     appointment_id, source, token, "failed", model_error_code(exc)

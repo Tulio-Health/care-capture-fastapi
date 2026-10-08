@@ -100,11 +100,15 @@ def _incoming(outcome=NEW, *, forced=None, text=None, **extra):
 
 @pytest.fixture
 def make_repo(monkeypatch):
-    def _make(previous_row, *, flag):
+    def _make(previous_row, *, flag, preserve=False):
         monkeypatch.setattr(
             cs_mod,
             "get_settings",
-            lambda: SimpleNamespace(VISIT_SUMMARY_ALLOWLIST_ENABLED=flag),
+            lambda: SimpleNamespace(
+                VISIT_SUMMARY_ALLOWLIST_ENABLED=flag,
+                # these T7 tests pin the pre-safety-net behaviour; the safety net has its own tests
+                PRESERVE_GOOD_SUMMARY_ON_DEGRADED_REGEN=preserve,
+            ),
         )
         session = MagicMock()
         session.rollback = AsyncMock()
@@ -125,7 +129,8 @@ def make_repo(monkeypatch):
 
 
 def _snapshot(row):
-    return copy.deepcopy(vars(row))
+    # `attempt_outcome` is the transient (never persisted) per-attempt marker, not row content.
+    return copy.deepcopy({k: v for k, v in vars(row).items() if k != "attempt_outcome"})
 
 
 # ---------------------------------------------------------------------------------------------

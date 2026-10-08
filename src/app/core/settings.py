@@ -83,6 +83,14 @@ class Settings(BaseSettings):
     # the v2 telemetry and the legacy-row persistence protection.
     VISIT_SUMMARY_ALLOWLIST_ENABLED: bool = False
 
+    # Safety net (Strimel regression): a failed / degraded regeneration (`unavailable`, `no_documents`,
+    # or an outcome ranked below the stored row: complete > partial > unavailable) never alters an
+    # existing good attachment-summary row (no notice text, no overwrite). The attempt is logged and
+    # reported to the caller as attempt_outcome="preserved_existing" (response field + async signal
+    # `outcome`). Code-level default only (not in ssm_loader / env); set False to restore the previous
+    # behaviour (notice injection / overwrite).
+    PRESERVE_GOOD_SUMMARY_ON_DEGRADED_REGEN: bool = True
+
     # Skip the LLM for stub / blank / header-only documents ("test note", "asdf", a blank PDF whose
     # text is only "Page: 1 of 1", "external document could not be loaded" header-only PDFs): they are
     # dropped before analysis, and when nothing else remains the appointment takes the same
