@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import ValidationError
@@ -731,14 +731,16 @@ async def attachment_summary_async(
     if _bg_slots.locked():
         raise HTTPException(status_code=503, detail="SUMMARY_BUSY")
 
-    async def _coro_factory() -> None:
+    async def _coro_factory() -> Optional[str]:
         # Own DB session -- the request-scoped `db` above closes when this request's
         # response finishes sending, which happens well before this background task is
         # done. Precedent: src/app/core/scheduler.py's generate_health_insight.
         async for session in get_db():
             service = AttachmentSummarizationService(session)
-            await service.analyze_attachments(request)
-            break
+            saved = await service.analyze_attachments(request)
+            # Surface "stored row kept, no new summary" to the async completion signal.
+            return getattr(saved, "attempt_outcome", None)
+        return None
 
     dispatch(
         _coro_factory, request.appointment_id, "attachment_summary", request.async_token

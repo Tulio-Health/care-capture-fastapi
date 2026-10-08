@@ -36,6 +36,49 @@ def _is_existing_clinical(previous: dict) -> bool:
     return False
 
 
+def _preserve_enabled() -> bool:
+    return bool(getattr(get_settings(), "PRESERVE_GOOD_SUMMARY_ON_DEGRADED_REGEN", True))
+
+
+PRESERVED_EXISTING = "preserved_existing"
+_OUTCOME_RANK = {"complete": 3, "partial": 2, "unavailable": 1, "no_documents": 1}
+
+
+def _stored_rank(previous: dict, summary_text) -> int:
+    """Deterministic quality rank of a stored attachment-summary row (0 = nothing worth protecting).
+
+    complete/partial rows need validation_status == passed; a LEGACY row (no processing_outcome, written
+    before outcomes existed) counts as complete-quality iff it is a non-empty summary that is not just a
+    refresh notice.
+    """
+    outcome = previous.get("processing_outcome")
+    if outcome is None:
+        text_value = (summary_text or "").strip()
+        notice_only = text_value.startswith("We couldn’t update this summary") and "\n\n" not in text_value
+        return 3 if text_value and not notice_only else 0
+    if outcome in {"complete", "partial"} and previous.get("validation_status") == "passed":
+        return _OUTCOME_RANK[outcome]
+    return 0
+
+
+def _is_degraded_vs_stored(incoming: dict, previous: dict, summary_text) -> bool:
+    """True when the incoming attempt is worse than the stored good row, so the stored row must be kept.
+
+    new rank < stored rank (complete > partial > unavailable/no_documents), or both partial and the new
+    attempt has MORE processing errors than the stored one. A new `complete` is never degraded; a stored
+    row below `partial` (placeholder/unavailable) is never protected.
+    """
+    stored = _stored_rank(previous, summary_text)
+    new = _OUTCOME_RANK.get(incoming.get("processing_outcome"))
+    if stored < 2 or new is None:
+        return False
+    if new < stored:
+        return True
+    if new == stored == 2:
+        return (incoming.get("processing_error_count") or 0) > (previous.get("processing_error_count") or 0)
+    return False
+
+
 def _retry_transaction(operation):
     """One fresh transaction only for database-confirmed aborts; never uncertain commits."""
     from functools import wraps
@@ -492,6 +535,25 @@ class ConversationSummariesRepository:
                 if incoming.get("attempt_started_at") and _attempt_at(previous.get("attempt_started_at", "")) > _attempt_at(incoming["attempt_started_at"]):
                     await self._rollback_and_reload([db_summary])
                     return db_summary
+                if (
+                    _preserve_enabled()
+                    and source == "attachment_summary"
+                    and incoming.get("processing_outcome") in {"partial", "unavailable", "no_documents"}
+                    and _is_degraded_vs_stored(incoming, previous, db_summary.summary_text)
+                ):
+                    # Safety net: a failed/degraded regeneration never touches a better stored row - no
+                    # notice text, no overwrite, nothing written (text, metadata, updated_at byte-unchanged).
+                    # The attempt is logged and reported via the transient `attempt_outcome` (response
+                    # field; async signal `outcome`) so callers know no new summary was produced.
+                    await self._rollback_and_reload([db_summary])
+                    logger.warning(
+                        f"preserved_existing_summary_on_degraded_regen appointment_id={appointment_id} "
+                        f"incoming_outcome={incoming.get('processing_outcome')} "
+                        f"incoming_error_count={incoming.get('processing_error_count')} "
+                        f"stored_outcome={previous.get('processing_outcome') or 'legacy'}"
+                    )
+                    db_summary.attempt_outcome = PRESERVED_EXISTING
+                    return db_summary
                 if incoming.get("processing_outcome") == NO_VISIT_SUMMARY_DOCUMENTS and _is_existing_clinical(previous) and not incoming.get("regeneration_forced"):
                     # Path (1): a non-clinical "no visit summary documents" result never replaces an
                     # existing clinical summary unless regeneration was explicitly forced. Nothing is
@@ -501,6 +563,8 @@ class ConversationSummariesRepository:
                         f"allowlist_preserved_existing_summary appointment_id={appointment_id} "
                         f"previous_outcome={previous.get('processing_outcome') or 'legacy'}"
                     )
+                    if _preserve_enabled():
+                        db_summary.attempt_outcome = PRESERVED_EXISTING
                     return db_summary
                 if incoming.get("processing_outcome") in {"unavailable", "no_documents"} and _is_existing_clinical(previous):
                     # Whole-dict assignment is required for plain SQLAlchemy JSON columns.
