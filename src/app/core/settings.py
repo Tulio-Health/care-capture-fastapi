@@ -130,6 +130,16 @@ class Settings(BaseSettings):
     MEDICATION_DOSE_CHECK_ENABLED: bool = False
     # X5b: validated per-document medications are retained deterministically in synthesis.
     MEDICATION_RETENTION_ENABLED: bool = False
+    # Round 3: X9 evidence fallback to verified anchors on the repair attempt; X7 label fixes
+    # (orders/this-visit procedures out of 'Past procedures', procedure-as-diagnosis, med
+    # split/dedup); X6 v2 dose layouts; X8 deterministic post-checks (med names, dates);
+    # X10 split a chunk whose structured output failed validation twice.
+    EVIDENCE_FALLBACK_ENABLED: bool = False
+    SUMMARY_LABEL_FIXES_ENABLED: bool = False
+    MEDICATION_DOSE_CHECK_V2_ENABLED: bool = False
+    MEDICATION_NAME_CHECK_ENABLED: bool = False
+    SUMMARY_DATE_CHECK_ENABLED: bool = False
+    EXTRACTION_INVALID_SPLIT_ENABLED: bool = False
 
     # Parallel doc-type inference (S0 speed fix; chains/document_type_inference). Default OFF:
     # the serial 5-item sub-batch loop and its model-call sequence are untouched. When ON,
