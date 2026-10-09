@@ -50,6 +50,24 @@ def log_visit_summary_allowlist_configuration():
         logger.warning("visit_summary_allowlist config log unavailable error_type=%s", type(exc).__name__)
 
 
+def log_partx_flags_configuration():
+    """Log the Part X Strimel summary-quality flags (read at startup; needs a restart to change).
+    Operators grep ``partx_flags enabled=`` on every instance; ``enabled=[]`` = all OFF."""
+    try:
+        from src.app.config.ssm_loader import PARTX_BOOL_FLAGS
+        from src.app.core import get_settings
+        from src.app.services.summary_runtime import extraction_call_timeout_s
+
+        settings = get_settings()
+        enabled = [name for name in PARTX_BOOL_FLAGS if bool(getattr(settings, name, False))]
+        logger.info(
+            f"partx_flags enabled=[{','.join(enabled)}] "
+            f"extraction_call_timeout_s={extraction_call_timeout_s()}"
+        )
+    except Exception as exc:  # a logging helper must never fail application startup
+        logger.warning("partx_flags config log unavailable error_type=%s", type(exc).__name__)
+
+
 def log_doctype_inference_parallel_configuration():
     """Log the parallel doc-type inference settings (read at startup; needs a restart to change).
     Operators grep ``doctype_inference_parallel enabled=``."""

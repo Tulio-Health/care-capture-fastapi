@@ -101,6 +101,46 @@ class Settings(BaseSettings):
     # checksum + within-DocumentReference format dedup). Code-level default only.
     PARSED_TEXT_DEDUP_ENABLED: bool = True
 
+    # Strimel summary-regression fix (2026-10-08), each item behind its own flag, default OFF
+    # (code-level default; set via env/SSM, read at startup). See the Part X report in
+    # care-capture-nodeapi/.claude/debug-reports/2026-10-08-strimel-partX-quality-fix.md.
+    # X1: procedure-status gate v2 (XML statusCode=completed / operative-note header anchors
+    # count as performed; otherwise demote to not_stated instead of failing the chunk).
+    PROCEDURE_STATUS_V2_ENABLED: bool = False
+    # X2: strict-8 compact CDA body rendering (parser VERSION follows this flag).
+    CDA_COMPACT_EXTRACTION_ENABLED: bool = False
+    # X3: extraction per-call timeout (s) and output-token ceiling; truncated output is
+    # classified MODEL_OUTPUT_TRUNCATED and the chunk is split in half and re-extracted once.
+    EXTRACTION_TRUNCATION_SPLIT_ENABLED: bool = False
+    # X3: whole-run ceiling (s) for one extraction agent.run (up to 2 HTTP requests); default 45
+    # = unchanged. Each HTTP request stays bounded at 45 s. Clamped to [45, 120].
+    EXTRACTION_CALL_TIMEOUT_S: float = 45.0
+    # X3b: repair prompt for INVALID_SOURCE_EVIDENCE lists the rejected quotes + closest
+    # source lines (the gate and its threshold are unchanged).
+    EVIDENCE_REPAIR_HINTS_ENABLED: bool = False
+    # X4: an ungrounded diagnosis that survives the repair attempt is dropped (never kept)
+    # instead of failing the whole chunk.
+    DROP_UNGROUNDED_DIAGNOSIS_ENABLED: bool = False
+    # X4b: same for procedure / follow-up items whose source_quote is still unsupported after
+    # the repair attempt (status contradiction still fails closed).
+    DROP_UNGROUNDED_ANCHORS_ENABLED: bool = False
+    # X5: no vitals in lab_results, no raw "Orders:" scaffolding in recommendations.
+    SUMMARY_CLUTTER_FILTER_ENABLED: bool = False
+    # X6: every dose/strength token in a medication entry must appear in the source.
+    MEDICATION_DOSE_CHECK_ENABLED: bool = False
+    # X5b: validated per-document medications are retained deterministically in synthesis.
+    MEDICATION_RETENTION_ENABLED: bool = False
+    # Round 3: X9 evidence fallback to verified anchors on the repair attempt; X7 label fixes
+    # (orders/this-visit procedures out of 'Past procedures', procedure-as-diagnosis, med
+    # split/dedup); X6 v2 dose layouts; X8 deterministic post-checks (med names, dates);
+    # X10 split a chunk whose structured output failed validation twice.
+    EVIDENCE_FALLBACK_ENABLED: bool = False
+    SUMMARY_LABEL_FIXES_ENABLED: bool = False
+    MEDICATION_DOSE_CHECK_V2_ENABLED: bool = False
+    MEDICATION_NAME_CHECK_ENABLED: bool = False
+    SUMMARY_DATE_CHECK_ENABLED: bool = False
+    EXTRACTION_INVALID_SPLIT_ENABLED: bool = False
+
     # Parallel doc-type inference (S0 speed fix; chains/document_type_inference). Default OFF:
     # the serial 5-item sub-batch loop and its model-call sequence are untouched. When ON,
     # infer_batch runs 1-item calls through services/bounded_fanout.fan_out (at most CONCURRENCY

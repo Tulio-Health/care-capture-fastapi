@@ -139,3 +139,13 @@ async def test_hallucinated_follow_up_still_fails_the_batch_closed(monkeypatch):
     # entry before validate_quotes saw it.
     assert summary.follow_up == original_follow_up
     assert summary.follow_up[0].source_quote == hallucinated.source_quote
+
+
+
+@pytest.fixture(autouse=True)
+def _pin_strimel_flags_off(monkeypatch):
+    """These tests specify the flag-OFF (prod default) behaviour of DROP_UNGROUNDED_ANCHORS_ENABLED.
+    The flag-ON behaviour is specified in test_strimel_partx_fixes.py / test_strimel_partx_strict8.py."""
+    from src.app.core.settings import get_settings
+    for name in ('DROP_UNGROUNDED_ANCHORS_ENABLED',):
+        monkeypatch.setattr(get_settings(), name, False)

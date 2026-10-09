@@ -549,3 +549,13 @@ async def test_ordered_vs_performed_gate_still_passes_a_genuinely_performed_quot
         chain._deferred_grounding.reset(token)
 
     assert result[0].procedures[0].status == "performed"
+
+
+
+@pytest.fixture(autouse=True)
+def _pin_strimel_flags_off(monkeypatch):
+    """These tests specify the flag-OFF (prod default) behaviour of DROP_UNGROUNDED_DIAGNOSIS_ENABLED, DROP_UNGROUNDED_ANCHORS_ENABLED, EVIDENCE_REPAIR_HINTS_ENABLED.
+    The flag-ON behaviour is specified in test_strimel_partx_fixes.py / test_strimel_partx_strict8.py."""
+    from src.app.core.settings import get_settings
+    for name in ('DROP_UNGROUNDED_DIAGNOSIS_ENABLED', 'DROP_UNGROUNDED_ANCHORS_ENABLED', 'EVIDENCE_REPAIR_HINTS_ENABLED'):
+        monkeypatch.setattr(get_settings(), name, False)

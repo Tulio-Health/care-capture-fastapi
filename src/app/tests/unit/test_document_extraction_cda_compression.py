@@ -11,6 +11,8 @@ strict-4 walk's, for any input. There is no identical-subtree back-referencing
 every subtree renders in full. Names may influence layout, never retention.
 """
 
+import pytest
+
 import re
 import xml.etree.ElementTree as ET
 from collections import Counter
@@ -366,3 +368,13 @@ def test_foreign_xml_never_bigger_than_ungrouped_walk():
     new = DocumentTextExtractor._xml_text(many)
     assert len(new) <= len(old) * 1.01
     assert _nchunks(new) <= _nchunks(old)
+
+
+
+@pytest.fixture(autouse=True)
+def _pin_strimel_flags_off(monkeypatch):
+    """These tests specify the flag-OFF (prod default) behaviour of CDA_COMPACT_EXTRACTION_ENABLED.
+    The flag-ON behaviour is specified in test_strimel_partx_fixes.py / test_strimel_partx_strict8.py."""
+    from src.app.core.settings import get_settings
+    for name in ('CDA_COMPACT_EXTRACTION_ENABLED',):
+        monkeypatch.setattr(get_settings(), name, False)

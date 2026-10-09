@@ -17,6 +17,8 @@ production document these fixtures mirror) must NOT be row-joined, or every
 medication collapses onto one unreadable, unquotable line.
 """
 
+import pytest
+
 import re
 import xml.etree.ElementTree as ET
 
@@ -201,3 +203,13 @@ def test_noise_tags_and_attrs_suppressed_but_clinical_attrs_survive():
     assert "templateId" not in out  # pure CDA plumbing tag suppressed
     assert "codeSystem=" not in out  # noise attribute suppressed
     assert "displayName=Vital signs" in out  # clinical attribute survives
+
+
+
+@pytest.fixture(autouse=True)
+def _pin_strimel_flags_off(monkeypatch):
+    """These tests specify the flag-OFF (prod default) behaviour of CDA_COMPACT_EXTRACTION_ENABLED.
+    The flag-ON behaviour is specified in test_strimel_partx_fixes.py / test_strimel_partx_strict8.py."""
+    from src.app.core.settings import get_settings
+    for name in ('CDA_COMPACT_EXTRACTION_ENABLED',):
+        monkeypatch.setattr(get_settings(), name, False)

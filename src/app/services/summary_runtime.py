@@ -84,8 +84,23 @@ MAX_TRANSIENT_RETRIES = 1
 MODEL_CALL_TIMEOUT_S = 45
 
 
-async def model_call(operation, *args, **kwargs):
+def extraction_call_timeout_s():
+    """X3: the whole-run ceiling for ONE attachment-extraction agent.run. pydantic-ai performs
+    up to 1 + _EXTRACTION_RETRIES requests inside that run (output-validation retry), and the
+    45 s MODEL_CALL_TIMEOUT_S timer used to bound the whole run, i.e. ~22 s per request. Each
+    HTTP request stays bounded at MODEL_CALL_TIMEOUT_S by ModelSettings/httpx. Default = 45
+    (unchanged behaviour); setting EXTRACTION_CALL_TIMEOUT_S, clamped to [45, 120]."""
+    try:
+        from src.app.core.settings import get_settings
+        value = float(getattr(get_settings(), "EXTRACTION_CALL_TIMEOUT_S", MODEL_CALL_TIMEOUT_S))
+    except Exception:  # noqa: BLE001
+        value = MODEL_CALL_TIMEOUT_S
+    return min(max(value, MODEL_CALL_TIMEOUT_S), 120.0)
+
+
+async def model_call(operation, *args, _timeout_s=None, **kwargs):
     budget = _current_budget.get()
+    call_timeout = _timeout_s or MODEL_CALL_TIMEOUT_S
     for attempt in range(MAX_TRANSIENT_RETRIES + 1):
         if budget is not None:
             # Authoritative per-call check-then-increment (restored, round-2 MAJOR-1): the
@@ -98,7 +113,7 @@ async def model_call(operation, *args, **kwargs):
         try:
             # Acquire the shared concurrency gate FIRST; the timer bounds only the call itself.
             async with _model_slots:
-                async with asyncio.timeout(MODEL_CALL_TIMEOUT_S):
+                async with asyncio.timeout(call_timeout):
                     return await operation(*args, **kwargs)
         except DocumentProcessingError:
             raise
@@ -107,7 +122,7 @@ async def model_call(operation, *args, **kwargs):
             if code not in {"MODEL_TIMEOUT", "MODEL_RATE_LIMITED"} or attempt >= MAX_TRANSIENT_RETRIES:
                 raise DocumentProcessingError(code) from exc
             delay = retry_delay(exc, attempt)
-            if delay > MODEL_CALL_TIMEOUT_S:
+            if delay > call_timeout:
                 raise DocumentProcessingError(code) from exc
             if budget and budget.deadline and time.monotonic() + delay >= budget.deadline:
                 raise DocumentProcessingError(code) from exc
@@ -151,12 +166,26 @@ def model_error_code(exc):
             return "MODEL_AUTH_FAILED"
         if isinstance(status, int) and status >= 400:
             return "MODEL_UNAVAILABLE"
+        if name == "IncompleteToolCall" and _truncation_split_enabled():
+            # pydantic-ai raises this (a subclass of UnexpectedModelBehavior) when the output
+            # hit max_tokens mid tool call. Matching by exact class name, it used to fall through
+            # to the MODEL_UNAVAILABLE default -- the "~70 s MODEL_UNAVAILABLE ceiling" of the
+            # Strimel regression was 2 x 4096-token truncated generations, not a timeout.
+            return "MODEL_OUTPUT_TRUNCATED"
         if name in {"UnexpectedModelBehavior", "ValidationError", "ModelRetry", "ToolRetryError"}:
             return "MODEL_OUTPUT_INVALID"
         if name == "BudgetExceeded":
             return "RESOURCE_LIMIT_EXCEEDED"
         current = current.__cause__ or current.__context__
     return "MODEL_UNAVAILABLE"
+
+
+def _truncation_split_enabled():
+    try:
+        from src.app.core.settings import get_settings
+        return bool(getattr(get_settings(), "EXTRACTION_TRUNCATION_SPLIT_ENABLED", False))
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def bounded_summary(operation):

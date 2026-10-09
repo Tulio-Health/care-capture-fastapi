@@ -33,7 +33,8 @@ _ERROR_CODE_GROUPS = {
     # -- only `exc.reason_code`-keyed handlers (chain.py's :891-equivalent accessor) must widen
     # their set to see the specific code (round9-revision.md section 5.5).
     "RESOURCE_LIMIT_EXCEEDED": {"TEXT_LIMIT_EXCEEDED", "PAGE_LIMIT_EXCEEDED", "ARCHIVE_LIMIT_EXCEEDED", "IMAGE_PIXEL_LIMIT_EXCEEDED", "OCR_PAGE_LIMIT_EXCEEDED", "OCR_RENDER_LIMIT_EXCEEDED", "OCR_VISION_CALL_LIMIT_EXCEEDED", "COMPRESSION_LIMIT_EXCEEDED", "DOCUMENT_LIMIT_EXCEEDED", "CHUNK_LIMIT_EXCEEDED", "SYNTHESIS_BUDGET_EXCEEDED", "SYNTHESIS_RECORD_LIMIT_EXCEEDED", "PROCEDURE_CONTEXT_LIMIT_EXCEEDED", "TRANSCRIPT_CONTEXT_LIMIT_EXCEEDED", "FHIR_CONTEXT_LIMIT_EXCEEDED", "MODEL_CALL_BUDGET_EXCEEDED", "VALIDATION_BUDGET_EXCEEDED", "SUMMARY_BUSY", "GROUNDING_REQUEST_TOO_LARGE", "GROUNDING_LATENCY_GATE"},
-    "MODEL_OUTPUT_INVALID": {"MODEL_SOURCE_RECONCILIATION_FAILED", "OCR_INCOMPLETE_RESPONSE", "CLASSIFICATION_ID_MISMATCH"},
+    "MODEL_OUTPUT_INVALID": {"MODEL_SOURCE_RECONCILIATION_FAILED", "OCR_INCOMPLETE_RESPONSE", "CLASSIFICATION_ID_MISMATCH",
+                             "MODEL_OUTPUT_TRUNCATED"},
     # PR-11 (N-6): GROUNDING_VALIDATION_FAILED intentionally canonicalizes to
     # CLINICAL_EVIDENCE_FAILED here, NOT its own top-level code. chain.py's
     # _extract_batch/_synthesize_records grant exactly one repair attempt keyed off
@@ -105,6 +106,40 @@ _XML_NOISE_TAGS = {"templateId", "id", "realmCode", "typeId", "setId",
 # real clinical identifiers from 25 of 338 pointers' chunks.
 _XML_GROUP_MAX_PARTS = 40  # highest node emitting <= this many parts becomes one "@" group
 
+# strict-8 compact CDA body rendering (CDA_COMPACT_EXTRACTION_ENABLED). The strict-7 walk renders
+# every structured CDA entry as XPath-style path lines (~60% of the text, ~40% exact duplicates,
+# Strimel regression 2026-10-08): chunks get slow/huge and model quotes such as "code + value" are
+# never contiguous. strict-8 keeps the document header and every narrative <text> block exactly as
+# strict-7 renders them, and renders each structured clinical statement as ONE line carrying its
+# code/value/unit/dose/route/status/time (plus the narrative text its originalText points at).
+# Dropped by design inside entries: who/where plumbing (author/performer/informant/participant
+# other than consumables, addresses, telecoms), nullFlavor placeholders and '#id' pointers.
+_CDA_NS = "urn:hl7-org:v3"
+_CDA_STATEMENTS = {"observation", "substanceAdministration", "procedure", "act", "encounter",
+                   "supply", "organizer", "observationMedia", "regionOfInterest"}
+_CDA_ENTRY_ADMIN = {"author", "performer", "informant", "dataEnterer", "authenticator",
+                    "legalAuthenticator", "custodian", "informationRecipient", "addr", "telecom"}
+_CDA_KEEP_PARTICIPANT = {"CSM", "PRD", "DEV"}
+_CDA_NESTING = {"entryRelationship", "component"}
+_CDA_REF_INLINE_MAX = 160
+_CDA_QUALIFIED_LEAVES = {"low", "high", "center", "width", "period", "translation", "originalText",
+                         "numerator", "denominator", "code", "name", "value"}
+
+
+def _cda_compact_enabled() -> bool:
+    try:
+        from src.app.core.settings import get_settings
+        return bool(getattr(get_settings(), "CDA_COMPACT_EXTRACTION_ENABLED", False))
+    except Exception:  # noqa: BLE001 - settings unavailable -> legacy renderer
+        return False
+
+
+class _ExtractorVersion:
+    """Parser version follows the renderer actually in effect (cache/dedup keys on it)."""
+
+    def __get__(self, instance, owner):
+        return "strict-8" if _cda_compact_enabled() else "strict-7"
+
 
 class DocumentTextExtractor:
     MAX_FILE_SIZE = 50 * 1024 * 1024
@@ -113,7 +148,7 @@ class DocumentTextExtractor:
     MAX_ZIP_ENTRIES = 2000
     MAX_ARCHIVE_EXPANDED_BYTES = 50 * 1024 * 1024
     RTF_MAGIC = b"{\\rtf"
-    VERSION = "strict-7"
+    VERSION = _ExtractorVersion()
     MAX_ARCHIVE_DEPTH = 2
     # Sanitize-and-revalidate gate (round9-revision3.md Sec 3.2 step 2): fraction of a
     # document's characters that may be control-chars/U+FFFD and still be stripped rather
@@ -633,7 +668,7 @@ class DocumentTextExtractor:
             root's path prefix removed -- the complete remaining ancestor chain,
             nothing else omitted."""
             local = node.tag.rsplit("}", 1)[-1]
-            if local in _XML_NOISE_TAGS:
+            if local in _XML_NOISE_TAGS or id(node) in compact_skip:
                 return
             if local == "text":
                 # CDA narrative block: render with row/item adjacency preserved
@@ -657,9 +692,18 @@ class DocumentTextExtractor:
                 if child.tail and child.tail.strip():
                     parts.append(child.tail.strip())
 
+        compact_skip = set()
+        compact_body = None
+        if _cda_compact_enabled() and root.tag in {f"{{{_CDA_NS}}}ClinicalDocument", "ClinicalDocument"}:
+            for child in root:
+                if child.tag.rsplit("}", 1)[-1] == "component" and any(
+                        g.tag.rsplit("}", 1)[-1] == "structuredBody" for g in child):
+                    compact_skip.add(id(child))
+                    compact_body = child
+
         def segment(node, chain, label, raw):
             local = node.tag.rsplit("}", 1)[-1]
-            if local in _XML_NOISE_TAGS:
+            if local in _XML_NOISE_TAGS or id(node) in compact_skip:
                 return
             if local == "text":
                 rendered = narrative(node)
@@ -710,7 +754,198 @@ class DocumentTextExtractor:
                     parts.append(child.tail.strip())
 
         segment(root, (), root.tag.rsplit("}", 1)[-1], ())
+        if compact_body is not None:
+            parts.extend(DocumentTextExtractor._cda_compact_body(root, compact_body, narrative))
         return "\n".join(parts)
+
+    @staticmethod
+    def _cda_compact_body(root, body, narrative):
+        """strict-8: section title + narrative (byte-identical to strict-7) + one line per
+        structured clinical statement. See _CDA_STATEMENTS above."""
+        local = lambda n: n.tag.rsplit("}", 1)[-1]
+        ids = {}
+        for node in root.iter():
+            ref_id = node.attrib.get("ID")
+            if ref_id and ref_id not in ids:
+                # Space-joined so table cells stay separated; only SHORT targets are inlined
+                # below (a pointer to a whole row/table/note would duplicate the narrative).
+                ids[ref_id] = " ".join(" ".join(node.itertext()).split())
+
+        def attrs_text(node):
+            a = {k.rsplit("}", 1)[-1]: v for k, v in node.attrib.items()}
+            if "nullFlavor" in a or a.get("value", "").startswith("#"):
+                a = {k: v for k, v in a.items() if k not in {"nullFlavor"} and not v.startswith("#")}
+            a = {k: v for k, v in a.items() if k not in _XML_NOISE_ATTRS and k not in _XML_SEMANTIC_ATTRS}
+            if not a:
+                return ""
+            name = a.pop("displayName", None)
+            code = a.pop("code", None)
+            value, unit = a.pop("value", None), a.pop("unit", None)
+            bits = []
+            if name:
+                bits.append(f"{name} ({code})" if code else name)
+            elif code:
+                bits.append(code)
+            if value is not None:
+                bits.append(f"{value} {unit}" if unit and unit != "1" else value)
+            elif unit:
+                bits.append(f"unit={unit}")
+            bits.extend(f"{k}={v}" for k, v in a.items())
+            return " ".join(bits)
+
+        def markers(node):
+            a = {k.rsplit("}", 1)[-1]: v for k, v in node.attrib.items()}
+            out = []
+            if a.get("moodCode") in _XML_MOOD_PREFIXES:
+                out.append(_XML_MOOD_PREFIXES[a["moodCode"]])
+            if a.get("negationInd") == "true":
+                out.append("NEGATED:")
+            return out
+
+        def statement(node, lead, depth, lines, inherited=frozenset()):
+            fields, nested = [], []
+
+            def collect(n, rel):
+                for c in n:
+                    name = local(c)
+                    if name in _XML_NOISE_TAGS or name in _CDA_ENTRY_ADMIN:
+                        continue
+                    if name == "participant" and c.attrib.get("typeCode", "CSM") not in _CDA_KEEP_PARTICIPANT:
+                        continue  # no typeCode -> kept (could be the allergen/consumable)
+                    if name in _CDA_STATEMENTS:
+                        nested.append((c, []))
+                        continue
+                    if name in _CDA_NESTING:
+                        rel_marks = []
+                        if name == "entryRelationship":
+                            t = c.attrib.get("typeCode")
+                            if t in _XML_ENTRY_RELATIONSHIP_TYPE_PREFIXES:
+                                rel_marks.append(_XML_ENTRY_RELATIONSHIP_TYPE_PREFIXES[t])
+                            if c.attrib.get("negationInd") == "true":
+                                rel_marks.append("NEGATED:")
+                        for g in c:
+                            if local(g) in _CDA_STATEMENTS:
+                                nested.append((g, rel_marks))
+                        continue
+                    path = (*rel, name)
+                    label = "/".join(path[-2:]) if name in _CDA_QUALIFIED_LEAVES and len(path) > 1 else name
+                    if name == "text":
+                        rendered = narrative(c)
+                        if rendered:
+                            fields.append(f"text: {rendered}")
+                        for ref in c.iter():
+                            v = ref.attrib.get("value", "")
+                            if local(ref) == "reference" and v.startswith("#") and 0 < len(ids.get(v[1:], "")) <= _CDA_REF_INLINE_MAX:
+                                fields.append(f"text: {ids[v[1:]]}")
+                        continue
+                    if name == "reference" and c.attrib.get("value", "").startswith("#"):
+                        target = ids.get(c.attrib["value"][1:], "")
+                        if 0 < len(target) <= _CDA_REF_INLINE_MAX:
+                            fields.append(f"{'/'.join(path[-2:])}: {target}")
+                        continue
+                    payload = attrs_text(c)
+                    mark = " ".join(markers(c))
+                    text = (c.text or "").strip()
+                    if text and payload and text in payload:
+                        text = ""
+                    if payload or text or mark:
+                        fields.append(f"{label}: " + " ".join(x for x in (mark, payload, text) if x))
+                    collect(c, path)
+
+            collect(node, ())
+            head = " ".join([*lead, *markers(node)])
+            own = attrs_text(node)
+            # A field whose value is already carried verbatim by another field of the same
+            # statement (originalText == translation displayName, the parent's time, ...) adds
+            # no fact; drop it. Values only ever disappear when present elsewhere on the line.
+            uniq, values = [], []
+            for f in fields:
+                label, _, value = f.partition(": ")
+                if label in ("effectiveTime", "statusCode") and (label, value) in inherited:
+                    continue
+                if any(value == v or (len(value) >= 3 and value in v) for v in values):
+                    continue
+                values.append(value)
+                uniq.append(f)
+            own_inherited = {(f.partition(": ")[0], f.partition(": ")[2]) for f in uniq}
+            line = ("  " * depth) + (head + " " if head else "") + local(node) + (f" {own}" if own else "")
+            if uniq:
+                line += " | " + " | ".join(uniq)
+            lines.append(line)
+            for child, marks in nested:
+                statement(child, marks, min(depth + 1, 3), lines, own_inherited | inherited)
+
+        out = []
+
+        def section(sec):
+            title, blocks = None, []
+            for c in sec:
+                name = local(c)
+                if name == "title" and (c.text or "").strip():
+                    title = " ".join(c.text.split())
+                    out.append(title)
+                elif name == "text":
+                    rendered = narrative(c)
+                    if rendered:
+                        out.append(rendered)
+                elif name == "entry":
+                    entry_lines = []
+                    blocks.append(entry_lines)
+                    for g in c:
+                        gname = local(g)
+                        if gname in _XML_NOISE_TAGS or gname in _CDA_ENTRY_ADMIN:
+                            continue
+                        if gname == "entryRelationship" or gname == "component":
+                            # Non-standard nesting directly under <entry>: keep the relation
+                            # marker and every clinical statement inside it.
+                            marks = []
+                            if gname == "entryRelationship":
+                                t = g.attrib.get("typeCode")
+                                if t in _XML_ENTRY_RELATIONSHIP_TYPE_PREFIXES:
+                                    marks.append(_XML_ENTRY_RELATIONSHIP_TYPE_PREFIXES[t])
+                                if g.attrib.get("negationInd") == "true":
+                                    marks.append("NEGATED:")
+                            for h in g:
+                                if local(h) not in _XML_NOISE_TAGS:
+                                    statement(h, marks, 0, entry_lines)
+                        else:
+                            # Statements and any unknown element: one line each, never dropped.
+                            statement(g, [], 0, entry_lines)
+                elif name == "component":
+                    for g in c:
+                        if local(g) == "section":
+                            section(g)
+                elif name == "code":
+                    payload = " | ".join(x for x in (attrs_text(n) for n in c.iter()) if x)
+                    if payload and payload != title:
+                        out.append(f"section code: {payload}")
+                elif name not in _XML_NOISE_TAGS and name not in _CDA_ENTRY_ADMIN:
+                    blocks.append([])
+                    statement(c, [], 0, blocks[-1])  # unknown section child: rendered, not dropped
+            # A whole entry that is an exact duplicate of an earlier entry in the same section
+            # carries no new fact. Collapse at ENTRY granularity only: a repeated nested line
+            # (e.g. the same criticality under two different allergies) stays with its parent.
+            seen = set()
+            for block in blocks:
+                key = tuple(block)
+                if block and key not in seen:
+                    seen.add(key)
+                    out.extend(block)
+
+        for sb in body:
+            if local(sb) != "structuredBody":
+                continue
+            for comp in sb:
+                if local(comp) in _XML_NOISE_TAGS:
+                    continue
+                for sec in (comp if local(comp) == "component" else [comp]):
+                    if local(sec) == "section":
+                        section(sec)
+                    elif local(sec) not in _XML_NOISE_TAGS:
+                        fallback = []
+                        statement(sec, [], 0, fallback)
+                        out.extend(fallback)
+        return out
 
     @staticmethod
     def _html_text(raw: str) -> str:
