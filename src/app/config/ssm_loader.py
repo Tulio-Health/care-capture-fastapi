@@ -4,6 +4,7 @@ AWS SSM Parameter Store loader for FastAPI application
 
 import asyncio
 import logging
+import math
 import os
 from dataclasses import dataclass
 from typing import Dict, List, Optional
@@ -12,6 +13,52 @@ import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
 
 logger = logging.getLogger(__name__)
+
+# Part X (Strimel summary quality) boolean flags, in staged-enabling order. Each defaults to
+# False in core/settings.py; SSM name is summary/<name lower-cased>.
+PARTX_BOOL_FLAGS = (
+    "CDA_COMPACT_EXTRACTION_ENABLED",
+    "EXTRACTION_TRUNCATION_SPLIT_ENABLED",
+    "EXTRACTION_INVALID_SPLIT_ENABLED",
+    "PROCEDURE_STATUS_V2_ENABLED",
+    "EVIDENCE_REPAIR_HINTS_ENABLED",
+    "EVIDENCE_FALLBACK_ENABLED",
+    "DROP_UNGROUNDED_DIAGNOSIS_ENABLED",
+    "DROP_UNGROUNDED_ANCHORS_ENABLED",
+    "SUMMARY_CLUTTER_FILTER_ENABLED",
+    "SUMMARY_LABEL_FIXES_ENABLED",
+    "MEDICATION_RETENTION_ENABLED",
+    "MEDICATION_DOSE_CHECK_ENABLED",
+    "MEDICATION_DOSE_CHECK_V2_ENABLED",
+    "MEDICATION_NAME_CHECK_ENABLED",
+    "SUMMARY_DATE_CHECK_ENABLED",
+)
+PARTX_FLOAT_SETTINGS = ("EXTRACTION_CALL_TIMEOUT_S",)
+PARTX_SSM_ENV_VARS = PARTX_BOOL_FLAGS + PARTX_FLOAT_SETTINGS
+
+_TRUE_VALUES = {"true", "1", "yes", "on", "t", "y"}
+_FALSE_VALUES = {"false", "0", "no", "off", "f", "n"}
+
+
+def sanitize_partx_value(env_var: str, value) -> Optional[str]:
+    """Normalise a Part X SSM value, or return None when it is invalid (the caller then leaves
+    the settings default in place: flags OFF, timeout 45 s). Never raises."""
+    try:
+        text = str(value).strip().lower()
+        if env_var in PARTX_BOOL_FLAGS:
+            if text in _TRUE_VALUES:
+                return "true"
+            if text in _FALSE_VALUES:
+                return "false"
+            return None
+        if env_var in PARTX_FLOAT_SETTINGS:
+            number = float(text)
+            if math.isfinite(number) and number > 0:
+                return str(number)
+            return None
+    except Exception:  # noqa: BLE001 - fail safe to the default
+        return None
+    return None
 
 
 @dataclass
@@ -115,6 +162,14 @@ class SSMParameterLoader:
                 "summary/doctype_inference_deadline_s",
                 "DOCTYPE_INFERENCE_DEADLINE_S",
             ),
+            # Part X Strimel summary-quality flags (all default OFF / 45 s in settings).
+            # Scheme: summary/<ENV_VAR lower-cased>, e.g. summary/procedure_status_v2_enabled.
+            # Absent parameter = settings default; invalid values are ignored (see
+            # sanitize_partx_value) so a typo can never crash boot or enable a flag.
+            *[
+                SSMParameterMapping(f"summary/{env_var.lower()}", env_var)
+                for env_var in PARTX_SSM_ENV_VARS
+            ],
             # Playground (dev-only)
             SSMParameterMapping(
                 "playground/api_key", "PLAYGROUND_API_KEY", is_secure=True
@@ -216,6 +271,15 @@ class SSMParameterLoader:
 
                 if param_name in mapping_dict:
                     mapping = mapping_dict[param_name]
+                    if mapping.env_var in PARTX_SSM_ENV_VARS:
+                        sanitized = sanitize_partx_value(mapping.env_var, param_value)
+                        if sanitized is None:
+                            logger.warning(
+                                f"Ignoring invalid SSM value for {mapping.env_var} "
+                                f"(using settings default)"
+                            )
+                            continue
+                        param_value = sanitized
                     parameter_dict[mapping.env_var] = param_value
                     mapped_params.append(mapping.env_var)
                     # Log with security considerations
