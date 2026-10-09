@@ -348,3 +348,4 @@ def _pin_strimel_flags_off(monkeypatch):
     from src.app.core.settings import get_settings
     for name in ('DROP_UNGROUNDED_DIAGNOSIS_ENABLED',):
         monkeypatch.setattr(get_settings(), name, False)
+    monkeypatch.setattr(get_settings(), "EXTRACTION_CALL_TIMEOUT_S", 45.0)  # fake model_call takes no timeout kwarg
