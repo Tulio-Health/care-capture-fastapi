@@ -1124,6 +1124,22 @@ class AttachmentSummarizationChain:
                     error = DocumentProcessingError("DIAGNOSIS_WORDING_NOT_GROUNDED")
                     error.validation_issues = _diagnosis_repair_issues(failing, source)
                     raise error
+            if repair_notes is not None and _flag("DROP_UNGROUNDED_ANCHORS_ENABLED"):
+                # X4b: on the repair attempt a procedure / follow-up whose own source_quote is still
+                # not supported (same matcher + threshold as validate_quotes) is DROPPED, never
+                # kept, instead of discarding every other validated fact in the chunk. Items that
+                # survive go through the unchanged gates below (status contradiction still fails).
+                def _anchored(item):
+                    q = item.source_quote
+                    return isinstance(q, str) and bool(q.strip()) and _quote_supported(q, source)
+                kept_p = [p for p in summary.procedures if _anchored(p)]
+                kept_f = [f for f in summary.follow_up if _anchored(f)]
+                if len(kept_p) != len(summary.procedures) or len(kept_f) != len(summary.follow_up):
+                    logger.warning(
+                        "dropped_ungrounded_anchor: procedures %d of %d, follow_up %d of %d after repair",
+                        len(summary.procedures) - len(kept_p), len(summary.procedures),
+                        len(summary.follow_up) - len(kept_f), len(summary.follow_up))
+                    summary.procedures, summary.follow_up = kept_p, kept_f
             for procedure in summary.procedures:
                 validate_quotes([procedure.source_quote], source)
                 # PR-12b item 8: DO NOT TOUCH -- empirically tested against the LLM judge alone

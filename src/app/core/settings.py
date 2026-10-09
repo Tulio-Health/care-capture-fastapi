@@ -121,6 +121,9 @@ class Settings(BaseSettings):
     # X4: an ungrounded diagnosis that survives the repair attempt is dropped (never kept)
     # instead of failing the whole chunk.
     DROP_UNGROUNDED_DIAGNOSIS_ENABLED: bool = False
+    # X4b: same for procedure / follow-up items whose source_quote is still unsupported after
+    # the repair attempt (status contradiction still fails closed).
+    DROP_UNGROUNDED_ANCHORS_ENABLED: bool = False
     # X5: no vitals in lab_results, no raw "Orders:" scaffolding in recommendations.
     SUMMARY_CLUTTER_FILTER_ENABLED: bool = False
     # X6: every dose/strength token in a medication entry must appear in the source.

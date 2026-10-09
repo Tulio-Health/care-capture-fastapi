@@ -24,7 +24,7 @@ from src.app.services.document_extraction import DocumentProcessingError, Docume
 from src.app.services.summary_runtime import model_error_code
 
 SOURCE = "Assessment\nAnticoagulation/antiplatelist: continue aspirin\nHypertension, essential\n"
-FLAGS = ("MEDICATION_RETENTION_ENABLED", "EVIDENCE_REPAIR_HINTS_ENABLED", "PROCEDURE_STATUS_V2_ENABLED", "CDA_COMPACT_EXTRACTION_ENABLED", "EXTRACTION_TRUNCATION_SPLIT_ENABLED",
+FLAGS = ("DROP_UNGROUNDED_ANCHORS_ENABLED", "MEDICATION_RETENTION_ENABLED", "EVIDENCE_REPAIR_HINTS_ENABLED", "PROCEDURE_STATUS_V2_ENABLED", "CDA_COMPACT_EXTRACTION_ENABLED", "EXTRACTION_TRUNCATION_SPLIT_ENABLED",
          "DROP_UNGROUNDED_DIAGNOSIS_ENABLED", "SUMMARY_CLUTTER_FILTER_ENABLED", "MEDICATION_DOSE_CHECK_ENABLED")
 
 
@@ -310,3 +310,63 @@ def test_x3b_composite_quote_keeps_only_supported_pieces():
     quote = "Congestion over 1 week. Frontal headache > x 2 days. The patient was admitted to the ICU overnight."
     assert _supported_quote_pieces(quote, src) == ["Congestion over 1 week", "Frontal headache > x 2 days"]
     assert _supported_quote_pieces("The patient was admitted to the ICU. Intubated for septic shock.", src) == []
+
+
+# ---- X4b -----------------------------------------------------------------------------------
+from src.app.models.attachment_summarization import FollowUpDetail  # noqa: E402
+
+ANCHOR_SRC = ("Assessment & Plan\nHypertension, essential\nOrders: \u2022 FLU A B (Rapid Molecular - Office)\n"
+              "Return in 2 weeks for blood pressure check\nColonoscopy completed 03/02/2021\n")
+
+
+def _fu(quote, text="Return visit"):
+    return FollowUpDetail(follow_up=text, source_quote=quote)
+
+
+@pytest.mark.asyncio
+async def test_x4b_unsupported_anchor_dropped_after_repair_rest_kept(monkeypatch, flags):
+    flags(DROP_UNGROUNDED_ANCHORS_ENABLED=True)
+    bad_proc = _proc("Orders: FLU A B Rapid Molecular Office, nasal swab sent", status="ordered")
+    good_fu = _fu("Return in 2 weeks for blood pressure check")
+    s = lambda: _summary(diagnoses=["Hypertension, essential"], procedures=[bad_proc], evidence=["Hypertension, essential"])
+    s1, s2 = s(), s()
+    s2.follow_up = [good_fu, _fu("Return in 6 months for MRI of the brain")]
+    chain, prompts = _chain(monkeypatch, [s1, s2])
+    out = await chain._extract_batch([_doc(ANCHOR_SRC)], 1, 1)
+    assert len(prompts) == 2  # first attempt still fails closed
+    assert out[0].procedures == []
+    assert [f.source_quote for f in out[0].follow_up] == ["Return in 2 weeks for blood pressure check"]
+    assert [d.official_diagnosis for d in out[0].diagnoses] == ["Hypertension, essential"]
+
+
+@pytest.mark.asyncio
+async def test_x4b_fabricated_wrong_date_negated_items_never_kept(monkeypatch, flags):
+    flags(DROP_UNGROUNDED_ANCHORS_ENABLED=True)
+    items = [_proc("Colonoscopy completed 03/09/2021"),            # wrong date
+             _proc("Colonoscopy not completed 03/02/2021"),        # negation flip
+             _proc("Cardiac catheterization performed 03/02/2021")]  # fabricated
+    s = lambda: _summary(diagnoses=["Hypertension, essential"], procedures=list(items), evidence=["Hypertension, essential"])
+    chain, _ = _chain(monkeypatch, [s(), s()])
+    out = await chain._extract_batch([_doc(ANCHOR_SRC)], 1, 1)
+    assert out[0].procedures == []
+
+
+@pytest.mark.asyncio
+async def test_x4b_supported_but_contradicted_status_still_fails(monkeypatch, flags):
+    flags(DROP_UNGROUNDED_ANCHORS_ENABLED=True, PROCEDURE_STATUS_V2_ENABLED=True)
+    src = "Plan\nMRI lumbar spine ordered for next week\n"
+    q = "MRI lumbar spine ordered for next week"
+    chain, _ = _chain(monkeypatch, [_summary(evidence=[q], procedures=[_proc(q)])])
+    with pytest.raises(DocumentProcessingError) as info:
+        await chain._extract_batch([_doc(src)], 1, 1)
+    assert info.value.reason_code == "PROCEDURE_STATUS_NOT_GROUNDED"
+
+
+@pytest.mark.asyncio
+async def test_x4b_flag_off_unsupported_anchor_still_fails_chunk(monkeypatch, flags):
+    flags(DROP_UNGROUNDED_ANCHORS_ENABLED=False)
+    s = lambda: _summary(procedures=[_proc("Cardiac catheterization performed 03/02/2021")])
+    chain, _ = _chain(monkeypatch, [s(), s()])
+    with pytest.raises(DocumentProcessingError) as info:
+        await chain._extract_batch([_doc(ANCHOR_SRC)], 1, 1)
+    assert info.value.reason_code == "INVALID_SOURCE_EVIDENCE"
