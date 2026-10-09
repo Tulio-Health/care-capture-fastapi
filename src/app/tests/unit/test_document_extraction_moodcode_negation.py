@@ -17,6 +17,8 @@ These tests build small synthetic CDA snippets that mirror the real
 structure (tag names, nesting) without any real patient data.
 """
 
+import pytest
+
 import xml.etree.ElementTree as ET
 
 from src.app.services.document_extraction import DocumentTextExtractor
@@ -254,3 +256,13 @@ def test_old_replica_walk_shows_these_four_attrs_were_previously_dropped_entirel
     given = old_xml_text(_document(entry))
     ordered = old_xml_text(_document(entry.replace('moodCode="EVN"', 'moodCode="INT"')))
     assert given == ordered  # the bug this fix corrects
+
+
+
+@pytest.fixture(autouse=True)
+def _pin_strimel_flags_off(monkeypatch):
+    """These tests specify the flag-OFF (prod default) behaviour of CDA_COMPACT_EXTRACTION_ENABLED.
+    The flag-ON behaviour is specified in test_strimel_partx_fixes.py / test_strimel_partx_strict8.py."""
+    from src.app.core.settings import get_settings
+    for name in ('CDA_COMPACT_EXTRACTION_ENABLED',):
+        monkeypatch.setattr(get_settings(), name, False)

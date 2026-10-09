@@ -338,3 +338,13 @@ async def test_parser_warmup_parses_all_three_samples():
     from src.app.services import parser_warmup
 
     assert await parser_warmup._run() == ["pdf", "html", "xml"]
+
+
+
+@pytest.fixture(autouse=True)
+def _pin_strimel_flags_off(monkeypatch):
+    """These tests specify the flag-OFF (prod default) behaviour of DROP_UNGROUNDED_DIAGNOSIS_ENABLED.
+    The flag-ON behaviour is specified in test_strimel_partx_fixes.py / test_strimel_partx_strict8.py."""
+    from src.app.core.settings import get_settings
+    for name in ('DROP_UNGROUNDED_DIAGNOSIS_ENABLED',):
+        monkeypatch.setattr(get_settings(), name, False)

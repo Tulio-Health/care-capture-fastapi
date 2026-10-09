@@ -810,8 +810,8 @@ class DocumentTextExtractor:
                     name = local(c)
                     if name in _XML_NOISE_TAGS or name in _CDA_ENTRY_ADMIN:
                         continue
-                    if name == "participant" and c.attrib.get("typeCode") not in _CDA_KEEP_PARTICIPANT:
-                        continue
+                    if name == "participant" and c.attrib.get("typeCode", "CSM") not in _CDA_KEEP_PARTICIPANT:
+                        continue  # no typeCode -> kept (could be the allergen/consumable)
                     if name in _CDA_STATEMENTS:
                         nested.append((c, []))
                         continue
@@ -878,7 +878,7 @@ class DocumentTextExtractor:
         out = []
 
         def section(sec):
-            title, entry_lines = None, []
+            title, blocks = None, []
             for c in sec:
                 name = local(c)
                 if name == "title" and (c.text or "").strip():
@@ -889,6 +889,8 @@ class DocumentTextExtractor:
                     if rendered:
                         out.append(rendered)
                 elif name == "entry":
+                    entry_lines = []
+                    blocks.append(entry_lines)
                     for g in c:
                         gname = local(g)
                         if gname in _XML_NOISE_TAGS or gname in _CDA_ENTRY_ADMIN:
@@ -918,13 +920,17 @@ class DocumentTextExtractor:
                     if payload and payload != title:
                         out.append(f"section code: {payload}")
                 elif name not in _XML_NOISE_TAGS and name not in _CDA_ENTRY_ADMIN:
-                    statement(c, [], 0, entry_lines)  # unknown section child: rendered, not dropped
-            # Exact-duplicate statement lines within one section carry no new fact.
+                    blocks.append([])
+                    statement(c, [], 0, blocks[-1])  # unknown section child: rendered, not dropped
+            # A whole entry that is an exact duplicate of an earlier entry in the same section
+            # carries no new fact. Collapse at ENTRY granularity only: a repeated nested line
+            # (e.g. the same criticality under two different allergies) stays with its parent.
             seen = set()
-            for line in entry_lines:
-                if line not in seen:
-                    seen.add(line)
-                    out.append(line)
+            for block in blocks:
+                key = tuple(block)
+                if block and key not in seen:
+                    seen.add(key)
+                    out.extend(block)
 
         for sb in body:
             if local(sb) != "structuredBody":

@@ -68,8 +68,11 @@ def _chain(monkeypatch, outputs):
 
 
 def test_x3_extraction_timeout_default_unchanged_and_clamped(flags):
+    from src.app.core.settings import Settings
     from src.app.services.summary_runtime import MODEL_CALL_TIMEOUT_S, extraction_call_timeout_s
-    assert extraction_call_timeout_s() == MODEL_CALL_TIMEOUT_S == 45
+    assert Settings.model_fields["EXTRACTION_CALL_TIMEOUT_S"].default == MODEL_CALL_TIMEOUT_S == 45
+    flags(EXTRACTION_CALL_TIMEOUT_S=45)
+    assert extraction_call_timeout_s() == 45
     flags(EXTRACTION_CALL_TIMEOUT_S=90)
     assert extraction_call_timeout_s() == 90
     flags(EXTRACTION_CALL_TIMEOUT_S=999)
